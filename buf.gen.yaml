@@ -5,7 +5,7 @@ managed:
     enabled: true
     override:
       - file_option: go_package_prefix
-        value: github.com/walteh/cloudstack-proxy/gen/proto/golang
+        value: github.com/walteh/ec1/gen/proto/golang
 
 clean: true
 
@@ -13,7 +13,6 @@ plugins:
 
   - out: gen/proto/golang
     local: ["go", "tool", "google.golang.org/protobuf/cmd/protoc-gen-go"]
-    # exclude_types: [google.api]
     include_imports: true
     strategy: all
     opt:
@@ -28,9 +27,9 @@ plugins:
     local: ["go", "tool", "connectrpc.com/connect/cmd/protoc-gen-connect-go"]
     opt:
       - paths=source_relative
-
   - out: gen/proto/golang
     local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate/cmd/protoc-gen-protovalidate"]
     include_imports: true
     opt:
       - paths=source_relative
+      - buf_validate_file=ec1/validate/validate.proto

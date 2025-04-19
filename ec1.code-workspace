@@ -15,7 +15,7 @@
 			"microsoft-dciborow.align-bicep",
 			"mortenson.go-template-transpiler-extension",
 			"casualjim.gotemplate",
-			"tooltitudeteam.tooltitude-pb",
+			"tooltitudeteam.tooltitude-pb"
 		]
 	},
 	"settings": {
@@ -57,6 +57,6 @@
 		},
 		"[typescriptreact]": {
 			"editor.defaultFormatter": "esbenp.prettier-vscode"
-		},
+		}
 	}
 }

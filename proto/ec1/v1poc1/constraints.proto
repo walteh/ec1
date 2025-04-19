@@ -1,0 +1,48 @@
+syntax = "proto2";
+
+package ec1.v1poc1;
+
+import "ec1/validate/validate.proto";
+
+extend ec1.validate.StringRules {
+	optional StringIDRules id       = 80048958;
+	optional ResourceRules resource = 80048959;
+}
+
+message StringIDRules {
+	optional bool xidsuffix = 80048959 [
+		(validate.field).string.example = "name-9m4e2mr0ui3e8a215n4g",
+		(validate.field).cel            = {
+			id:                     "string.xidsuffix"
+			message:                "this value must end with a valid lowercase xid"
+			expression:             "value.matches(r'^[a-z0-9]{16}$')"
+		}
+	];
+	optional bool agent     = 80048956 [
+		(validate.field).string.prefix         = "agent-",
+		(validate.field).string.(id).xidsuffix = true
+	];
+
+	optional bool vm = 80048957 [
+		(validate.field).string.prefix         = "vm-",
+		(validate.field).string.(id).xidsuffix = true
+	];
+}
+
+message ResourceRules {
+	optional bool memory = 1 [
+		(validate.predefined).cel = {
+			id:         "string.resource.memory",
+			message:    "invalid memory format",
+			expression: "value.matches(r'^[0-9]+([.][0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')"
+		}
+	];
+
+	optional bool cpu = 2 [
+		(validate.predefined).cel = {
+			id:         "string.resource.cpu",
+			message:    "invalid cpu format",
+			expression: "value.matches(r'^([0-9]+m|[0-9]+([.][0-9]+)?)$')"
+		}
+	];
+}

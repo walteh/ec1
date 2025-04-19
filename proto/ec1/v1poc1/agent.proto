@@ -1,0 +1,130 @@
+edition = "2023";
+
+package ec1.v1poc1;
+
+// AgentService provides VM management functionality on a host
+service AgentService {
+	// StartVM starts a new virtual machine on the agent's host
+	rpc StartVM(StartVMRequest) returns (StartVMResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+
+
+	// StopVM stops a running virtual machine on the agent's host
+	rpc StopVM(StopVMRequest) returns (StopVMResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+
+
+	// GetVMStatus gets the status of a virtual machine on the agent's host
+	rpc GetVMStatus(GetVMStatusRequest) returns (GetVMStatusResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+}
+
+// StartVMRequest is the request message for starting a VM
+message StartVMRequest {
+	// Name of the VM
+	string name = 1;
+
+	// Memory size in MB
+	int32 memory_mb = 2;
+
+	// Number of vCPUs
+	int32 vcpu_count = 3;
+
+	// Disk image path
+	string disk_image_path = 4;
+
+	// Network configuration
+	VMNetworkConfig network_config = 5;
+}
+
+// StartVMResponse is the response message after starting a VM
+message StartVMResponse {
+	// ID of the started VM
+	string vm_id = 1;
+
+	// IP address of the VM (if available)
+	string ip_address = 2;
+
+	// Status of the VM
+	VMStatus status = 3;
+
+	// Error message, if any
+	string error = 4;
+}
+
+// StopVMRequest is the request message for stopping a VM
+message StopVMRequest {
+	// ID of the VM to stop
+	string vm_id = 1;
+
+	// Force stop the VM without graceful shutdown
+	bool force = 2;
+}
+
+// StopVMResponse is the response message after stopping a VM
+message StopVMResponse {
+	// Success status
+	bool success = 1;
+
+	// Error message, if any
+	string error = 2;
+}
+
+// GetVMStatusRequest is the request message for getting VM status
+message GetVMStatusRequest {
+	// ID of the VM to get status for
+	string vm_id = 1;
+}
+
+// GetVMStatusResponse is the response message with VM status
+message GetVMStatusResponse {
+	// Status of the VM
+	VMStatus status = 1;
+
+	// IP address of the VM (if available)
+	string ip_address = 2;
+
+	// Error message, if any
+	string error = 3;
+}
+
+// VMNetworkConfig defines networking options for a VM
+message VMNetworkConfig {
+	// Network type
+	NetworkType network_type = 1;
+
+	// Port forwarding rules
+	repeated PortForward port_forwards = 2;
+}
+
+// NetworkType specifies the type of network to use for the VM
+enum NetworkType {
+	NETWORK_TYPE_UNSPECIFIED = 0;
+	NETWORK_TYPE_NAT         = 1;
+	NETWORK_TYPE_BRIDGED     = 2;
+}
+
+// PortForward defines a port forwarding rule
+message PortForward {
+	// Host port to forward
+	int32 host_port = 1;
+
+	// Guest port to forward to
+	int32 guest_port = 2;
+
+	// Protocol (tcp or udp)
+	string protocol = 3;
+}
+
+// VMStatus defines the possible states of a VM
+enum VMStatus {
+	VM_STATUS_UNSPECIFIED = 0;
+	VM_STATUS_STARTING    = 1;
+	VM_STATUS_RUNNING     = 2;
+	VM_STATUS_STOPPING    = 3;
+	VM_STATUS_STOPPED     = 4;
+	VM_STATUS_ERROR       = 5;
+}
