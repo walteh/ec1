@@ -1,0 +1,12 @@
+inpackage: false
+with-expecter: true
+testonly: false
+exported: true
+outpkg: mock{{.PackageName}}
+dir: ./gen/mocks/{{.InterfaceDirRelative}}
+disable-version-string: true
+resolve-type-alias: false
+issue-845-fix: true
+filename: "{{.InterfaceName}}_mock.gen.go"
+mockname: Mock{{.InterfaceName}}
+packages: #generated

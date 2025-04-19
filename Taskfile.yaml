@@ -1,0 +1,194 @@
+version: "3"
+
+vars:
+    GO_MODULES:
+        sh: cat go.work | grep -oEh  '\t+(\./*[^[:space:]]*)' | tr -d '\t'
+    JSONSCHEMA_FILES:
+        sh: find . -type f -name '*.schema.json'
+    GO_ROOT_PKG:
+        sh: cat go.mod | grep -oE '^module[^\S]+' | cut -d' ' -f2
+    GO_COMMAND: ./go
+
+env:
+    COMPOSE_BAKE: true
+    GOPROXY: 'https://proxy.golang.org'
+    GOSUMDB: sum.golang.org
+    GOPRIVATE: github.com/walteh
+    DOCKER_BUILDKIT: 1
+
+tasks:
+    go:tidy:
+        run: once
+        aliases: [go-mod-tidy]
+        cmds:
+          - for: {var: GO_MODULES}
+            cmd: cd {{.ITEM}} && go mod tidy -e
+
+    go:upgrade:
+        aliases: [go-mod-upgrade]
+        run: once
+        cmds:
+          - |-
+            {{.GO_COMMAND}} tool go-mod-upgrade --force
+          - task: go-mod-tidy
+
+    go:update:
+        aliases: [go-mod-update]
+        requires: {vars: [CLI_ARGS]}
+        run: once
+        cmds:
+          - task: go:tidy
+          - for: {var: GO_MODULES}
+            cmd: cd {{.ITEM}} && go get -u {{.CLI_ARGS}}
+          - task: go:tidy
+
+    term:
+        desc: opens a terminal in the project root
+        platforms: [darwin]
+        cmds:
+          - cmd: open -a Terminal $(pwd)
+
+    options:
+        desc: generates options for structs with '//go:opts' comment
+        vars:
+            OPTION_GEN_DATA:
+                sh: |-
+                    grep -rl "//go:opts" --include="*.go" . | xargs -I{} bash -c 'd=$(dirname {}); d=${d#./}; awk -v d="$d {}" '\''/\/\/go:opts/ {getline; if($1=="type") print d, $2}'\'' {}'
+            OPTION_GEN_SOURCE_FILES:
+                sh: |-
+                    grep -rl "//go:opts" --include="*.go" .
+        generates:
+          - "**/*_opts.gen.go"
+        sources:
+          - '{{.OPTION_GEN_SOURCE_FILES | join ","}}'
+        cmds:
+          - for: {var: OPTION_GEN_DATA, split: "\n"}
+            cmd: |-
+                set -e
+                {{.GO_COMMAND}} tool github.com/kazhuravlev/options-gen/cmd/options-gen \
+                  -out-filename={{splitList " " .ITEM | first}}/{{ splitList " " .ITEM | last | lower | trimSuffix "opts" }}_opts.gen.go \
+                  -filename={{ splitList " " .ITEM | rest | first }} \
+                  -from-struct={{ splitList " " .ITEM | last }} \
+                  -pkg={{ splitList " " .ITEM | first | splitList "/" | last }}
+
+    mockery:
+        desc: generates mocks for interfaces with '//go:mock' comment
+        vars:
+            TMP_DIR: ./gen/config
+            MOCKERY_INTERFACE_DATA:
+                sh: |-
+                    grep -rl "//go:mock" --include="*.go" . | xargs -I{} bash -c 'd=$(dirname {}); d=${d#./}; awk -v d="$d {}" '\''/\/\/go:mock/ {getline; if($1=="type") print d, $2}'\'' {}'
+            MOCKERY_SOURCE_FILES:
+                sh: |-
+                    grep -rl "//go:mock" --include="*.go" .
+        sources:
+          - '{{.MOCKERY_SOURCE_FILES | join ","}}'
+          - .mockery.yaml
+        generates:
+          - ./gen/mocks/**/*_mock.gen.go
+          - ./gen/config/.mockery.yaml
+        cmds:
+          - cmd: mkdir -p {{.TMP_DIR}}
+          - cmd: cp .mockery.yaml {{.TMP_DIR}}/.mockery.yaml
+          - for: {var: "MOCKERY_INTERFACE_DATA", split: "\n", as: ITEM}
+            cmd: |-
+                set -e
+                yq -i ".packages.\"{{ .GO_ROOT_PKG }}/{{ splitList \" \" .ITEM | first }}\".interfaces.{{ splitList \" \" .ITEM | last }} = {}" {{.TMP_DIR}}/.mockery.yaml
+          - cmd: |-
+                {{.GO_COMMAND}} tool github.com/vektra/mockery/v2 --config={{.TMP_DIR}}/.mockery.yaml
+
+    buf:
+        desc: generates protobuf files
+        cmds:
+          - |-
+            {{.GO_COMMAND}} tool github.com/bufbuild/buf/cmd/buf generate
+
+    sources:
+        desc: downloads the cloudstack api list
+        vars:
+            FILES:
+              - url: https://raw.githubusercontent.com/apache/cloudstack-go/refs/heads/main/generate/listApis.json
+                file_name: cloudstack-go-api-list.json
+                var_name: CloudStackGoApiListJson
+        cmds:
+          - cmd: mkdir -p gen/sources
+          - cmd: echo -e "package cloudstackapilist\n\nimport _ \"embed\"\n" > gen/sources/embed.gen.go
+          - for: {var: "FILES", as: ITEM}
+            cmd: curl -sSL {{.ITEM.url}} | jq -r --tab '.' > gen/sources/{{.ITEM.file_name}}
+          - for: {var: "FILES", as: ITEM}
+            cmd: echo -e "//go:embed {{.ITEM.file_name}}\n\nvar {{.ITEM.var_name}} []byte" >> gen/sources/embed.gen.go
+
+    kotlin-generator:
+        dir: generator/kotlin
+        desc: generates kotlin code from cloudstack api list
+        cmds:
+          - cmd: mvn compile exec:java -Dexec.args="--out-dir ../../gen/cloudstack-metadata"
+
+    protogen:
+        desc: generates protobuf definitions from CloudStack API metadata
+        vars:
+            FORMAT: "{{ .FORMAT | default true }}"
+        cmds:
+          - cmd: rm -rf proto/cloudstack/management
+          - cmd: mkdir -p proto/cloudstack/management
+          - cmd: |-
+                {{.GO_COMMAND}} run ./cmd/csp-protobuf-generator \
+                 --metadata-dir=./gen/cloudstack-metadata \
+                 --output-dir=./proto \
+                 --format={{ .FORMAT }}
+        sources:
+          - gen/cloudstack-metadata/*.json
+        generates:
+          - proto/cloudstack/**/*.gen.proto
+
+    protogen:no-format:
+        desc: generates protobuf definitions from CloudStack API metadata without formatting
+        cmds:
+          - task: protogen
+            vars:
+                FORMAT: "false"
+
+    cloudstack:management:install:
+        desc: installs the cloudstack cli
+        dir: ../cloudstack
+        env:
+            MAVEN_OPTS: "-Xmx4g -XX:+TieredCompilation -XX:TieredStopAtLevel=1"
+        cmds:
+          - cmd: |-
+                mvn clean install -T 4C -DskipTests -Pdevloper,tart,simulator,disablecheckstyle \
+                -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+
+    cloudstack:management:start:
+        desc: starts the cloudstack simulator
+        dir: ../cloudstack
+        cmds:
+          - cmd: mvn -pl client jetty:run -Dsimulator -Dtart -Dorg.eclipse.jetty.annotations.maxWait=120
+
+    cloudstack:ui:install:
+        desc: installs the cloudstack ui
+        dir: ../cloudstack/ui
+        cmds:
+          - cmd: npm install
+
+    cloudstack:ui:start:
+        desc: builds the cloudstack ui
+        dir: ../cloudstack/ui
+        cmds:
+          - cmd: npm run serve
+
+    docker:start:
+        cmds:
+          - docker compose --progress=tty up -d --wait --build --remove-orphans
+
+    docker:restart:
+        cmds:
+          - task: docker:stop
+          - task: docker:start
+
+    docker:stop:
+        cmds:
+          - docker compose --progress=tty down
+
+    docker:build:
+        cmds:
+          - docker compose --progress=tty build

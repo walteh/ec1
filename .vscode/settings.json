@@ -1,0 +1,42 @@
+{
+	"editor.formatOnSave": true,
+	"editor.detectIndentation": false,
+	"files.associations": {
+		"tsconfig.*json": "jsonc",
+		"*.css": "tailwindcss",
+		"Dockerfile": "dockerfile",
+		".copyrc": "hcl",
+		".vscode/settings.json": "jsonc"
+	},
+	"explorer.sortOrder": "type",
+	"explorer.sortOrderLexicographicOptions": "upper",
+	"yaml.format.enable": false,
+	"[protobuf]": {
+		"editor.defaultFormatter": "walteh.retab-vscode"
+	},
+	"material-icon-theme.folders.associations": {
+		"dynamo": "database",
+		"mw": "middleware"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[jsonc]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[dotenv]": {
+		"editor.defaultFormatter": "foxundermoon.shell-format"
+	},
+	"[go]": {
+		"editor.defaultFormatter": "golang.go"
+	},
+	"[ignore]": {
+		"editor.defaultFormatter": "foxundermoon.shell-format"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	}
+}
