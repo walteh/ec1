@@ -3,82 +3,155 @@ package hypervisor
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
+	libvirt "libvirt.org/libvirt-go"
 )
 
-// KVMDriver implements the Driver interface for Linux using KVM
+// TODO: add KVM/QEMU driver
+
+// import libvirt "libvirt.org/libvirt-go"
+// ...
+// conn, err := libvirt.NewConnect("qemu:///system")
+// if err != nil { return error... }
+// // Define domain XML for nested VM (or use an existing XML template)
+// dom, err := conn.DomainCreateXML(nestedVmXML, 0)  // 0 = default flags
+// if err != nil { ... }
+// defer dom.Free()
+// // If needed, get its IP or wait for boot...
+
+// KVMDriver implements the Driver interface for Linux using KVM via libvirt
 type KVMDriver struct {
 	// Map to keep track of running VMs
 	vms     map[string]*kvmVM
 	vmMutex sync.RWMutex
+
+	// Connection to libvirt
+	conn *libvirt.Connect
 }
 
 // kvmVM represents a running VM instance
 type kvmVM struct {
 	id         string
 	ipAddress  string
-	status     ec1v1.VMStatus
 	name       string
 	resources  *ec1v1.Resources
 	diskPath   string
 	portFwds   []*ec1v1.PortForward
 	networkCfg *ec1v1.VMNetworkConfig
+
+	// Libvirt domain
+	domain *libvirt.Domain
 }
 
 // NewKVMDriver creates a new driver for KVM virtualization
 func NewKVMDriver(ctx context.Context) (*KVMDriver, error) {
-	// In a real implementation, we would check for KVM availability
-	// and possibly set up libvirt or direct QEMU access
+	// Connect to libvirt
+	conn, err := libvirt.NewConnect("qemu:///system")
+	if err != nil {
+		return nil, fmt.Errorf("connecting to libvirt: %w", err)
+	}
 
 	return &KVMDriver{
-		vms: make(map[string]*kvmVM),
+		vms:  make(map[string]*kvmVM),
+		conn: conn,
 	}, nil
 }
 
 // StartVM implements the Driver interface
 func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec1v1.StartVMResponse, error) {
-	// In a real implementation, this would use KVM/QEMU to start a VM
-	// For this POC, we'll simulate the process
-
 	// Generate a simple VM ID
 	vmID := fmt.Sprintf("kvm-vm-%s", req.GetName())
 
-	// Create a new VM instance
+	// Get memory and CPU specs
+	memoryStr := req.ResourcesMax.GetMemory()
+	cpuStr := req.ResourcesMax.GetCpu()
+
+	// Parse memory - using a simple parsing for POC
+	memoryMB := 1024 // Default 1GB
+	if memoryStr != "" {
+		// Simple parsing: assume format like "1024Mi" or "1Gi"
+		mem, err := strconv.Atoi(memoryStr[:len(memoryStr)-2])
+		if err == nil {
+			// If memory is specified in Gi, convert to Mi
+			if memoryStr[len(memoryStr)-2:] == "Gi" {
+				memoryMB = mem * 1024
+			} else {
+				memoryMB = mem
+			}
+		}
+	}
+
+	// For simplicity, create a domain XML definition
+	// In a real implementation, we would properly configure based on all parameters
+	domainXML := fmt.Sprintf(`
+	<domain type='kvm'>
+		<name>%s</name>
+		<memory unit='MiB'>%d</memory>
+		<vcpu>%s</vcpu>
+		<os>
+			<type arch='x86_64'>hvm</type>
+			<boot dev='hd'/>
+		</os>
+		<devices>
+			<disk type='file' device='disk'>
+				<driver name='qemu' type='qcow2'/>
+				<source file='%s'/>
+				<target dev='vda' bus='virtio'/>
+			</disk>
+			<interface type='network'>
+				<source network='default'/>
+				<model type='virtio'/>
+			</interface>
+			<console type='pty'/>
+		</devices>
+	</domain>
+	`, vmID, memoryMB, cpuStr, req.GetDiskImagePath())
+
+	// Create the domain from XML
+	domain, err := d.conn.DomainDefineXML(domainXML)
+	if err != nil {
+		return nil, fmt.Errorf("defining domain from XML: %w", err)
+	}
+
+	// Create the VM record
 	vm := &kvmVM{
 		id:         vmID,
 		name:       req.GetName(),
 		resources:  req.ResourcesMax,
 		diskPath:   req.GetDiskImagePath(),
-		status:     ec1v1.VMStatus_VM_STATUS_STARTING,
 		networkCfg: req.NetworkConfig,
+		domain:     domain,
 	}
-
-	// In a real implementation, this would:
-	// 1. Construct a QEMU command or libvirt XML definition
-	// 2. Configure memory, CPU, disk, network (with port forwarding)
-	// 3. Start the VM process or call libvirt to create the domain
-	// 4. Determine the VM's IP address via DHCP or static assignment
-
-	// For example, construct a QEMU command like:
-	// qemu-system-x86_64 -enable-kvm -m 128 -cpu host \
-	//   -drive file=nestvm.qcow2,if=virtio \
-	//   -nic user,hostfwd=tcp::8080-:80
-
-	// For the POC, we'll simulate a successful start and assign a fake IP
-	vm.status = ec1v1.VMStatus_VM_STATUS_RUNNING
-	vm.ipAddress = "192.168.122.10" // Simulated IP for the POC
 
 	// Store the VM
 	d.vmMutex.Lock()
 	d.vms[vmID] = vm
 	d.vmMutex.Unlock()
 
+	// Start the domain
+	if err := domain.Create(); err != nil {
+		d.vmMutex.Lock()
+		delete(d.vms, vmID)
+		d.vmMutex.Unlock()
+		domain.Free() // Clean up the domain
+		return nil, fmt.Errorf("starting domain: %w", err)
+	}
+
+	// For port forwarding, we would configure network in a real implementation
+	// In a real setup, we'd likely use libvirt network filtering or a separate tool
+
+	// In a real implementation, we would get the IP by quering the domain
+	// For the POC, we assign a fake IP
+	vm.ipAddress = "192.168.122.10" // Simulated IP for the POC
+
+	// Return the response
 	return &ec1v1.StartVMResponse{
-		VmId:      strPtr(vmID),
-		IpAddress: strPtr(vm.ipAddress),
-		Status:    statusPtr(vm.status),
+		VmId:      ptr(vmID),
+		IpAddress: ptr(vm.ipAddress),
+		Status:    ptr(ec1v1.VMStatus_VM_STATUS_RUNNING),
 	}, nil
 }
 
@@ -90,27 +163,29 @@ func (d *KVMDriver) StopVM(ctx context.Context, req *ec1v1.StopVMRequest) (*ec1v
 
 	if !exists {
 		return &ec1v1.StopVMResponse{
-			Success: boolPtr(false),
-			Error:   strPtr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			Success: ptr(false),
+			Error:   ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
 		}, nil
 	}
 
-	// In a real implementation, this would:
-	// 1. If using libvirt, call virDomainDestroy or virDomainShutdown
-	// 2. If using QEMU directly, send a signal to the QEMU process
+	var err error
+	if req.GetForce() {
+		// Force stop the VM
+		err = vm.domain.Destroy()
+	} else {
+		// Request a graceful shutdown
+		err = vm.domain.Shutdown()
+	}
 
-	// Mark the VM as stopping
-	d.vmMutex.Lock()
-	vm.status = ec1v1.VMStatus_VM_STATUS_STOPPING
-	d.vmMutex.Unlock()
-
-	// For the POC, we'll simulate immediate completion
-	d.vmMutex.Lock()
-	vm.status = ec1v1.VMStatus_VM_STATUS_STOPPED
-	d.vmMutex.Unlock()
+	if err != nil {
+		return &ec1v1.StopVMResponse{
+			Success: ptr(false),
+			Error:   ptr(fmt.Sprintf("Failed to stop VM: %v", err)),
+		}, nil
+	}
 
 	return &ec1v1.StopVMResponse{
-		Success: boolPtr(true),
+		Success: ptr(true),
 	}, nil
 }
 
@@ -122,17 +197,49 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 
 	if !exists {
 		return &ec1v1.GetVMStatusResponse{
-			Status: statusPtr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
-			Error:  strPtr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			Status: ptr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
+			Error:  ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
 		}, nil
 	}
 
-	// In a real implementation, we would query the VM status from libvirt or QEMU
+	// Get the domain state
+	state, _, err := vm.domain.GetState()
+	if err != nil {
+		return &ec1v1.GetVMStatusResponse{
+			Status: ptr(ec1v1.VMStatus_VM_STATUS_ERROR),
+			Error:  ptr(fmt.Sprintf("Failed to get VM state: %v", err)),
+		}, nil
+	}
+
+	// Map libvirt state to our state
+	status := mapLibvirtState(state)
 
 	return &ec1v1.GetVMStatusResponse{
-		Status:    statusPtr(vm.status),
-		IpAddress: strPtr(vm.ipAddress),
+		Status:    ptr(status),
+		IpAddress: ptr(vm.ipAddress),
 	}, nil
+}
+
+// Map libvirt domain state to our VM status
+func mapLibvirtState(state libvirt.DomainState) ec1v1.VMStatus {
+	switch state {
+	case libvirt.DOMAIN_RUNNING:
+		return ec1v1.VMStatus_VM_STATUS_RUNNING
+	case libvirt.DOMAIN_BLOCKED:
+		return ec1v1.VMStatus_VM_STATUS_RUNNING
+	case libvirt.DOMAIN_PAUSED:
+		return ec1v1.VMStatus_VM_STATUS_STOPPED
+	case libvirt.DOMAIN_SHUTDOWN:
+		return ec1v1.VMStatus_VM_STATUS_STOPPING
+	case libvirt.DOMAIN_SHUTOFF:
+		return ec1v1.VMStatus_VM_STATUS_STOPPED
+	case libvirt.DOMAIN_CRASHED:
+		return ec1v1.VMStatus_VM_STATUS_ERROR
+	case libvirt.DOMAIN_PMSUSPENDED:
+		return ec1v1.VMStatus_VM_STATUS_STOPPED
+	default:
+		return ec1v1.VMStatus_VM_STATUS_UNSPECIFIED
+	}
 }
 
 // GetHypervisorType implements the Driver interface

@@ -2,6 +2,7 @@ package hypervisor
 
 import (
 	"context"
+	"runtime"
 
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )
@@ -30,10 +31,10 @@ func NewDriver(ctx context.Context) (Driver, error) {
 
 	// Assume Linux for POC
 	return NewKVMDriver(ctx)
+
 }
 
 // isMacOS returns true if the host is running macOS
 func isMacOS() bool {
-	// This would be more robust in a real implementation
-	return true // Assuming macOS for demo
+	return runtime.GOOS == "darwin"
 }
