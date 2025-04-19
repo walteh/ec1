@@ -1,0 +1,63 @@
+edition = "2023";
+
+package ec1.v1poc1;
+
+import "ec1/v1poc1/constraints.proto";
+import "ec1/validate/validate.proto";
+
+// HypervisorType defines the type of hypervisor the agent is managing
+enum HypervisorType {
+	HYPERVISOR_TYPE_UNSPECIFIED        = 0;
+	HYPERVISOR_TYPE_MAC_VIRTUALIZATION = 1;
+	HYPERVISOR_TYPE_KVM                = 2;
+}
+
+message Resources {
+	string memory = 1 [
+		(validate.field).string.(resource).memory = true
+	];
+	string cpu    = 2 [
+		(validate.field).string.(resource).cpu = true
+	];
+}
+
+// NetworkType specifies the type of network to use for the VM
+enum NetworkType {
+	NETWORK_TYPE_UNSPECIFIED = 0;
+	NETWORK_TYPE_NAT         = 1;
+	NETWORK_TYPE_BRIDGED     = 2;
+}
+
+enum Protocol {
+	PROTOCOL_UNSPECIFIED = 0;
+	PROTOCOL_TCP         = 1;
+	PROTOCOL_UDP         = 2;
+}
+
+// PortForward defines a port forwarding rule
+message PortForward {
+	// Host port to forward
+	int32 host_port = 1;
+
+	// Guest port to forward to
+	int32 guest_port = 2;
+
+	// Protocol (tcp or udp)
+	Protocol protocol = 3;
+}
+
+// VMStatus defines the possible states of a VM
+enum VMStatus {
+	VM_STATUS_UNSPECIFIED = 0;
+	VM_STATUS_STARTING    = 1;
+	VM_STATUS_RUNNING     = 2;
+	VM_STATUS_STOPPING    = 3;
+	VM_STATUS_STOPPED     = 4;
+	VM_STATUS_ERROR       = 5;
+}
+
+// ScaledResources defines the resources available on a host
+message ScaledResources {
+	Resources max     = 1;
+	Resources working = 2;
+}

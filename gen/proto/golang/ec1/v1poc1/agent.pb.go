@@ -7,6 +7,7 @@
 package v1poc1
 
 import (
+	_ "github.com/walteh/ec1/gen/proto/golang/ec1/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -21,124 +22,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// NetworkType specifies the type of network to use for the VM
-type NetworkType int32
-
-const (
-	NetworkType_NETWORK_TYPE_UNSPECIFIED NetworkType = 0
-	NetworkType_NETWORK_TYPE_NAT         NetworkType = 1
-	NetworkType_NETWORK_TYPE_BRIDGED     NetworkType = 2
-)
-
-// Enum value maps for NetworkType.
-var (
-	NetworkType_name = map[int32]string{
-		0: "NETWORK_TYPE_UNSPECIFIED",
-		1: "NETWORK_TYPE_NAT",
-		2: "NETWORK_TYPE_BRIDGED",
-	}
-	NetworkType_value = map[string]int32{
-		"NETWORK_TYPE_UNSPECIFIED": 0,
-		"NETWORK_TYPE_NAT":         1,
-		"NETWORK_TYPE_BRIDGED":     2,
-	}
-)
-
-func (x NetworkType) Enum() *NetworkType {
-	p := new(NetworkType)
-	*p = x
-	return p
-}
-
-func (x NetworkType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (NetworkType) Descriptor() protoreflect.EnumDescriptor {
-	return file_ec1_v1poc1_agent_proto_enumTypes[0].Descriptor()
-}
-
-func (NetworkType) Type() protoreflect.EnumType {
-	return &file_ec1_v1poc1_agent_proto_enumTypes[0]
-}
-
-func (x NetworkType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use NetworkType.Descriptor instead.
-func (NetworkType) EnumDescriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
-}
-
-// VMStatus defines the possible states of a VM
-type VMStatus int32
-
-const (
-	VMStatus_VM_STATUS_UNSPECIFIED VMStatus = 0
-	VMStatus_VM_STATUS_STARTING    VMStatus = 1
-	VMStatus_VM_STATUS_RUNNING     VMStatus = 2
-	VMStatus_VM_STATUS_STOPPING    VMStatus = 3
-	VMStatus_VM_STATUS_STOPPED     VMStatus = 4
-	VMStatus_VM_STATUS_ERROR       VMStatus = 5
-)
-
-// Enum value maps for VMStatus.
-var (
-	VMStatus_name = map[int32]string{
-		0: "VM_STATUS_UNSPECIFIED",
-		1: "VM_STATUS_STARTING",
-		2: "VM_STATUS_RUNNING",
-		3: "VM_STATUS_STOPPING",
-		4: "VM_STATUS_STOPPED",
-		5: "VM_STATUS_ERROR",
-	}
-	VMStatus_value = map[string]int32{
-		"VM_STATUS_UNSPECIFIED": 0,
-		"VM_STATUS_STARTING":    1,
-		"VM_STATUS_RUNNING":     2,
-		"VM_STATUS_STOPPING":    3,
-		"VM_STATUS_STOPPED":     4,
-		"VM_STATUS_ERROR":       5,
-	}
-)
-
-func (x VMStatus) Enum() *VMStatus {
-	p := new(VMStatus)
-	*p = x
-	return p
-}
-
-func (x VMStatus) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (VMStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ec1_v1poc1_agent_proto_enumTypes[1].Descriptor()
-}
-
-func (VMStatus) Type() protoreflect.EnumType {
-	return &file_ec1_v1poc1_agent_proto_enumTypes[1]
-}
-
-func (x VMStatus) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use VMStatus.Descriptor instead.
-func (VMStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{1}
-}
-
 // StartVMRequest is the request message for starting a VM
 type StartVMRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Name of the VM
 	Name *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	// Memory size in MB
-	MemoryMb *int32 `protobuf:"varint,2,opt,name=memory_mb,json=memoryMb" json:"memory_mb,omitempty"`
-	// Number of vCPUs
-	VcpuCount *int32 `protobuf:"varint,3,opt,name=vcpu_count,json=vcpuCount" json:"vcpu_count,omitempty"`
+	// Resource allocation
+	ResourcesMax  *Resources `protobuf:"bytes,2,opt,name=resources_max,json=resourcesMax" json:"resources_max,omitempty"`
+	ResourcesBoot *Resources `protobuf:"bytes,3,opt,name=resources_boot,json=resourcesBoot" json:"resources_boot,omitempty"`
 	// Disk image path
 	DiskImagePath *string `protobuf:"bytes,4,opt,name=disk_image_path,json=diskImagePath" json:"disk_image_path,omitempty"`
 	// Network configuration
@@ -184,18 +75,18 @@ func (x *StartVMRequest) GetName() string {
 	return ""
 }
 
-func (x *StartVMRequest) GetMemoryMb() int32 {
-	if x != nil && x.MemoryMb != nil {
-		return *x.MemoryMb
+func (x *StartVMRequest) GetResourcesMax() *Resources {
+	if x != nil {
+		return x.ResourcesMax
 	}
-	return 0
+	return nil
 }
 
-func (x *StartVMRequest) GetVcpuCount() int32 {
-	if x != nil && x.VcpuCount != nil {
-		return *x.VcpuCount
+func (x *StartVMRequest) GetResourcesBoot() *Resources {
+	if x != nil {
+		return x.ResourcesBoot
 	}
-	return 0
+	return nil
 }
 
 func (x *StartVMRequest) GetDiskImagePath() string {
@@ -560,87 +451,22 @@ func (x *VMNetworkConfig) GetPortForwards() []*PortForward {
 	return nil
 }
 
-// PortForward defines a port forwarding rule
-type PortForward struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Host port to forward
-	HostPort *int32 `protobuf:"varint,1,opt,name=host_port,json=hostPort" json:"host_port,omitempty"`
-	// Guest port to forward to
-	GuestPort *int32 `protobuf:"varint,2,opt,name=guest_port,json=guestPort" json:"guest_port,omitempty"`
-	// Protocol (tcp or udp)
-	Protocol      *string `protobuf:"bytes,3,opt,name=protocol" json:"protocol,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PortForward) Reset() {
-	*x = PortForward{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PortForward) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PortForward) ProtoMessage() {}
-
-func (x *PortForward) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PortForward.ProtoReflect.Descriptor instead.
-func (*PortForward) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *PortForward) GetHostPort() int32 {
-	if x != nil && x.HostPort != nil {
-		return *x.HostPort
-	}
-	return 0
-}
-
-func (x *PortForward) GetGuestPort() int32 {
-	if x != nil && x.GuestPort != nil {
-		return *x.GuestPort
-	}
-	return 0
-}
-
-func (x *PortForward) GetProtocol() string {
-	if x != nil && x.Protocol != nil {
-		return *x.Protocol
-	}
-	return ""
-}
-
 var File_ec1_v1poc1_agent_proto protoreflect.FileDescriptor
 
 const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\n" +
 	"\x16ec1/v1poc1/agent.proto\x12\n" +
-	"ec1.v1poc1\"\xcc\x01\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x94\x02\n" +
 	"\x0eStartVMRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
-	"\tmemory_mb\x18\x02 \x01(\x05R\bmemoryMb\x12\x1d\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12:\n" +
+	"\rresources_max\x18\x02 \x01(\v2\x15.ec1.v1poc1.ResourcesR\fresourcesMax\x12<\n" +
+	"\x0eresources_boot\x18\x03 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesBoot\x120\n" +
+	"\x0fdisk_image_path\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\rdiskImagePath\x12B\n" +
+	"\x0enetwork_config\x18\x05 \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\xa5\x01\n" +
+	"\x0fStartVMResponse\x12&\n" +
+	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12&\n" +
 	"\n" +
-	"vcpu_count\x18\x03 \x01(\x05R\tvcpuCount\x12&\n" +
-	"\x0fdisk_image_path\x18\x04 \x01(\tR\rdiskImagePath\x12B\n" +
-	"\x0enetwork_config\x18\x05 \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\x89\x01\n" +
-	"\x0fStartVMResponse\x12\x13\n" +
-	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x1d\n" +
-	"\n" +
-	"ip_address\x18\x02 \x01(\tR\tipAddress\x12,\n" +
+	"ip_address\x18\x02 \x01(\tB\a\xbaH\x04r\x02x\x01R\tipAddress\x12,\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x14.ec1.v1poc1.VMStatusR\x06status\x12\x14\n" +
 	"\x05error\x18\x04 \x01(\tR\x05error\":\n" +
 	"\rStopVMRequest\x12\x13\n" +
@@ -658,23 +484,7 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"\x8b\x01\n" +
 	"\x0fVMNetworkConfig\x12:\n" +
 	"\fnetwork_type\x18\x01 \x01(\x0e2\x17.ec1.v1poc1.NetworkTypeR\vnetworkType\x12<\n" +
-	"\rport_forwards\x18\x02 \x03(\v2\x17.ec1.v1poc1.PortForwardR\fportForwards\"e\n" +
-	"\vPortForward\x12\x1b\n" +
-	"\thost_port\x18\x01 \x01(\x05R\bhostPort\x12\x1d\n" +
-	"\n" +
-	"guest_port\x18\x02 \x01(\x05R\tguestPort\x12\x1a\n" +
-	"\bprotocol\x18\x03 \x01(\tR\bprotocol*[\n" +
-	"\vNetworkType\x12\x1c\n" +
-	"\x18NETWORK_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
-	"\x10NETWORK_TYPE_NAT\x10\x01\x12\x18\n" +
-	"\x14NETWORK_TYPE_BRIDGED\x10\x02*\x98\x01\n" +
-	"\bVMStatus\x12\x19\n" +
-	"\x15VM_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
-	"\x12VM_STATUS_STARTING\x10\x01\x12\x15\n" +
-	"\x11VM_STATUS_RUNNING\x10\x02\x12\x16\n" +
-	"\x12VM_STATUS_STOPPING\x10\x03\x12\x15\n" +
-	"\x11VM_STATUS_STOPPED\x10\x04\x12\x13\n" +
-	"\x0fVM_STATUS_ERROR\x10\x052\xf2\x01\n" +
+	"\rport_forwards\x18\x02 \x03(\v2\x17.ec1.v1poc1.PortForwardR\fportForwards2\xf2\x01\n" +
 	"\fAgentService\x12G\n" +
 	"\aStartVM\x12\x1a.ec1.v1poc1.StartVMRequest\x1a\x1b.ec1.v1poc1.StartVMResponse\"\x03\x90\x02\x01\x12D\n" +
 	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12S\n" +
@@ -696,37 +506,39 @@ func file_ec1_v1poc1_agent_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_agent_proto_rawDescData
 }
 
-var file_ec1_v1poc1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_ec1_v1poc1_agent_proto_goTypes = []any{
-	(NetworkType)(0),            // 0: ec1.v1poc1.NetworkType
-	(VMStatus)(0),               // 1: ec1.v1poc1.VMStatus
-	(*StartVMRequest)(nil),      // 2: ec1.v1poc1.StartVMRequest
-	(*StartVMResponse)(nil),     // 3: ec1.v1poc1.StartVMResponse
-	(*StopVMRequest)(nil),       // 4: ec1.v1poc1.StopVMRequest
-	(*StopVMResponse)(nil),      // 5: ec1.v1poc1.StopVMResponse
-	(*GetVMStatusRequest)(nil),  // 6: ec1.v1poc1.GetVMStatusRequest
-	(*GetVMStatusResponse)(nil), // 7: ec1.v1poc1.GetVMStatusResponse
-	(*VMNetworkConfig)(nil),     // 8: ec1.v1poc1.VMNetworkConfig
-	(*PortForward)(nil),         // 9: ec1.v1poc1.PortForward
+	(*StartVMRequest)(nil),      // 0: ec1.v1poc1.StartVMRequest
+	(*StartVMResponse)(nil),     // 1: ec1.v1poc1.StartVMResponse
+	(*StopVMRequest)(nil),       // 2: ec1.v1poc1.StopVMRequest
+	(*StopVMResponse)(nil),      // 3: ec1.v1poc1.StopVMResponse
+	(*GetVMStatusRequest)(nil),  // 4: ec1.v1poc1.GetVMStatusRequest
+	(*GetVMStatusResponse)(nil), // 5: ec1.v1poc1.GetVMStatusResponse
+	(*VMNetworkConfig)(nil),     // 6: ec1.v1poc1.VMNetworkConfig
+	(*Resources)(nil),           // 7: ec1.v1poc1.Resources
+	(VMStatus)(0),               // 8: ec1.v1poc1.VMStatus
+	(NetworkType)(0),            // 9: ec1.v1poc1.NetworkType
+	(*PortForward)(nil),         // 10: ec1.v1poc1.PortForward
 }
 var file_ec1_v1poc1_agent_proto_depIdxs = []int32{
-	8, // 0: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
-	1, // 1: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
-	1, // 2: ec1.v1poc1.GetVMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
-	0, // 3: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
-	9, // 4: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
-	2, // 5: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
-	4, // 6: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
-	6, // 7: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
-	3, // 8: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
-	5, // 9: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
-	7, // 10: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
-	8, // [8:11] is the sub-list for method output_type
-	5, // [5:8] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	7,  // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
+	7,  // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
+	6,  // 2: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
+	8,  // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
+	8,  // 4: ec1.v1poc1.GetVMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
+	9,  // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
+	10, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
+	0,  // 7: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
+	2,  // 8: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
+	4,  // 9: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
+	1,  // 10: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
+	3,  // 11: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
+	5,  // 12: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
+	10, // [10:13] is the sub-list for method output_type
+	7,  // [7:10] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_agent_proto_init() }
@@ -734,19 +546,20 @@ func file_ec1_v1poc1_agent_proto_init() {
 	if File_ec1_v1poc1_agent_proto != nil {
 		return
 	}
+	file_ec1_v1poc1_common_proto_init()
+	file_ec1_v1poc1_constraints_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_agent_proto_rawDesc), len(file_ec1_v1poc1_agent_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   8,
+			NumEnums:      0,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_ec1_v1poc1_agent_proto_goTypes,
 		DependencyIndexes: file_ec1_v1poc1_agent_proto_depIdxs,
-		EnumInfos:         file_ec1_v1poc1_agent_proto_enumTypes,
 		MessageInfos:      file_ec1_v1poc1_agent_proto_msgTypes,
 	}.Build()
 	File_ec1_v1poc1_agent_proto = out.File

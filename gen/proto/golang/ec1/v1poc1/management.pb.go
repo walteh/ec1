@@ -22,56 +22,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// HypervisorType defines the type of hypervisor the agent is managing
-type HypervisorType int32
-
-const (
-	HypervisorType_HYPERVISOR_TYPE_UNSPECIFIED        HypervisorType = 0
-	HypervisorType_HYPERVISOR_TYPE_MAC_VIRTUALIZATION HypervisorType = 1
-	HypervisorType_HYPERVISOR_TYPE_KVM                HypervisorType = 2
-)
-
-// Enum value maps for HypervisorType.
-var (
-	HypervisorType_name = map[int32]string{
-		0: "HYPERVISOR_TYPE_UNSPECIFIED",
-		1: "HYPERVISOR_TYPE_MAC_VIRTUALIZATION",
-		2: "HYPERVISOR_TYPE_KVM",
-	}
-	HypervisorType_value = map[string]int32{
-		"HYPERVISOR_TYPE_UNSPECIFIED":        0,
-		"HYPERVISOR_TYPE_MAC_VIRTUALIZATION": 1,
-		"HYPERVISOR_TYPE_KVM":                2,
-	}
-)
-
-func (x HypervisorType) Enum() *HypervisorType {
-	p := new(HypervisorType)
-	*p = x
-	return p
-}
-
-func (x HypervisorType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (HypervisorType) Descriptor() protoreflect.EnumDescriptor {
-	return file_ec1_v1poc1_management_proto_enumTypes[0].Descriptor()
-}
-
-func (HypervisorType) Type() protoreflect.EnumType {
-	return &file_ec1_v1poc1_management_proto_enumTypes[0]
-}
-
-func (x HypervisorType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use HypervisorType.Descriptor instead.
-func (HypervisorType) EnumDescriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{0}
-}
-
 // RegisterAgentRequest is the request message for registering an agent
 type RegisterAgentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -81,8 +31,9 @@ type RegisterAgentRequest struct {
 	// Host address where the agent is running
 	HostAddress *string `protobuf:"bytes,2,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
 	// Type of hypervisor the agent is managing
-	HypervisorType *HypervisorType `protobuf:"varint,3,opt,name=hypervisor_type,json=hypervisorType,enum=ec1.v1poc1.HypervisorType" json:"hypervisor_type,omitempty"` // Available resources on the agent's host
-	Resources      *HostResources  `protobuf:"bytes,4,opt,name=resources" json:"resources,omitempty"`
+	HypervisorType *HypervisorType `protobuf:"varint,3,opt,name=hypervisor_type,json=hypervisorType,enum=ec1.v1poc1.HypervisorType" json:"hypervisor_type,omitempty"`
+	// Available resources managed by the agent
+	TotalResources *Resources `protobuf:"bytes,4,opt,name=total_resources,json=totalResources" json:"total_resources,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -138,9 +89,9 @@ func (x *RegisterAgentRequest) GetHypervisorType() HypervisorType {
 	return HypervisorType_HYPERVISOR_TYPE_UNSPECIFIED
 }
 
-func (x *RegisterAgentRequest) GetResources() *HostResources {
+func (x *RegisterAgentRequest) GetTotalResources() *Resources {
 	if x != nil {
-		return x.Resources
+		return x.TotalResources
 	}
 	return nil
 }
@@ -206,9 +157,7 @@ type ReportAgentStatusRequest struct {
 	// Unique identifier for the agent
 	AgentId *string `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
 	// List of VMs running on the agent
-	Vms []*VMInfo `protobuf:"bytes,2,rep,name=vms" json:"vms,omitempty"`
-	// Current resource usage
-	Resources     *HostResources `protobuf:"bytes,3,opt,name=resources" json:"resources,omitempty"`
+	Vms           []*VMInfo `protobuf:"bytes,2,rep,name=vms" json:"vms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -253,13 +202,6 @@ func (x *ReportAgentStatusRequest) GetAgentId() string {
 func (x *ReportAgentStatusRequest) GetVms() []*VMInfo {
 	if x != nil {
 		return x.Vms
-	}
-	return nil
-}
-
-func (x *ReportAgentStatusRequest) GetResources() *HostResources {
-	if x != nil {
-		return x.Resources
 	}
 	return nil
 }
@@ -319,111 +261,6 @@ func (x *ReportAgentStatusResponse) GetError() string {
 	return ""
 }
 
-type Resource struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Memory        *string                `protobuf:"bytes,1,opt,name=memory" json:"memory,omitempty"`
-	Cpu           *string                `protobuf:"bytes,2,opt,name=cpu" json:"cpu,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Resource) Reset() {
-	*x = Resource{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Resource) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Resource) ProtoMessage() {}
-
-func (x *Resource) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Resource.ProtoReflect.Descriptor instead.
-func (*Resource) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *Resource) GetMemory() string {
-	if x != nil && x.Memory != nil {
-		return *x.Memory
-	}
-	return ""
-}
-
-func (x *Resource) GetCpu() string {
-	if x != nil && x.Cpu != nil {
-		return *x.Cpu
-	}
-	return ""
-}
-
-// HostResources defines the resources available on a host
-type HostResources struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Total         *Resource              `protobuf:"bytes,1,opt,name=total" json:"total,omitempty"`
-	Available     *Resource              `protobuf:"bytes,2,opt,name=available" json:"available,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *HostResources) Reset() {
-	*x = HostResources{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HostResources) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HostResources) ProtoMessage() {}
-
-func (x *HostResources) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HostResources.ProtoReflect.Descriptor instead.
-func (*HostResources) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *HostResources) GetTotal() *Resource {
-	if x != nil {
-		return x.Total
-	}
-	return nil
-}
-
-func (x *HostResources) GetAvailable() *Resource {
-	if x != nil {
-		return x.Available
-	}
-	return nil
-}
-
 // VMInfo provides information about a running VM
 type VMInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -434,15 +271,16 @@ type VMInfo struct {
 	// Status of the VM
 	Status *VMStatus `protobuf:"varint,3,opt,name=status,enum=ec1.v1poc1.VMStatus" json:"status,omitempty"`
 	// IP address of the VM
-	IpAddress     *string   `protobuf:"bytes,4,opt,name=ip_address,json=ipAddress" json:"ip_address,omitempty"`
-	Resource      *Resource `protobuf:"bytes,5,opt,name=resource" json:"resource,omitempty"`
+	IpAddress     *string    `protobuf:"bytes,4,opt,name=ip_address,json=ipAddress" json:"ip_address,omitempty"`
+	ResourcesMax  *Resources `protobuf:"bytes,5,opt,name=resources_max,json=resourcesMax" json:"resources_max,omitempty"`
+	ResourcesLive *Resources `protobuf:"bytes,6,opt,name=resources_live,json=resourcesLive" json:"resources_live,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *VMInfo) Reset() {
 	*x = VMInfo{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -454,7 +292,7 @@ func (x *VMInfo) String() string {
 func (*VMInfo) ProtoMessage() {}
 
 func (x *VMInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -467,7 +305,7 @@ func (x *VMInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMInfo.ProtoReflect.Descriptor instead.
 func (*VMInfo) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{6}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *VMInfo) GetVmId() string {
@@ -498,9 +336,16 @@ func (x *VMInfo) GetIpAddress() string {
 	return ""
 }
 
-func (x *VMInfo) GetResource() *Resource {
+func (x *VMInfo) GetResourcesMax() *Resources {
 	if x != nil {
-		return x.Resource
+		return x.ResourcesMax
+	}
+	return nil
+}
+
+func (x *VMInfo) GetResourcesLive() *Resources {
+	if x != nil {
+		return x.ResourcesLive
 	}
 	return nil
 }
@@ -510,41 +355,29 @@ var File_ec1_v1poc1_management_proto protoreflect.FileDescriptor
 const file_ec1_v1poc1_management_proto_rawDesc = "" +
 	"\n" +
 	"\x1bec1/v1poc1/management.proto\x12\n" +
-	"ec1.v1poc1\x1a\x16ec1/v1poc1/agent.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\xef\x01\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\xf6\x01\n" +
 	"\x14RegisterAgentRequest\x12,\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12+\n" +
 	"\fhost_address\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\vhostAddress\x12C\n" +
-	"\x0fhypervisor_type\x18\x03 \x01(\x0e2\x1a.ec1.v1poc1.HypervisorTypeR\x0ehypervisorType\x127\n" +
-	"\tresources\x18\x04 \x01(\v2\x19.ec1.v1poc1.HostResourcesR\tresources\"G\n" +
+	"\x0fhypervisor_type\x18\x03 \x01(\x0e2\x1a.ec1.v1poc1.HypervisorTypeR\x0ehypervisorType\x12>\n" +
+	"\x0ftotal_resources\x18\x04 \x01(\v2\x15.ec1.v1poc1.ResourcesR\x0etotalResources\"G\n" +
 	"\x15RegisterAgentResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xa7\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"n\n" +
 	"\x18ReportAgentStatusRequest\x12,\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12$\n" +
-	"\x03vms\x18\x02 \x03(\v2\x12.ec1.v1poc1.VMInfoR\x03vms\x127\n" +
-	"\tresources\x18\x03 \x01(\v2\x19.ec1.v1poc1.HostResourcesR\tresources\"K\n" +
+	"\x03vms\x18\x02 \x03(\v2\x12.ec1.v1poc1.VMInfoR\x03vms\"K\n" +
 	"\x19ReportAgentStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"R\n" +
-	"\bResource\x12%\n" +
-	"\x06memory\x18\x01 \x01(\tB\r\xbaH\n" +
-	"r\b\xfa\xb3\xae\xb1\x02\x02\b\x01R\x06memory\x12\x1f\n" +
-	"\x03cpu\x18\x02 \x01(\tB\r\xbaH\n" +
-	"r\b\xfa\xb3\xae\xb1\x02\x02\x10\x01R\x03cpu\"o\n" +
-	"\rHostResources\x12*\n" +
-	"\x05total\x18\x01 \x01(\v2\x14.ec1.v1poc1.ResourceR\x05total\x122\n" +
-	"\tavailable\x18\x02 \x01(\v2\x14.ec1.v1poc1.ResourceR\tavailable\"\xcd\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\x95\x02\n" +
 	"\x06VMInfo\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x14.ec1.v1poc1.VMStatusR\x06status\x12'\n" +
 	"\n" +
-	"ip_address\x18\x04 \x01(\tB\b\xbaH\x05r\x03\xf0\x01\x01R\tipAddress\x120\n" +
-	"\bresource\x18\x05 \x01(\v2\x14.ec1.v1poc1.ResourceR\bresource*r\n" +
-	"\x0eHypervisorType\x12\x1f\n" +
-	"\x1bHYPERVISOR_TYPE_UNSPECIFIED\x10\x00\x12&\n" +
-	"\"HYPERVISOR_TYPE_MAC_VIRTUALIZATION\x10\x01\x12\x17\n" +
-	"\x13HYPERVISOR_TYPE_KVM\x10\x022\xd5\x01\n" +
+	"ip_address\x18\x04 \x01(\tB\b\xbaH\x05r\x03\xf0\x01\x01R\tipAddress\x12:\n" +
+	"\rresources_max\x18\x05 \x01(\v2\x15.ec1.v1poc1.ResourcesR\fresourcesMax\x12<\n" +
+	"\x0eresources_live\x18\x06 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesLive2\xd5\x01\n" +
 	"\x11ManagementService\x12Y\n" +
 	"\rRegisterAgent\x12 .ec1.v1poc1.RegisterAgentRequest\x1a!.ec1.v1poc1.RegisterAgentResponse\"\x03\x90\x02\x01\x12e\n" +
 	"\x11ReportAgentStatus\x12$.ec1.v1poc1.ReportAgentStatusRequest\x1a%.ec1.v1poc1.ReportAgentStatusResponse\"\x03\x90\x02\x01B\x9d\x01\n" +
@@ -564,37 +397,33 @@ func file_ec1_v1poc1_management_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_management_proto_rawDescData
 }
 
-var file_ec1_v1poc1_management_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_ec1_v1poc1_management_proto_goTypes = []any{
-	(HypervisorType)(0),               // 0: ec1.v1poc1.HypervisorType
-	(*RegisterAgentRequest)(nil),      // 1: ec1.v1poc1.RegisterAgentRequest
-	(*RegisterAgentResponse)(nil),     // 2: ec1.v1poc1.RegisterAgentResponse
-	(*ReportAgentStatusRequest)(nil),  // 3: ec1.v1poc1.ReportAgentStatusRequest
-	(*ReportAgentStatusResponse)(nil), // 4: ec1.v1poc1.ReportAgentStatusResponse
-	(*Resource)(nil),                  // 5: ec1.v1poc1.Resource
-	(*HostResources)(nil),             // 6: ec1.v1poc1.HostResources
-	(*VMInfo)(nil),                    // 7: ec1.v1poc1.VMInfo
-	(VMStatus)(0),                     // 8: ec1.v1poc1.VMStatus
+	(*RegisterAgentRequest)(nil),      // 0: ec1.v1poc1.RegisterAgentRequest
+	(*RegisterAgentResponse)(nil),     // 1: ec1.v1poc1.RegisterAgentResponse
+	(*ReportAgentStatusRequest)(nil),  // 2: ec1.v1poc1.ReportAgentStatusRequest
+	(*ReportAgentStatusResponse)(nil), // 3: ec1.v1poc1.ReportAgentStatusResponse
+	(*VMInfo)(nil),                    // 4: ec1.v1poc1.VMInfo
+	(HypervisorType)(0),               // 5: ec1.v1poc1.HypervisorType
+	(*Resources)(nil),                 // 6: ec1.v1poc1.Resources
+	(VMStatus)(0),                     // 7: ec1.v1poc1.VMStatus
 }
 var file_ec1_v1poc1_management_proto_depIdxs = []int32{
-	0,  // 0: ec1.v1poc1.RegisterAgentRequest.hypervisor_type:type_name -> ec1.v1poc1.HypervisorType
-	6,  // 1: ec1.v1poc1.RegisterAgentRequest.resources:type_name -> ec1.v1poc1.HostResources
-	7,  // 2: ec1.v1poc1.ReportAgentStatusRequest.vms:type_name -> ec1.v1poc1.VMInfo
-	6,  // 3: ec1.v1poc1.ReportAgentStatusRequest.resources:type_name -> ec1.v1poc1.HostResources
-	5,  // 4: ec1.v1poc1.HostResources.total:type_name -> ec1.v1poc1.Resource
-	5,  // 5: ec1.v1poc1.HostResources.available:type_name -> ec1.v1poc1.Resource
-	8,  // 6: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
-	5,  // 7: ec1.v1poc1.VMInfo.resource:type_name -> ec1.v1poc1.Resource
-	1,  // 8: ec1.v1poc1.ManagementService.RegisterAgent:input_type -> ec1.v1poc1.RegisterAgentRequest
-	3,  // 9: ec1.v1poc1.ManagementService.ReportAgentStatus:input_type -> ec1.v1poc1.ReportAgentStatusRequest
-	2,  // 10: ec1.v1poc1.ManagementService.RegisterAgent:output_type -> ec1.v1poc1.RegisterAgentResponse
-	4,  // 11: ec1.v1poc1.ManagementService.ReportAgentStatus:output_type -> ec1.v1poc1.ReportAgentStatusResponse
-	10, // [10:12] is the sub-list for method output_type
-	8,  // [8:10] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	5, // 0: ec1.v1poc1.RegisterAgentRequest.hypervisor_type:type_name -> ec1.v1poc1.HypervisorType
+	6, // 1: ec1.v1poc1.RegisterAgentRequest.total_resources:type_name -> ec1.v1poc1.Resources
+	4, // 2: ec1.v1poc1.ReportAgentStatusRequest.vms:type_name -> ec1.v1poc1.VMInfo
+	7, // 3: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
+	6, // 4: ec1.v1poc1.VMInfo.resources_max:type_name -> ec1.v1poc1.Resources
+	6, // 5: ec1.v1poc1.VMInfo.resources_live:type_name -> ec1.v1poc1.Resources
+	0, // 6: ec1.v1poc1.ManagementService.RegisterAgent:input_type -> ec1.v1poc1.RegisterAgentRequest
+	2, // 7: ec1.v1poc1.ManagementService.ReportAgentStatus:input_type -> ec1.v1poc1.ReportAgentStatusRequest
+	1, // 8: ec1.v1poc1.ManagementService.RegisterAgent:output_type -> ec1.v1poc1.RegisterAgentResponse
+	3, // 9: ec1.v1poc1.ManagementService.ReportAgentStatus:output_type -> ec1.v1poc1.ReportAgentStatusResponse
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_management_proto_init() }
@@ -602,21 +431,20 @@ func file_ec1_v1poc1_management_proto_init() {
 	if File_ec1_v1poc1_management_proto != nil {
 		return
 	}
-	file_ec1_v1poc1_agent_proto_init()
+	file_ec1_v1poc1_common_proto_init()
 	file_ec1_v1poc1_constraints_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_management_proto_rawDesc), len(file_ec1_v1poc1_management_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   7,
+			NumEnums:      0,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_ec1_v1poc1_management_proto_goTypes,
 		DependencyIndexes: file_ec1_v1poc1_management_proto_depIdxs,
-		EnumInfos:         file_ec1_v1poc1_management_proto_enumTypes,
 		MessageInfos:      file_ec1_v1poc1_management_proto_msgTypes,
 	}.Build()
 	File_ec1_v1poc1_management_proto = out.File

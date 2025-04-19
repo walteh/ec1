@@ -2,7 +2,7 @@ edition = "2023";
 
 package ec1.v1poc1;
 
-import "ec1/v1poc1/agent.proto";
+import "ec1/v1poc1/common.proto";
 import "ec1/v1poc1/constraints.proto";
 import "ec1/validate/validate.proto";
 
@@ -35,9 +35,9 @@ message RegisterAgentRequest {
 
 	// Type of hypervisor the agent is managing
 	HypervisorType hypervisor_type = 3;
-	// Available resources on the agent's host
 
-	HostResources resources = 4;
+	// Available resources managed by the agent
+	Resources total_resources = 4;
 }
 
 // RegisterAgentResponse is the response message after registering an agent
@@ -58,9 +58,6 @@ message ReportAgentStatusRequest {
 
 	// List of VMs running on the agent
 	repeated VMInfo vms = 2;
-
-	// Current resource usage
-	HostResources resources = 3;
 }
 
 // ReportAgentStatusResponse is the response message after reporting agent status
@@ -70,28 +67,6 @@ message ReportAgentStatusResponse {
 
 	// Error message, if any
 	string error = 2;
-}
-
-// HypervisorType defines the type of hypervisor the agent is managing
-enum HypervisorType {
-	HYPERVISOR_TYPE_UNSPECIFIED        = 0;
-	HYPERVISOR_TYPE_MAC_VIRTUALIZATION = 1;
-	HYPERVISOR_TYPE_KVM                = 2;
-}
-
-message Resource {
-	string memory = 1 [
-		(validate.field).string.(resource).memory = true
-	];
-	string cpu    = 2 [
-		(validate.field).string.(resource).cpu = true
-	];
-}
-
-// HostResources defines the resources available on a host
-message HostResources {
-	Resource total     = 1;
-	Resource available = 2;
 }
 
 // VMInfo provides information about a running VM
@@ -112,5 +87,7 @@ message VMInfo {
 		(validate.field).string.ipv4_prefix = true
 	];
 
-	Resource resource = 5;
+	Resources resources_max = 5;
+
+	Resources resources_live = 6;
 }

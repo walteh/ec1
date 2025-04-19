@@ -2,6 +2,10 @@ edition = "2023";
 
 package ec1.v1poc1;
 
+import "ec1/v1poc1/common.proto";
+import "ec1/v1poc1/constraints.proto";
+import "ec1/validate/validate.proto";
+
 // AgentService provides VM management functionality on a host
 service AgentService {
 	// StartVM starts a new virtual machine on the agent's host
@@ -27,14 +31,14 @@ message StartVMRequest {
 	// Name of the VM
 	string name = 1;
 
-	// Memory size in MB
-	int32 memory_mb = 2;
-
-	// Number of vCPUs
-	int32 vcpu_count = 3;
+	// Resource allocation
+	Resources resources_max  = 2;
+	Resources resources_boot = 3;
 
 	// Disk image path
-	string disk_image_path = 4;
+	string disk_image_path = 4 [
+		(validate.field).string.uri = true
+	];
 
 	// Network configuration
 	VMNetworkConfig network_config = 5;
@@ -43,10 +47,14 @@ message StartVMRequest {
 // StartVMResponse is the response message after starting a VM
 message StartVMResponse {
 	// ID of the started VM
-	string vm_id = 1;
+	string vm_id = 1 [
+		(validate.field).string.(id).vm = true
+	];
 
 	// IP address of the VM (if available)
-	string ip_address = 2;
+	string ip_address = 2 [
+		(validate.field).string.ipv4 = true
+	];
 
 	// Status of the VM
 	VMStatus status = 3;
@@ -98,33 +106,4 @@ message VMNetworkConfig {
 
 	// Port forwarding rules
 	repeated PortForward port_forwards = 2;
-}
-
-// NetworkType specifies the type of network to use for the VM
-enum NetworkType {
-	NETWORK_TYPE_UNSPECIFIED = 0;
-	NETWORK_TYPE_NAT         = 1;
-	NETWORK_TYPE_BRIDGED     = 2;
-}
-
-// PortForward defines a port forwarding rule
-message PortForward {
-	// Host port to forward
-	int32 host_port = 1;
-
-	// Guest port to forward to
-	int32 guest_port = 2;
-
-	// Protocol (tcp or udp)
-	string protocol = 3;
-}
-
-// VMStatus defines the possible states of a VM
-enum VMStatus {
-	VM_STATUS_UNSPECIFIED = 0;
-	VM_STATUS_STARTING    = 1;
-	VM_STATUS_RUNNING     = 2;
-	VM_STATUS_STOPPING    = 3;
-	VM_STATUS_STOPPED     = 4;
-	VM_STATUS_ERROR       = 5;
 }
