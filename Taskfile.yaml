@@ -192,3 +192,13 @@ tasks:
     docker:build:
         cmds:
           - docker compose --progress=tty build
+
+    demo:
+        desc: runs the demo
+        platforms: [darwin]
+        cmds:
+          - rm -rf ./bin/demo
+          - go build -o ./bin/demo ./cmd/demo
+          - |-
+            codesign --verbose --deep --force --options=runtime --entitlements=entitlements.plist  --timestamp -s -  ./bin/demo
+          - ./bin/demo

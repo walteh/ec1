@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
@@ -108,8 +109,73 @@ func New(ctx context.Context, config AgentConfig) (*Agent, error) {
 
 // StartVM handles the StartVM RPC
 func (a *Agent) StartVM(ctx context.Context, req *connect.Request[ec1v1.StartVMRequest]) (*connect.Response[ec1v1.StartVMResponse], error) {
+	// Extract request details
+	vmReq := req.Msg
+
+	// Generate VM ID if not provided
+	vmID := vmReq.GetVmId()
+	if vmID == "" {
+		vmID = id.NewID("vm").String()
+	}
+
+	// Validate disk image
+	diskImage := vmReq.GetDiskImage()
+	if diskImage == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("disk_image is required"))
+	}
+
+	diskPath := diskImage.GetPath()
+	if diskPath == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("disk_image.path is required"))
+	}
+
+	// Check if the disk image exists
+	if _, err := os.Stat(diskPath); os.IsNotExist(err) {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("disk image %s not found", diskPath))
+	}
+
+	// For cloud-init, check if provided
+	var ciPath string
+	if cloudInit := vmReq.GetCloudInit(); cloudInit != nil {
+		ciPath = cloudInit.GetIsoPath()
+		// Check if the cloud-init ISO exists
+		if ciPath != "" {
+			if _, err := os.Stat(ciPath); os.IsNotExist(err) {
+				return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("cloud-init ISO %s not found", ciPath))
+			}
+		}
+	}
+
+	// Prepare VM creation request for the hypervisor driver
+	// Here we adapt our internal representation to match what the hypervisor driver expects
+	driverReq := &ec1v1.StartVMRequest{
+		VmId: ptr(vmID),
+		Name: ptr(vmReq.GetName()),
+		DiskImage: &ec1v1.DiskImage{
+			Path: ptr(diskPath),
+			Type: ptr(diskImage.GetType()),
+		},
+	}
+
+	// Set resources if provided
+	if resources := vmReq.GetResourcesMax(); resources != nil {
+		driverReq.ResourcesMax = resources
+	}
+
+	// Set cloud-init if provided
+	if ciPath != "" {
+		driverReq.CloudInit = &ec1v1.CloudInitConfig{
+			IsoPath: ptr(ciPath),
+		}
+	}
+
+	// Set network config if provided
+	if netConfig := vmReq.GetNetworkConfig(); netConfig != nil {
+		driverReq.NetworkConfig = netConfig
+	}
+
 	// Delegate to the hypervisor driver
-	resp, err := a.driver.StartVM(ctx, req.Msg)
+	resp, err := a.driver.StartVM(ctx, driverReq)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

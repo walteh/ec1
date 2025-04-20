@@ -219,7 +219,10 @@ func StartNestedVM(ctx context.Context, linuxAgentAddr string) error {
 		Name:          ptr("nested-vm"),
 		ResourcesMax:  resources,
 		ResourcesBoot: resources,
-		DiskImagePath: ptr(nestedQcow2Path),
+		DiskImage: &ec1v1.DiskImage{
+			Path: ptr(nestedQcow2Path),
+			Type: ptr(ec1v1.DiskImageType_DISK_IMAGE_TYPE_QCOW2),
+		},
 		NetworkConfig: networkConfig,
 	})
 

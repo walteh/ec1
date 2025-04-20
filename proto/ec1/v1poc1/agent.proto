@@ -39,20 +39,26 @@ service AgentService {
 
 // StartVMRequest is the request message for starting a VM
 message StartVMRequest {
-	// Name of the VM
-	string name = 1;
-
-	// Resource allocation
-	Resources resources_max  = 2;
-	Resources resources_boot = 3;
-
-	// Disk image path
-	string disk_image_path = 4 [
-		(validate.field).string.uri = true
+	// ID of the VM (optional, will be generated if not provided)
+	string vm_id = 1 [
+		(validate.field).string.(id).vm = true
 	];
 
+	// Name of the VM
+	string name = 2;
+
+	// Resource allocation
+	Resources resources_max  = 3;
+	Resources resources_boot = 4;
+
+	// Disk image information
+	DiskImage disk_image = 5;
+
+	// Cloud-init configuration
+	CloudInitConfig cloud_init = 6;
+
 	// Network configuration
-	VMNetworkConfig network_config = 5;
+	VMNetworkConfig network_config = 7;
 }
 
 // StartVMResponse is the response message after starting a VM
@@ -138,4 +144,31 @@ message AgentProbeResponse {
 
 	// ready
 	bool ready = 2;
+}
+
+// DiskImage defines a disk image to use for a VM
+message DiskImage {
+	// Path to the disk image
+	string path = 1 [
+		(validate.field).string.uri = true
+	];
+
+	// Type of disk image
+	DiskImageType type = 2;
+}
+
+// CloudInitConfig defines cloud-init configuration for a VM
+message CloudInitConfig {
+	// Path to cloud-init ISO
+	string iso_path = 1 [
+		(validate.field).string.uri = true
+	];
+}
+
+// DiskImageType defines the type of disk image
+enum DiskImageType {
+	DISK_IMAGE_TYPE_UNSPECIFIED = 0;
+	DISK_IMAGE_TYPE_RAW         = 1;
+	DISK_IMAGE_TYPE_QCOW2       = 2;
+	DISK_IMAGE_TYPE_VHD         = 3;
 }

@@ -125,7 +125,7 @@ func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec
 			<console type='pty'/>
 		</devices>
 	</domain>
-	`, vmID, memoryMB, cpuStr, req.GetDiskImagePath())
+	`, vmID, memoryMB, cpuStr, req.GetDiskImage().GetPath())
 
 	// Create the domain from XML
 	domain, err := d.l.DomainDefineXML(domainXML)
@@ -138,7 +138,8 @@ func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec
 		id:         vmID,
 		name:       req.GetName(),
 		resources:  req.ResourcesMax,
-		diskPath:   req.GetDiskImagePath(),
+		diskPath:   req.GetDiskImage().GetPath(),
+		portFwds:   req.GetNetworkConfig().GetPortForwards(),
 		networkCfg: req.NetworkConfig,
 		domain:     &domain,
 		domainName: vmID,

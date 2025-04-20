@@ -6,6 +6,7 @@ package hypervisor
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -132,7 +133,12 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 		return nil, fmt.Errorf("invalid CPU specification: %w", err)
 	}
 
-	loader, err := vz.NewEFIBootLoader()
+	variableStore, err := vz.NewEFIVariableStore("./bin/vz-vs.fd", vz.WithCreatingEFIVariableStore())
+	if err != nil {
+		return nil, fmt.Errorf("creating variable store: %w", err)
+	}
+
+	loader, err := vz.NewEFIBootLoader(vz.WithEFIVariableStore(variableStore))
 	if err != nil {
 		return nil, fmt.Errorf("creating EFI boot loader: %w", err)
 	}
@@ -141,7 +147,7 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 	config, err := vz.NewVirtualMachineConfiguration(loader, uint(cpuCount), memoryBytes)
 
 	// Set up storage
-	diskImagePath := req.GetDiskImagePath()
+	diskImagePath := req.GetDiskImage().GetPath()
 	diskExists := false
 	if _, err := os.Stat(diskImagePath); err == nil {
 		diskExists = true
@@ -182,11 +188,43 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 	config.SetNetworkDevicesVirtualMachineConfiguration(arr(networkDevice))
 
 	// Create and set up a serial port
-	spAttachment, err := vz.NewFileHandleSerialPortAttachment(os.Stdout, nil)
+	// To fix the crash, we need to provide both read and write file handles
+	readPipe, writePipe, err := os.Pipe()
 	if err != nil {
+		return nil, fmt.Errorf("creating pipes for serial console: %w", err)
+	}
+
+	// Use the pipes for the serial port attachment
+	spAttachment, err := vz.NewFileHandleSerialPortAttachment(writePipe, readPipe)
+	if err != nil {
+		readPipe.Close()
+		writePipe.Close()
 		return nil, fmt.Errorf("creating serial port attachment: %w", err)
 	}
 
+	// Start a goroutine to forward console output to stdout
+	go func() {
+		defer readPipe.Close()
+		defer writePipe.Close()
+
+		// Buffer for reading console output
+		buf := make([]byte, 1024)
+
+		for {
+			n, err := readPipe.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					fmt.Printf("Error reading from VM console: %v\n", err)
+				}
+				break
+			}
+
+			// Write console output to stdout
+			fmt.Print(string(buf[:n]))
+		}
+	}()
+
+	// Create serial port configuration with the attachment
 	serialPort, err := vz.NewVirtioConsolePortConfiguration(vz.WithVirtioConsolePortConfigurationAttachment(spAttachment))
 	if err != nil {
 		return nil, fmt.Errorf("creating serial port: %w", err)
@@ -208,6 +246,15 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 	// }
 	// config.SetBootLoader(bootLoader)
 
+	// // add a variable store
+	// variableStore, err := vz.NewEFIVariableStore("",
+	// 	vz.WithEFIVariableStorePath("/Volumes/EFI/EFI/CLOUDSTACK/CLOUDSTACK.fd"),
+	// )
+	// if err != nil {
+	// 	return nil, fmt.Errorf("creating variable store: %w", err)
+	// }
+	// config.SetVariableStore(variableStore)
+
 	// Validate the configuration
 	if _, err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid VM configuration: %w", err)
@@ -221,11 +268,11 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 
 	// Create a new VM instance record
 	appleVm := &appleVM{
-		id:        vmID,
-		name:      req.GetName(),
-		resources: req.ResourcesMax,
-		diskPath:  req.GetDiskImagePath(),
-		// status:     ec1v1.VMStatus_VM_STATUS_STARTING,
+		id:         vmID,
+		name:       req.GetName(),
+		resources:  req.ResourcesMax,
+		diskPath:   req.GetDiskImage().GetPath(),
+		portFwds:   req.GetNetworkConfig().GetPortForwards(),
 		networkCfg: req.NetworkConfig,
 		vm:         vm,
 	}

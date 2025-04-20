@@ -22,18 +22,75 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DiskImageType defines the type of disk image
+type DiskImageType int32
+
+const (
+	DiskImageType_DISK_IMAGE_TYPE_UNSPECIFIED DiskImageType = 0
+	DiskImageType_DISK_IMAGE_TYPE_RAW         DiskImageType = 1
+	DiskImageType_DISK_IMAGE_TYPE_QCOW2       DiskImageType = 2
+	DiskImageType_DISK_IMAGE_TYPE_VHD         DiskImageType = 3
+)
+
+// Enum value maps for DiskImageType.
+var (
+	DiskImageType_name = map[int32]string{
+		0: "DISK_IMAGE_TYPE_UNSPECIFIED",
+		1: "DISK_IMAGE_TYPE_RAW",
+		2: "DISK_IMAGE_TYPE_QCOW2",
+		3: "DISK_IMAGE_TYPE_VHD",
+	}
+	DiskImageType_value = map[string]int32{
+		"DISK_IMAGE_TYPE_UNSPECIFIED": 0,
+		"DISK_IMAGE_TYPE_RAW":         1,
+		"DISK_IMAGE_TYPE_QCOW2":       2,
+		"DISK_IMAGE_TYPE_VHD":         3,
+	}
+)
+
+func (x DiskImageType) Enum() *DiskImageType {
+	p := new(DiskImageType)
+	*p = x
+	return p
+}
+
+func (x DiskImageType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiskImageType) Descriptor() protoreflect.EnumDescriptor {
+	return file_ec1_v1poc1_agent_proto_enumTypes[0].Descriptor()
+}
+
+func (DiskImageType) Type() protoreflect.EnumType {
+	return &file_ec1_v1poc1_agent_proto_enumTypes[0]
+}
+
+func (x DiskImageType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiskImageType.Descriptor instead.
+func (DiskImageType) EnumDescriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
+}
+
 // StartVMRequest is the request message for starting a VM
 type StartVMRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the VM (optional, will be generated if not provided)
+	VmId *string `protobuf:"bytes,1,opt,name=vm_id,json=vmId" json:"vm_id,omitempty"`
 	// Name of the VM
-	Name *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Name *string `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
 	// Resource allocation
-	ResourcesMax  *Resources `protobuf:"bytes,2,opt,name=resources_max,json=resourcesMax" json:"resources_max,omitempty"`
-	ResourcesBoot *Resources `protobuf:"bytes,3,opt,name=resources_boot,json=resourcesBoot" json:"resources_boot,omitempty"`
-	// Disk image path
-	DiskImagePath *string `protobuf:"bytes,4,opt,name=disk_image_path,json=diskImagePath" json:"disk_image_path,omitempty"`
+	ResourcesMax  *Resources `protobuf:"bytes,3,opt,name=resources_max,json=resourcesMax" json:"resources_max,omitempty"`
+	ResourcesBoot *Resources `protobuf:"bytes,4,opt,name=resources_boot,json=resourcesBoot" json:"resources_boot,omitempty"`
+	// Disk image information
+	DiskImage *DiskImage `protobuf:"bytes,5,opt,name=disk_image,json=diskImage" json:"disk_image,omitempty"`
+	// Cloud-init configuration
+	CloudInit *CloudInitConfig `protobuf:"bytes,6,opt,name=cloud_init,json=cloudInit" json:"cloud_init,omitempty"`
 	// Network configuration
-	NetworkConfig *VMNetworkConfig `protobuf:"bytes,5,opt,name=network_config,json=networkConfig" json:"network_config,omitempty"`
+	NetworkConfig *VMNetworkConfig `protobuf:"bytes,7,opt,name=network_config,json=networkConfig" json:"network_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,6 +125,13 @@ func (*StartVMRequest) Descriptor() ([]byte, []int) {
 	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *StartVMRequest) GetVmId() string {
+	if x != nil && x.VmId != nil {
+		return *x.VmId
+	}
+	return ""
+}
+
 func (x *StartVMRequest) GetName() string {
 	if x != nil && x.Name != nil {
 		return *x.Name
@@ -89,11 +153,18 @@ func (x *StartVMRequest) GetResourcesBoot() *Resources {
 	return nil
 }
 
-func (x *StartVMRequest) GetDiskImagePath() string {
-	if x != nil && x.DiskImagePath != nil {
-		return *x.DiskImagePath
+func (x *StartVMRequest) GetDiskImage() *DiskImage {
+	if x != nil {
+		return x.DiskImage
 	}
-	return ""
+	return nil
+}
+
+func (x *StartVMRequest) GetCloudInit() *CloudInitConfig {
+	if x != nil {
+		return x.CloudInit
+	}
+	return nil
 }
 
 func (x *StartVMRequest) GetNetworkConfig() *VMNetworkConfig {
@@ -632,18 +703,123 @@ func (x *AgentProbeResponse) GetReady() bool {
 	return false
 }
 
+// DiskImage defines a disk image to use for a VM
+type DiskImage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Path to the disk image
+	Path *string `protobuf:"bytes,1,opt,name=path" json:"path,omitempty"`
+	// Type of disk image
+	Type          *DiskImageType `protobuf:"varint,2,opt,name=type,enum=ec1.v1poc1.DiskImageType" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiskImage) Reset() {
+	*x = DiskImage{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiskImage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiskImage) ProtoMessage() {}
+
+func (x *DiskImage) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiskImage.ProtoReflect.Descriptor instead.
+func (*DiskImage) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DiskImage) GetPath() string {
+	if x != nil && x.Path != nil {
+		return *x.Path
+	}
+	return ""
+}
+
+func (x *DiskImage) GetType() DiskImageType {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return DiskImageType_DISK_IMAGE_TYPE_UNSPECIFIED
+}
+
+// CloudInitConfig defines cloud-init configuration for a VM
+type CloudInitConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Path to cloud-init ISO
+	IsoPath       *string `protobuf:"bytes,1,opt,name=iso_path,json=isoPath" json:"iso_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloudInitConfig) Reset() {
+	*x = CloudInitConfig{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloudInitConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloudInitConfig) ProtoMessage() {}
+
+func (x *CloudInitConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloudInitConfig.ProtoReflect.Descriptor instead.
+func (*CloudInitConfig) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CloudInitConfig) GetIsoPath() string {
+	if x != nil && x.IsoPath != nil {
+		return *x.IsoPath
+	}
+	return ""
+}
+
 var File_ec1_v1poc1_agent_proto protoreflect.FileDescriptor
 
 const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\n" +
 	"\x16ec1/v1poc1/agent.proto\x12\n" +
-	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x94\x02\n" +
-	"\x0eStartVMRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12:\n" +
-	"\rresources_max\x18\x02 \x01(\v2\x15.ec1.v1poc1.ResourcesR\fresourcesMax\x12<\n" +
-	"\x0eresources_boot\x18\x03 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesBoot\x120\n" +
-	"\x0fdisk_image_path\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\rdiskImagePath\x12B\n" +
-	"\x0enetwork_config\x18\x05 \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\xa5\x01\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\xfc\x02\n" +
+	"\x0eStartVMRequest\x12&\n" +
+	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12:\n" +
+	"\rresources_max\x18\x03 \x01(\v2\x15.ec1.v1poc1.ResourcesR\fresourcesMax\x12<\n" +
+	"\x0eresources_boot\x18\x04 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesBoot\x124\n" +
+	"\n" +
+	"disk_image\x18\x05 \x01(\v2\x15.ec1.v1poc1.DiskImageR\tdiskImage\x12:\n" +
+	"\n" +
+	"cloud_init\x18\x06 \x01(\v2\x1b.ec1.v1poc1.CloudInitConfigR\tcloudInit\x12B\n" +
+	"\x0enetwork_config\x18\a \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\xa5\x01\n" +
 	"\x0fStartVMResponse\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12&\n" +
 	"\n" +
@@ -673,7 +849,17 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\x11AgentProbeRequest\">\n" +
 	"\x12AgentProbeResponse\x12\x12\n" +
 	"\x04live\x18\x01 \x01(\bR\x04live\x12\x14\n" +
-	"\x05ready\x18\x02 \x01(\bR\x05ready2\x94\x03\n" +
+	"\x05ready\x18\x02 \x01(\bR\x05ready\"X\n" +
+	"\tDiskImage\x12\x1c\n" +
+	"\x04path\x18\x01 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\x04path\x12-\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x19.ec1.v1poc1.DiskImageTypeR\x04type\"6\n" +
+	"\x0fCloudInitConfig\x12#\n" +
+	"\biso_path\x18\x01 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\aisoPath*}\n" +
+	"\rDiskImageType\x12\x1f\n" +
+	"\x1bDISK_IMAGE_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13DISK_IMAGE_TYPE_RAW\x10\x01\x12\x19\n" +
+	"\x15DISK_IMAGE_TYPE_QCOW2\x10\x02\x12\x17\n" +
+	"\x13DISK_IMAGE_TYPE_VHD\x10\x032\x94\x03\n" +
 	"\fAgentService\x12G\n" +
 	"\aStartVM\x12\x1a.ec1.v1poc1.StartVMRequest\x1a\x1b.ec1.v1poc1.StartVMResponse\"\x03\x90\x02\x01\x12D\n" +
 	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12L\n" +
@@ -698,48 +884,55 @@ func file_ec1_v1poc1_agent_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_agent_proto_rawDescData
 }
 
-var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_ec1_v1poc1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_ec1_v1poc1_agent_proto_goTypes = []any{
-	(*StartVMRequest)(nil),      // 0: ec1.v1poc1.StartVMRequest
-	(*StartVMResponse)(nil),     // 1: ec1.v1poc1.StartVMResponse
-	(*StopVMRequest)(nil),       // 2: ec1.v1poc1.StopVMRequest
-	(*StopVMResponse)(nil),      // 3: ec1.v1poc1.StopVMResponse
-	(*VMStatusRequest)(nil),     // 4: ec1.v1poc1.VMStatusRequest
-	(*VMStatusResponse)(nil),    // 5: ec1.v1poc1.VMStatusResponse
-	(*VMNetworkConfig)(nil),     // 6: ec1.v1poc1.VMNetworkConfig
-	(*GetVMStatusRequest)(nil),  // 7: ec1.v1poc1.GetVMStatusRequest
-	(*GetVMStatusResponse)(nil), // 8: ec1.v1poc1.GetVMStatusResponse
-	(*AgentProbeRequest)(nil),   // 9: ec1.v1poc1.AgentProbeRequest
-	(*AgentProbeResponse)(nil),  // 10: ec1.v1poc1.AgentProbeResponse
-	(*Resources)(nil),           // 11: ec1.v1poc1.Resources
-	(VMStatus)(0),               // 12: ec1.v1poc1.VMStatus
-	(NetworkType)(0),            // 13: ec1.v1poc1.NetworkType
-	(*PortForward)(nil),         // 14: ec1.v1poc1.PortForward
+	(DiskImageType)(0),          // 0: ec1.v1poc1.DiskImageType
+	(*StartVMRequest)(nil),      // 1: ec1.v1poc1.StartVMRequest
+	(*StartVMResponse)(nil),     // 2: ec1.v1poc1.StartVMResponse
+	(*StopVMRequest)(nil),       // 3: ec1.v1poc1.StopVMRequest
+	(*StopVMResponse)(nil),      // 4: ec1.v1poc1.StopVMResponse
+	(*VMStatusRequest)(nil),     // 5: ec1.v1poc1.VMStatusRequest
+	(*VMStatusResponse)(nil),    // 6: ec1.v1poc1.VMStatusResponse
+	(*VMNetworkConfig)(nil),     // 7: ec1.v1poc1.VMNetworkConfig
+	(*GetVMStatusRequest)(nil),  // 8: ec1.v1poc1.GetVMStatusRequest
+	(*GetVMStatusResponse)(nil), // 9: ec1.v1poc1.GetVMStatusResponse
+	(*AgentProbeRequest)(nil),   // 10: ec1.v1poc1.AgentProbeRequest
+	(*AgentProbeResponse)(nil),  // 11: ec1.v1poc1.AgentProbeResponse
+	(*DiskImage)(nil),           // 12: ec1.v1poc1.DiskImage
+	(*CloudInitConfig)(nil),     // 13: ec1.v1poc1.CloudInitConfig
+	(*Resources)(nil),           // 14: ec1.v1poc1.Resources
+	(VMStatus)(0),               // 15: ec1.v1poc1.VMStatus
+	(NetworkType)(0),            // 16: ec1.v1poc1.NetworkType
+	(*PortForward)(nil),         // 17: ec1.v1poc1.PortForward
 }
 var file_ec1_v1poc1_agent_proto_depIdxs = []int32{
-	11, // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
-	11, // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
-	6,  // 2: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
-	12, // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
-	12, // 4: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
-	13, // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
-	14, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
-	5,  // 7: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
-	0,  // 8: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
-	2,  // 9: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
-	4,  // 10: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
-	7,  // 11: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
-	9,  // 12: ec1.v1poc1.AgentService.AgentProbe:input_type -> ec1.v1poc1.AgentProbeRequest
-	1,  // 13: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
-	3,  // 14: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
-	5,  // 15: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
-	8,  // 16: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
-	10, // 17: ec1.v1poc1.AgentService.AgentProbe:output_type -> ec1.v1poc1.AgentProbeResponse
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	14, // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
+	14, // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
+	12, // 2: ec1.v1poc1.StartVMRequest.disk_image:type_name -> ec1.v1poc1.DiskImage
+	13, // 3: ec1.v1poc1.StartVMRequest.cloud_init:type_name -> ec1.v1poc1.CloudInitConfig
+	7,  // 4: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
+	15, // 5: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
+	15, // 6: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
+	16, // 7: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
+	17, // 8: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
+	6,  // 9: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
+	0,  // 10: ec1.v1poc1.DiskImage.type:type_name -> ec1.v1poc1.DiskImageType
+	1,  // 11: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
+	3,  // 12: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
+	5,  // 13: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
+	8,  // 14: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
+	10, // 15: ec1.v1poc1.AgentService.AgentProbe:input_type -> ec1.v1poc1.AgentProbeRequest
+	2,  // 16: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
+	4,  // 17: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
+	6,  // 18: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
+	9,  // 19: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
+	11, // 20: ec1.v1poc1.AgentService.AgentProbe:output_type -> ec1.v1poc1.AgentProbeResponse
+	16, // [16:21] is the sub-list for method output_type
+	11, // [11:16] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_agent_proto_init() }
@@ -754,13 +947,14 @@ func file_ec1_v1poc1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_agent_proto_rawDesc), len(file_ec1_v1poc1_agent_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   11,
+			NumEnums:      1,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_ec1_v1poc1_agent_proto_goTypes,
 		DependencyIndexes: file_ec1_v1poc1_agent_proto_depIdxs,
+		EnumInfos:         file_ec1_v1poc1_agent_proto_enumTypes,
 		MessageInfos:      file_ec1_v1poc1_agent_proto_msgTypes,
 	}.Build()
 	File_ec1_v1poc1_agent_proto = out.File

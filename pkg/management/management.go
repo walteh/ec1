@@ -105,6 +105,10 @@ func (s *Server) ReportAgentStatus(ctx context.Context, req *connect.Request[ec1
 	}), nil
 }
 
+func ptr[T any](v T) *T {
+	return &v
+}
+
 // StartVM starts a VM on an appropriate agent
 func (s *Server) StartVM(ctx context.Context, name, diskImagePath string, resourcesMax *ec1v1.Resources, networkConfig *ec1v1.VMNetworkConfig) (*ec1v1.VMInfo, error) {
 	// In a real implementation, we would:
@@ -161,7 +165,10 @@ func (s *Server) StartVM(ctx context.Context, name, diskImagePath string, resour
 		Name:          strPtr(name),
 		ResourcesMax:  resourcesMax,
 		ResourcesBoot: resourcesMax, // Just use the same resources for boot
-		DiskImagePath: strPtr(diskImagePath),
+		DiskImage: &ec1v1.DiskImage{
+			Path: strPtr(diskImagePath),
+			Type: ptr(ec1v1.DiskImageType_DISK_IMAGE_TYPE_QCOW2),
+		},
 		NetworkConfig: networkConfig,
 	})
 
