@@ -37,7 +37,7 @@ func main() {
 		localAgent = flag.String("agent", "localhost:9091", "Local agent address")
 		action     = flag.String("action", "demo", "Action to perform (start-mgt, start-agent, create-image, start-linux-vm, start-nested-vm, demo)")
 		clean      = flag.Bool("clean", false, "Clean up before starting (removes existing binaries and images)")
-		diskPath   = flag.String("disk", "", "Path to disk image")
+		// diskPath   = flag.String("disk", "", "Path to disk image")
 	)
 	flag.Parse()
 
@@ -82,17 +82,17 @@ func main() {
 		}
 		fmt.Printf("QCOW2 image created: %s\n", imagePath)
 
-	case "start-linux-vm":
-		if *diskPath == "" {
-			fmt.Fprintln(os.Stderr, "Error: --disk is required for starting a VM")
-			os.Exit(1)
-		}
-		vmIP, err := StartLinuxVM(ctx, *mgtAddr, *diskPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error starting Linux VM: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Linux VM started with IP: %s\n", vmIP)
+	// case "start-linux-vm":
+	// 	if *diskPath == "" {
+	// 		fmt.Fprintln(os.Stderr, "Error: --disk is required for starting a VM")
+	// 		os.Exit(1)
+	// 	}
+	// 	vmIP, err := StartLinuxVM(ctx, *mgtAddr, *diskPath)
+	// 	if err != nil {
+	// 		fmt.Fprintf(os.Stderr, "Error starting Linux VM: %v\n", err)
+	// 		os.Exit(1)
+	// 	}
+	// 	fmt.Printf("Linux VM started with IP: %s\n", vmIP)
 
 	case "start-nested-vm":
 		linuxAgentAddr := fmt.Sprintf("http://192.168.64.10:9091")
@@ -170,6 +170,8 @@ func runEC1Demo(ctx context.Context, mgtAddr, localAgentAddr string) error {
 	if err != nil {
 		return fmt.Errorf("creating QCOW2 image: %w", err)
 	}
+
+	defer qcow2Path.Cleanup()
 
 	// Steps 4-6: Start Linux VM and set up agent
 	fmt.Println("\n=== Steps 4-6: Starting Linux VM and Setting Up Agent ===")

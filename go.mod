@@ -5,10 +5,11 @@ go 1.24.2
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Code-Hex/vz/v3 v3.6.0
+	github.com/digitalocean/go-libvirt v0.0.0-20250417173424-a6a66ef779d6
 	github.com/diskfs/go-diskfs v1.6.0
 	github.com/google/cel-go v0.24.1
-	github.com/gpu-ninja/qcow2 v0.1.6
 	github.com/jedib0t/go-pretty/v6 v6.6.7
+	github.com/kdomanski/iso9660 v0.4.0
 	github.com/rs/xid v1.6.0
 	github.com/veqryn/slog-context v0.8.0
 	gitlab.com/tozd/go/errors v0.10.0
@@ -16,7 +17,6 @@ require (
 	golang.org/x/net v0.39.0
 	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.6
-	libvirt.org/libvirt-go v7.4.0+incompatible
 )
 
 require (
@@ -26,7 +26,6 @@ require (
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/elliotwutingfeng/asciiset v0.0.0-20230602022725-51bbb787efab // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/goburrow/cache v0.1.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
@@ -37,6 +36,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.31.0 // indirect

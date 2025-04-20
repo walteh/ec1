@@ -136,7 +136,7 @@ func (resolver extensionResolver) registerLegacy(extension protoreflect.Extensio
 		Name:    proto.String("buf/validate/validate_legacy.proto"),
 		Package: proto.String("buf.validate"),
 		Dependency: []string{
-			"buf/validate/validate.proto",
+			"ec1/validate/validate.proto",
 			"google/protobuf/descriptor.proto",
 		},
 		Extension: []*descriptorpb.FieldDescriptorProto{

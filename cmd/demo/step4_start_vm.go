@@ -20,7 +20,7 @@ func ptr[T any](v T) *T {
 }
 
 // StartLinuxVM starts the Linux VM via the management server
-func StartLinuxVM(ctx context.Context, mgtAddr, qcow2Path string) (string, error) {
+func StartLinuxVM(ctx context.Context, mgtAddr string, qcow2Path *Image) (string, error) {
 	fmt.Println("Starting Linux VM via management server...")
 
 	// Create management client
@@ -51,13 +51,13 @@ func StartLinuxVM(ctx context.Context, mgtAddr, qcow2Path string) (string, error
 	}
 
 	// Get absolute path to qcow2 image
-	absPath, err := filepath.Abs(qcow2Path)
+	absPath, err := filepath.Abs(qcow2Path.Qcow2Path)
 	if err != nil {
 		return "", fmt.Errorf("getting absolute path to qcow2: %w", err)
 	}
 
 	// Get absolute path to cloud-init ISO
-	ciPath, err := filepath.Abs("images/cloud-init.iso")
+	ciPath, err := filepath.Abs(qcow2Path.CloudInitSeedISOPath)
 	if err != nil {
 		return "", fmt.Errorf("getting absolute path to cloud-init ISO: %w", err)
 	}

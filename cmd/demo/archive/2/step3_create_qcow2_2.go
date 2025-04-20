@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	// "github.com/containerd/nydus-snapshotter/pkg/backend"
-	iso9660 "github.com/kdomanski/iso9660"
+	"github.com/diskfs/go-diskfs"
+	"github.com/diskfs/go-diskfs/backend/file"
+	"github.com/diskfs/go-diskfs/filesystem/ext4"
 	"golang.org/x/mod/semver"
 
 	// "github.com/diskfs/go-diskfs/filesystem/ext4"
@@ -35,21 +37,8 @@ func expandTilde(path string) (string, error) {
 	return filepath.Join(home, strings.TrimPrefix(path, "~")), nil
 }
 
-type Image struct {
-	Qcow2Path            string
-	CloudInitSeedISOPath string
-
-	cleanup func()
-}
-
-func (i *Image) Cleanup() {
-	if i.cleanup != nil {
-		i.cleanup()
-	}
-}
-
 // CreateQCOW2Image creates a qcow2 image for a VM
-func CreateQCOW2Image(ctx context.Context) (*Image, error) {
+func CreateQCOW2Image(ctx context.Context) (string, error) {
 	fmt.Println("Creating QCOW2 image...")
 
 	alpineURL := buildAlpineURL(alpineVersion)
@@ -57,7 +46,7 @@ func CreateQCOW2Image(ctx context.Context) (*Image, error) {
 
 	expandedPath, err := expandTilde(localImageCacheDir)
 	if err != nil {
-		return nil, fmt.Errorf("expanding path: %w", err)
+		return "", fmt.Errorf("expanding path: %w", err)
 	}
 
 	localImage := filepath.Join(expandedPath, filepath.Base(alpineURL))
@@ -65,21 +54,16 @@ func CreateQCOW2Image(ctx context.Context) (*Image, error) {
 	// check Developer/disk-images
 	if _, err := os.Stat(localImage); os.IsNotExist(err) {
 		if err := downloadWithProgress(ctx, alpineURL, localImage); err != nil {
-			return nil, fmt.Errorf("downloading Alpine image: %w", err)
+			return "", fmt.Errorf("downloading Alpine image: %w", err)
 		}
 	}
 
 	// Generate cloud-init ISO
-	isoPath, cleanup, err := injectPureGo()
-	if err != nil {
-		return nil, fmt.Errorf("injecting cloud-init config: %w", err)
+	if err := injectPureGo(localImage); err != nil {
+		return "", fmt.Errorf("injecting cloud-init config: %w", err)
 	}
 
-	return &Image{
-		Qcow2Path:            localImage,
-		CloudInitSeedISOPath: isoPath,
-		cleanup:              cleanup,
-	}, nil
+	return localImage, nil
 }
 
 // downloadWithProgress fetches a URL to a file path, showing a progress bar.
@@ -169,30 +153,63 @@ runcmd:
   - modprobe kvm_intel nested=1 || true
   - echo "cloud-init done" > /var/log/cloud-init-complete.log`
 
-func injectPureGo() (string, func(), error) {
-	// create a temp dir
+func injectPureGo(qcPath string) error {
+	// 1) Open QCOW2 container
+	// img, err := qcow2z.Open(qcPath, false)
+	// if err != nil {
+	// 	return fmt.Errorf("opening qcow2: %w", err)
+	// }
+	// defer img.Close()
 
-	writer, err := iso9660.NewWriter()
+	qcFile, err := os.Open(qcPath)
 	if err != nil {
-		return "", nil, err
+		return fmt.Errorf("opening qcow2: %w", err)
 	}
-	defer writer.Cleanup()
+	defer qcFile.Close()
 
-	for f, content := range map[string]string{"meta-data": meta, "user-data": user} {
-		if err = writer.AddFile(strings.NewReader(content), f); err != nil {
-			return "", nil, err
+	be := file.New(qcFile, false)
+	defer be.Close()
+
+	// 2) Extract the raw backing file (or access cluster map)
+	// 3) Use go-diskfs to open the raw data as a "disk"
+	disk, err := diskfs.OpenBackend(be, diskfs.WithOpenMode(diskfs.ReadWrite))
+	if err != nil {
+		return fmt.Errorf("opening disk: %w", err)
+	}
+	defer disk.Close()
+
+	partTbl, err := disk.GetPartitionTable()
+	if err != nil {
+		return fmt.Errorf("getting partition table: %w", err)
+	}
+	fs, err := disk.GetFilesystem(int(partTbl.GetPartitions()[0].GetStart()))
+	if err != nil {
+		return fmt.Errorf("getting filesystem: %w", err)
+	}
+	extFs := fs.(*ext4.FileSystem)
+
+	// 4) Mkdir /var/lib/cloud/seed/nocloud
+	if err := extFs.Mkdir("/var/lib/cloud/seed/nocloud"); err != nil {
+		return fmt.Errorf("making directory: %w", err)
+	}
+
+	// 5) Copy in meta-data and user-data
+	for f, data := range map[string]string{"meta-data": meta, "user-data": user} {
+		fle, err := extFs.OpenFile("/var/lib/cloud/seed/nocloud/"+f, os.O_CREATE|os.O_WRONLY)
+		if err != nil {
+			return fmt.Errorf("opening file: %w", err)
+		}
+		if _, err := fle.Write([]byte(data)); err != nil {
+			return fmt.Errorf("writing file: %w", err)
 		}
 	}
 
-	fle, err := os.CreateTemp("", "cloud-init.iso")
-	if err != nil {
-		return "", nil, err
-	}
-	defer fle.Close()
-
-	if err := writer.WriteTo(fle, "cidata"); err != nil {
-		return "", nil, err
-	}
-
-	return fle.Name(), func() { os.Remove(fle.Name()) }, nil
+	// // 6) Commit changes
+	// if err := extFs.Sync(); err != nil {
+	// 	return fmt.Errorf("syncing filesystem: %w", err)
+	// }
+	// if err := disk.Write(); err != nil {
+	// 	return fmt.Errorf("writing disk: %w", err)
+	// }
+	return nil
 }

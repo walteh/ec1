@@ -2,7 +2,6 @@ package hypervisor
 
 import (
 	"context"
-	"runtime"
 
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )
@@ -23,18 +22,22 @@ type Driver interface {
 }
 
 // NewDriver creates a hypervisor driver based on the host platform
-func NewDriver(ctx context.Context) (Driver, error) {
-	// Detect platform and return appropriate driver
-	if isMacOS() {
-		return NewAppleDriver(ctx)
-	}
+// func NewDriver(ctx context.Context) (Driver, error) {
+// 	// Detect platform and return appropriate driver
+// 	if isMacOS() {
+// 		return NewAppleDriver(ctx)
+// 	}
 
-	// Assume Linux for POC
-	return NewKVMDriver(ctx)
+// 	// Assume Linux for POC
+// 	return NewKVMDriver(ctx)
 
-}
+// }
 
 // isMacOS returns true if the host is running macOS
-func isMacOS() bool {
-	return runtime.GOOS == "darwin"
-}
+// func isMacOS() bool {
+// 	return runtime.GOOS == "darwin"
+// }
+
+func ptr[T any](v T) *T { return &v }
+
+func arr[T any](v ...T) []T { return v }

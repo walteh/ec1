@@ -54,6 +54,10 @@ func (s *FSIDStore) SetInstanceID(ctx context.Context, id id.ID) error {
 		return errors.Errorf("getting cache directory: %w", err)
 	}
 
+	if err := os.MkdirAll(filepath.Dir(cacheDir), 0755); err != nil {
+		return errors.Errorf("creating cache directory: %w", err)
+	}
+
 	if err := os.WriteFile(cacheDir, []byte(id.String()), 0644); err != nil {
 		return errors.Errorf("writing agent ID: %w", err)
 	}

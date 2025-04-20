@@ -1,3 +1,6 @@
+//go:build darwin
+// +build darwin
+
 package hypervisor
 
 import (
@@ -10,6 +13,11 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )
+
+func NewDriver(ctx context.Context) (Driver, error) {
+	// Detect platform and return appropriate driver
+	return NewAppleDriver(ctx)
+}
 
 // TODO: add Code-Hex/vz
 
@@ -79,9 +87,9 @@ func (d *appleVM) State() ec1v1.VMStatus {
 // NewAppleDriver creates a new driver for macOS virtualization
 func NewAppleDriver(ctx context.Context) (*AppleDriver, error) {
 	// Check if Virtualization.framework is supported
-	if !vz.IsNestedVirtualizationSupported() {
-		return nil, fmt.Errorf("virtualization framework is not supported on this Mac")
-	}
+	// if !vz.IsNestedVirtualizationSupported() {
+	// 	return nil, fmt.Errorf("virtualization framework is not supported on this Mac")
+	// }
 
 	// In a real implementation, we would also check for hardware virtualization support
 	// if !vz.IsHardwareVirtualizationSupported() {
@@ -92,10 +100,6 @@ func NewAppleDriver(ctx context.Context) (*AppleDriver, error) {
 		vms: make(map[string]*appleVM),
 	}, nil
 }
-
-func ptr[T any](v T) *T { return &v }
-
-func arr[T any](v ...T) []T { return v }
 
 // Helper function to parse memory string (like "4Gi") to bytes
 func parseMemory(memStr string) (uint64, error) {

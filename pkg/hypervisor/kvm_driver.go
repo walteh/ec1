@@ -1,13 +1,17 @@
+//go:build linux
+
 package hypervisor
 
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
+	"time"
 
+	libvirt "github.com/digitalocean/go-libvirt"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
-	libvirt "libvirt.org/libvirt-go"
 )
 
 // TODO: add KVM/QEMU driver
@@ -29,7 +33,8 @@ type KVMDriver struct {
 	vmMutex sync.RWMutex
 
 	// Connection to libvirt
-	conn *libvirt.Connect
+	l    *libvirt.Libvirt
+	conn net.Conn
 }
 
 // kvmVM represents a running VM instance
@@ -42,20 +47,32 @@ type kvmVM struct {
 	portFwds   []*ec1v1.PortForward
 	networkCfg *ec1v1.VMNetworkConfig
 
-	// Libvirt domain
-	domain *libvirt.Domain
+	// Libvirt domain ID and name
+	domain     *libvirt.Domain
+	domainName string
+}
+
+func NewDriver(ctx context.Context) (Driver, error) {
+	return NewKVMDriver(ctx)
 }
 
 // NewKVMDriver creates a new driver for KVM virtualization
 func NewKVMDriver(ctx context.Context) (*KVMDriver, error) {
-	// Connect to libvirt
-	conn, err := libvirt.NewConnect("qemu:///system")
+	// Connect to libvirt (QEMU system)
+	conn, err := net.DialTimeout("unix", "/var/run/libvirt/libvirt-sock", 2*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to libvirt: %w", err)
+		return nil, fmt.Errorf("connecting to libvirt socket: %w", err)
+	}
+
+	l := libvirt.New(conn)
+	if err := l.Connect(); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("establishing libvirt connection: %w", err)
 	}
 
 	return &KVMDriver{
 		vms:  make(map[string]*kvmVM),
+		l:    l,
 		conn: conn,
 	}, nil
 }
@@ -111,7 +128,7 @@ func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec
 	`, vmID, memoryMB, cpuStr, req.GetDiskImagePath())
 
 	// Create the domain from XML
-	domain, err := d.conn.DomainDefineXML(domainXML)
+	domain, err := d.l.DomainDefineXML(domainXML)
 	if err != nil {
 		return nil, fmt.Errorf("defining domain from XML: %w", err)
 	}
@@ -123,7 +140,8 @@ func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec
 		resources:  req.ResourcesMax,
 		diskPath:   req.GetDiskImagePath(),
 		networkCfg: req.NetworkConfig,
-		domain:     domain,
+		domain:     &domain,
+		domainName: vmID,
 	}
 
 	// Store the VM
@@ -132,18 +150,21 @@ func (d *KVMDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec
 	d.vmMutex.Unlock()
 
 	// Start the domain
-	if err := domain.Create(); err != nil {
+	if err := d.l.DomainCreate(domain); err != nil {
 		d.vmMutex.Lock()
 		delete(d.vms, vmID)
 		d.vmMutex.Unlock()
-		domain.Free() // Clean up the domain
+
+		// Try to clean up the domain
+		_ = d.l.DomainUndefine(domain)
+
 		return nil, fmt.Errorf("starting domain: %w", err)
 	}
 
 	// For port forwarding, we would configure network in a real implementation
 	// In a real setup, we'd likely use libvirt network filtering or a separate tool
 
-	// In a real implementation, we would get the IP by quering the domain
+	// In a real implementation, we would get the IP by querying the domain
 	// For the POC, we assign a fake IP
 	vm.ipAddress = "192.168.122.10" // Simulated IP for the POC
 
@@ -171,10 +192,10 @@ func (d *KVMDriver) StopVM(ctx context.Context, req *ec1v1.StopVMRequest) (*ec1v
 	var err error
 	if req.GetForce() {
 		// Force stop the VM
-		err = vm.domain.Destroy()
+		err = d.l.DomainDestroy(*vm.domain)
 	} else {
 		// Request a graceful shutdown
-		err = vm.domain.Shutdown()
+		err = d.l.DomainShutdown(*vm.domain)
 	}
 
 	if err != nil {
@@ -204,8 +225,10 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 		}, nil
 	}
 
-	// Get the domain state
-	state, _, err := vm.domain.GetState()
+	// Get the domain info which includes state
+	// 	rState, rMaxMem, rMemory, rNrVirtCPU, rCPUTime, err := d.l.DomainGetInfo(*vm.domain)
+
+	rState, _, _, _, _, err := d.l.DomainGetInfo(*vm.domain)
 	if err != nil {
 		return &ec1v1.GetVMStatusResponse{
 			Response: &ec1v1.VMStatusResponse{
@@ -216,7 +239,7 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 	}
 
 	// Map libvirt state to our state
-	status := mapLibvirtState(state)
+	status := mapLibvirtState(libvirt.DomainState(rState))
 
 	return &ec1v1.GetVMStatusResponse{
 		Response: &ec1v1.VMStatusResponse{
@@ -229,19 +252,19 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 // Map libvirt domain state to our VM status
 func mapLibvirtState(state libvirt.DomainState) ec1v1.VMStatus {
 	switch state {
-	case libvirt.DOMAIN_RUNNING:
+	case libvirt.DomainRunning:
 		return ec1v1.VMStatus_VM_STATUS_RUNNING
-	case libvirt.DOMAIN_BLOCKED:
+	case libvirt.DomainBlocked:
 		return ec1v1.VMStatus_VM_STATUS_RUNNING
-	case libvirt.DOMAIN_PAUSED:
+	case libvirt.DomainPaused:
 		return ec1v1.VMStatus_VM_STATUS_STOPPED
-	case libvirt.DOMAIN_SHUTDOWN:
+	case libvirt.DomainShutdown:
 		return ec1v1.VMStatus_VM_STATUS_STOPPING
-	case libvirt.DOMAIN_SHUTOFF:
+	case libvirt.DomainShutoff:
 		return ec1v1.VMStatus_VM_STATUS_STOPPED
-	case libvirt.DOMAIN_CRASHED:
+	case libvirt.DomainCrashed:
 		return ec1v1.VMStatus_VM_STATUS_ERROR
-	case libvirt.DOMAIN_PMSUSPENDED:
+	case libvirt.DomainPmsuspended:
 		return ec1v1.VMStatus_VM_STATUS_STOPPED
 	default:
 		return ec1v1.VMStatus_VM_STATUS_UNSPECIFIED
@@ -251,4 +274,21 @@ func mapLibvirtState(state libvirt.DomainState) ec1v1.VMStatus {
 // GetHypervisorType implements the Driver interface
 func (d *KVMDriver) GetHypervisorType() ec1v1.HypervisorType {
 	return ec1v1.HypervisorType_HYPERVISOR_TYPE_KVM
+}
+
+// Close cleanly closes the libvirt connection
+func (d *KVMDriver) Close() error {
+	if d.l != nil {
+		if err := d.l.Disconnect(); err != nil {
+			return fmt.Errorf("disconnecting from libvirt: %w", err)
+		}
+	}
+
+	if d.conn != nil {
+		if err := d.conn.Close(); err != nil {
+			return fmt.Errorf("closing connection: %w", err)
+		}
+	}
+
+	return nil
 }
