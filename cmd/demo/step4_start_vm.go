@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,6 +19,192 @@ import (
 // Helper function to convert value to pointer
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// displayProgress shows an animated progress indicator with status updates
+func displayProgress(ctx context.Context, duration time.Duration, message string, updates []string) {
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	updateInterval := duration / time.Duration(len(updates)+1)
+	spinnerInterval := 100 * time.Millisecond
+
+	fmt.Printf("%s ", message)
+
+	// Create a context that will cancel after the duration
+	timeoutCtx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	// Start time for calculating progress percentage
+	startTime := time.Now()
+	endTime := startTime.Add(duration)
+
+	spinnerTick := time.NewTicker(spinnerInterval)
+	defer spinnerTick.Stop()
+
+	updateTick := time.NewTicker(updateInterval)
+	defer updateTick.Stop()
+
+	spinnerIndex := 0
+	updateIndex := 0
+
+	// Clear the current line
+	clearLine := func() {
+		fmt.Print("\r\033[K")
+	}
+
+	for {
+		select {
+		case <-timeoutCtx.Done():
+			clearLine()
+			fmt.Printf("%s: Complete ✓\n", message)
+			return
+
+		case <-updateTick.C:
+			if updateIndex < len(updates) {
+				clearLine()
+				percentComplete := int(float64(time.Since(startTime)) / float64(duration) * 100)
+				fmt.Printf("%s: %s [%d%%] - %s ",
+					message,
+					spinner[spinnerIndex],
+					percentComplete,
+					updates[updateIndex])
+				updateIndex++
+			}
+
+		case <-spinnerTick.C:
+			clearLine()
+			percentComplete := int(float64(time.Since(startTime)) / float64(duration) * 100)
+			spinnerIndex = (spinnerIndex + 1) % len(spinner)
+
+			updateText := ""
+			if updateIndex > 0 && updateIndex <= len(updates) {
+				updateText = "- " + updates[updateIndex-1]
+			}
+
+			timeLeft := endTime.Sub(time.Now()).Round(time.Second)
+			fmt.Printf("%s: %s [%d%%] %s (%s remaining) ",
+				message,
+				spinner[spinnerIndex],
+				percentComplete,
+				updateText,
+				timeLeft)
+		}
+	}
+}
+
+// fetchCloudInitLogs tries to retrieve cloud-init logs from the VM via SSH
+func fetchCloudInitLogs(ctx context.Context, ipAddress string) error {
+	fmt.Println("\n=== Cloud-Init Logs ===")
+
+	// Using real IP instead of localhost
+	host := ipAddress
+	port := "22"
+	maxRetries := 5
+
+	fmt.Printf("Attempting to SSH to %s:%s to retrieve cloud-init logs...\n", host, port)
+
+	// Try multiple times as SSH might not be ready immediately
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			fmt.Printf("Retrying SSH connection (attempt %d/%d)...\n", i+1, maxRetries)
+			time.Sleep(5 * time.Second)
+		}
+
+		// Alpine's default user is 'alpine' with no password or with password 'alpine'
+		// Try both approaches - password auth and no password
+		sshCmd := exec.CommandContext(ctx, "ssh",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "ConnectTimeout=8",
+			"-o", "PasswordAuthentication=yes",
+			"-v", // Verbose output for debugging
+			host,
+			"cat /var/log/cloud-init.log || cat /var/log/cloud-init-output.log || echo 'Cloud-init logs not found'")
+
+		// Try alternative login if default doesn't work
+		if i >= 2 {
+			// On later attempts, try with root user and password
+			sshCmd = exec.CommandContext(ctx, "ssh",
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+				"-o", "ConnectTimeout=8",
+				"-o", "PasswordAuthentication=yes",
+				"-l", "root",
+				"-v", // Verbose output for debugging
+				host,
+				"cat /var/log/cloud-init.log || cat /var/log/cloud-init-output.log || echo 'Cloud-init logs not found'")
+		}
+
+		stdout, err := sshCmd.StdoutPipe()
+		if err != nil {
+			lastErr = fmt.Errorf("getting SSH stdout pipe: %w", err)
+			continue
+		}
+
+		stderr, err := sshCmd.StderrPipe()
+		if err != nil {
+			lastErr = fmt.Errorf("getting SSH stderr pipe: %w", err)
+			continue
+		}
+
+		if err := sshCmd.Start(); err != nil {
+			lastErr = fmt.Errorf("starting SSH command: %w", err)
+			continue
+		}
+
+		// Print the output in real-time with a cyan prefix for logs
+		var logFound bool
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Cloud-init") || strings.Contains(line, "cloud-init") {
+					logFound = true
+				}
+				fmt.Printf("\033[36m[cloud-init]\033[0m %s\n", line)
+			}
+		}()
+
+		// Also print any stderr output but check if it contains authentication errors
+		var authError bool
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "Authentication failed") ||
+					strings.Contains(line, "Permission denied") {
+					authError = true
+				}
+				// Only print errors in debug mode or if it's critical
+				if os.Getenv("EC1_DEBUG") == "1" ||
+					strings.Contains(line, "fatal") ||
+					strings.Contains(line, "Failed") {
+					fmt.Printf("\033[31m[ssh-error]\033[0m %s\n", line)
+				}
+			}
+		}()
+
+		// Wait for the command to finish
+		err = sshCmd.Wait()
+		if err == nil && !authError {
+			fmt.Println("=== End of Cloud-Init Logs ===")
+			return nil
+		}
+
+		lastErr = fmt.Errorf("SSH command failed: %w", err)
+		if logFound {
+			fmt.Println("=== End of Cloud-Init Logs ===")
+			return nil
+		}
+
+		// If authentication error, try next method
+		if authError {
+			continue
+		}
+	}
+
+	fmt.Println("=== Failed to retrieve Cloud-Init Logs ===")
+	return lastErr
 }
 
 // StartLinuxVM starts the Linux VM via the management server
@@ -76,20 +264,43 @@ func StartLinuxVM(ctx context.Context, mgtAddr string, qcow2Path *Image) (string
 		return "", fmt.Errorf("setting up agent file server: %w", err)
 	}
 
-	// Wait for VM to boot and run cloud-init
-	fmt.Println("Waiting for VM to boot and run cloud-init (30s)...")
-	time.Sleep(30 * time.Second)
+	// Wait for VM to boot and run cloud-init with nice progress display
+	bootUpdates := []string{
+		"BIOS initialization",
+		"Kernel loading",
+		"Mounting filesystems",
+		"Network configuration",
+		"Running cloud-init",
+		"Installing required packages",
+		"System initialization",
+	}
+	displayProgress(ctx, 25*time.Second, "VM Boot Progress", bootUpdates)
 
-	// Wait for the agent to start inside the VM
-	fmt.Println("Waiting for agent to start inside VM (10s)...")
-	time.Sleep(10 * time.Second)
+	// Try to fetch and display cloud-init logs after basic boot
+	err = fetchCloudInitLogs(ctx, vmIP)
+	if err != nil {
+		fmt.Printf("Warning: Could not retrieve cloud-init logs: %v\n", err)
+		fmt.Println("Continuing with boot sequence...")
+	}
+
+	// Wait for the agent to start inside the VM with progress display
+	agentUpdates := []string{
+		"Downloading agent binary",
+		"Setting execution permissions",
+		"Starting agent service",
+		"Connecting to management server",
+	}
+	displayProgress(ctx, 10*time.Second, "Agent Startup Progress", agentUpdates)
 
 	// Try to connect to the agent to verify it's running
+	fmt.Print("Verifying agent is running... ")
 	err = verifyAgentRunning(ctx, fmt.Sprintf("http://%s:9091", vmIP))
 	if err != nil {
+		fmt.Println("❌")
 		fmt.Printf("Warning: Could not verify agent is running: %v\n", err)
 		fmt.Println("The demo will continue, but the nested VM step may fail")
 	} else {
+		fmt.Println("✓")
 		fmt.Println("Agent is running inside the VM")
 	}
 
