@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
+	"golang.org/x/crypto/ssh"
 )
 
 // Helper function to convert value to pointer
@@ -95,116 +97,158 @@ func displayProgress(ctx context.Context, duration time.Duration, message string
 func fetchCloudInitLogs(ctx context.Context, ipAddress string) error {
 	fmt.Println("\n=== Cloud-Init Logs ===")
 
-	// Using real IP instead of localhost
-	host := ipAddress
-	port := "22"
-	maxRetries := 5
+	// Define connection configs to try
+	type sshConfig struct {
+		host     string
+		port     string
+		user     string
+		password string
+	}
 
-	fmt.Printf("Attempting to SSH to %s:%s to retrieve cloud-init logs...\n", host, port)
+	configs := []sshConfig{
+		{host: ipAddress, port: "22", user: "alpine", password: "alpine"},
+		{host: ipAddress, port: "22", user: "root", password: "alpine"},
+		{host: "localhost", port: "2222", user: "alpine", password: "alpine"},
+		{host: "localhost", port: "2222", user: "root", password: "alpine"},
+	}
 
-	// Try multiple times as SSH might not be ready immediately
-	var lastErr error
-	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			fmt.Printf("Retrying SSH connection (attempt %d/%d)...\n", i+1, maxRetries)
-			time.Sleep(5 * time.Second)
+	// Commands to try for fetching cloud-init logs
+	commands := []string{
+		"cat /var/log/cloud-init.log",
+		"cat /var/log/cloud-init-output.log",
+		"journalctl -u cloud-init",
+	}
+
+	// Try each config until one works
+	for _, cfg := range configs {
+		fmt.Printf("Trying SSH connection to %s@%s:%s...\n", cfg.user, cfg.host, cfg.port)
+
+		// Set up SSH client config
+		clientConfig := &ssh.ClientConfig{
+			User: cfg.user,
+			Auth: []ssh.AuthMethod{
+				ssh.Password(cfg.password),
+			},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout:         5 * time.Second,
 		}
 
-		// Alpine's default user is 'alpine' with no password or with password 'alpine'
-		// Try both approaches - password auth and no password
-		sshCmd := exec.CommandContext(ctx, "ssh",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
-			"-o", "ConnectTimeout=8",
-			"-o", "PasswordAuthentication=yes",
-			"-v", // Verbose output for debugging
-			host,
-			"cat /var/log/cloud-init.log || cat /var/log/cloud-init-output.log || echo 'Cloud-init logs not found'")
-
-		// Try alternative login if default doesn't work
-		if i >= 2 {
-			// On later attempts, try with root user and password
-			sshCmd = exec.CommandContext(ctx, "ssh",
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=8",
-				"-o", "PasswordAuthentication=yes",
-				"-l", "root",
-				"-v", // Verbose output for debugging
-				host,
-				"cat /var/log/cloud-init.log || cat /var/log/cloud-init-output.log || echo 'Cloud-init logs not found'")
-		}
-
-		stdout, err := sshCmd.StdoutPipe()
+		// Connect to the server
+		addr := fmt.Sprintf("%s:%s", cfg.host, cfg.port)
+		client, err := ssh.Dial("tcp", addr, clientConfig)
 		if err != nil {
-			lastErr = fmt.Errorf("getting SSH stdout pipe: %w", err)
-			continue
-		}
-
-		stderr, err := sshCmd.StderrPipe()
-		if err != nil {
-			lastErr = fmt.Errorf("getting SSH stderr pipe: %w", err)
-			continue
-		}
-
-		if err := sshCmd.Start(); err != nil {
-			lastErr = fmt.Errorf("starting SSH command: %w", err)
-			continue
-		}
-
-		// Print the output in real-time with a cyan prefix for logs
-		var logFound bool
-		go func() {
-			scanner := bufio.NewScanner(stdout)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.Contains(line, "Cloud-init") || strings.Contains(line, "cloud-init") {
-					logFound = true
-				}
-				fmt.Printf("\033[36m[cloud-init]\033[0m %s\n", line)
+			if strings.Contains(err.Error(), "connection refused") ||
+				strings.Contains(err.Error(), "i/o timeout") {
+				continue // Try next config
 			}
-		}()
+			fmt.Printf("SSH connection error: %v\n", err)
+			continue
+		}
+		defer client.Close()
 
-		// Also print any stderr output but check if it contains authentication errors
-		var authError bool
-		go func() {
-			scanner := bufio.NewScanner(stderr)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.Contains(line, "Authentication failed") ||
-					strings.Contains(line, "Permission denied") {
-					authError = true
-				}
-				// Only print errors in debug mode or if it's critical
-				if os.Getenv("EC1_DEBUG") == "1" ||
-					strings.Contains(line, "fatal") ||
-					strings.Contains(line, "Failed") {
-					fmt.Printf("\033[31m[ssh-error]\033[0m %s\n", line)
+		fmt.Printf("Connected to %s, fetching cloud-init logs...\n", addr)
+
+		// Try each command to find logs
+		var foundLogs bool
+		for _, cmd := range commands {
+			session, err := client.NewSession()
+			if err != nil {
+				fmt.Printf("Failed to create session: %v\n", err)
+				continue
+			}
+			defer session.Close()
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			session.Stdout = &stdout
+			session.Stderr = &stderr
+
+			// Run the command
+			err = session.Run(cmd)
+			if err != nil && stderr.Len() > 0 {
+				// If stderr contains "no such file", try next command
+				if strings.Contains(stderr.String(), "No such file") ||
+					strings.Contains(stderr.String(), "not found") {
+					continue
 				}
 			}
-		}()
 
-		// Wait for the command to finish
-		err = sshCmd.Wait()
-		if err == nil && !authError {
-			fmt.Println("=== End of Cloud-Init Logs ===")
+			// If we got output, display it
+			if stdout.Len() > 0 {
+				foundLogs = true
+				output := stdout.String()
+				logLines := strings.Split(output, "\n")
+				for _, line := range logLines {
+					if line != "" {
+						fmt.Printf("\033[36m[cloud-init]\033[0m %s\n", line)
+					}
+				}
+				fmt.Println("=== End of Cloud-Init Logs ===")
+				return nil
+			}
+		}
+
+		if foundLogs {
 			return nil
 		}
 
-		lastErr = fmt.Errorf("SSH command failed: %w", err)
-		if logFound {
-			fmt.Println("=== End of Cloud-Init Logs ===")
-			return nil
-		}
-
-		// If authentication error, try next method
-		if authError {
-			continue
-		}
+		// If we connected but didn't find logs, return a specific error
+		return fmt.Errorf("connected to VM but couldn't find cloud-init logs")
 	}
 
 	fmt.Println("=== Failed to retrieve Cloud-Init Logs ===")
-	return lastErr
+	return fmt.Errorf("could not establish SSH connection to VM")
+}
+
+// TestSSHConnection checks if the VM is accessible via SSH
+func TestSSHConnection(ctx context.Context, ipAddress string) (bool, string, error) {
+	configs := []struct {
+		host     string
+		port     string
+		user     string
+		password string
+	}{
+		{host: ipAddress, port: "22", user: "alpine", password: "alpine"},
+		{host: "localhost", port: "2222", user: "alpine", password: "alpine"},
+		{host: "localhost", port: "2222", user: "root", password: "alpine"},
+	}
+
+	for _, cfg := range configs {
+		clientConfig := &ssh.ClientConfig{
+			User: cfg.user,
+			Auth: []ssh.AuthMethod{
+				ssh.Password(cfg.password),
+			},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout:         5 * time.Second,
+		}
+
+		addr := fmt.Sprintf("%s:%s", cfg.host, cfg.port)
+		client, err := ssh.Dial("tcp", addr, clientConfig)
+		if err != nil {
+			continue
+		}
+		defer client.Close()
+
+		session, err := client.NewSession()
+		if err != nil {
+			return false, addr, err
+		}
+		defer session.Close()
+
+		var stdout bytes.Buffer
+		session.Stdout = &stdout
+
+		if err := session.Run("echo SSH_TEST_SUCCESS"); err != nil {
+			return false, addr, err
+		}
+
+		if strings.Contains(stdout.String(), "SSH_TEST_SUCCESS") {
+			return true, addr, nil
+		}
+	}
+
+	return false, "", fmt.Errorf("all SSH connection attempts failed")
 }
 
 // StartLinuxVM starts the Linux VM via the management server
@@ -264,7 +308,7 @@ func StartLinuxVM(ctx context.Context, mgtAddr string, qcow2Path *Image) (string
 		return "", fmt.Errorf("setting up agent file server: %w", err)
 	}
 
-	// Wait for VM to boot and run cloud-init with nice progress display
+	// Wait for VM to boot with nice progress display (longer boot time to ensure it's ready)
 	bootUpdates := []string{
 		"BIOS initialization",
 		"Kernel loading",
@@ -274,14 +318,61 @@ func StartLinuxVM(ctx context.Context, mgtAddr string, qcow2Path *Image) (string
 		"Installing required packages",
 		"System initialization",
 	}
-	displayProgress(ctx, 25*time.Second, "VM Boot Progress", bootUpdates)
+	displayProgress(ctx, 40*time.Second, "VM Boot Progress", bootUpdates)
 
-	// Try to fetch and display cloud-init logs after basic boot
-	err = fetchCloudInitLogs(ctx, vmIP)
-	if err != nil {
-		fmt.Printf("Warning: Could not retrieve cloud-init logs: %v\n", err)
-		fmt.Println("Continuing with boot sequence...")
+	// Ping test to see if the VM is reachable
+	pingSuccess := false
+	fmt.Printf("Testing connectivity to VM at %s... ", vmIP)
+	for i := 0; i < 5; i++ {
+		pingCmd := exec.CommandContext(ctx, "ping", "-c", "1", "-W", "2", vmIP)
+		_ = pingCmd.Run()
+		if pingCmd.ProcessState != nil && pingCmd.ProcessState.ExitCode() == 0 {
+			pingSuccess = true
+			fmt.Println("✓")
+			break
+		}
+		if i < 4 {
+			fmt.Print(".")
+			time.Sleep(2 * time.Second)
+		}
 	}
+	if !pingSuccess {
+		fmt.Println("❌")
+		fmt.Println("Warning: Cannot ping VM. Network might not be properly configured.")
+		fmt.Println("Continuing anyway as some hypervisors don't support ICMP to the VM...")
+	}
+
+	// Test SSH connectivity
+	fmt.Print("Testing SSH connection to VM... ")
+	sshSuccess, sshAddr, sshErr := TestSSHConnection(ctx, vmIP)
+	if sshSuccess {
+		fmt.Println("✓")
+		fmt.Printf("SSH connectivity verified via %s\n", sshAddr)
+	} else {
+		fmt.Println("❌")
+		if sshErr != nil {
+			fmt.Printf("SSH connection error: %v\n", sshErr)
+		}
+	}
+
+	// Try to get cloud-init logs if SSH is working
+	if sshSuccess {
+		// Try to fetch cloud-init logs
+		err = fetchCloudInitLogs(ctx, vmIP)
+		if err != nil {
+			fmt.Printf("Warning: Could not retrieve cloud-init logs: %v\n", err)
+		}
+	} else {
+		fmt.Println("\n=== Cloud-Init Logs Unavailable - SSH Connection Failed ===")
+		fmt.Println("The VM appears to be running but is not accepting SSH connections.")
+		fmt.Println("This could be due to:")
+		fmt.Println("1. SSH service not started in the VM")
+		fmt.Println("2. Firewall blocking the connection")
+		fmt.Println("3. VM not fully booted yet")
+		fmt.Println("4. Network configuration issues")
+	}
+
+	fmt.Println("Continuing with boot sequence...")
 
 	// Wait for the agent to start inside the VM with progress display
 	agentUpdates := []string{
@@ -290,18 +381,47 @@ func StartLinuxVM(ctx context.Context, mgtAddr string, qcow2Path *Image) (string
 		"Starting agent service",
 		"Connecting to management server",
 	}
-	displayProgress(ctx, 10*time.Second, "Agent Startup Progress", agentUpdates)
+	displayProgress(ctx, 15*time.Second, "Agent Startup Progress", agentUpdates)
 
-	// Try to connect to the agent to verify it's running
-	fmt.Print("Verifying agent is running... ")
-	err = verifyAgentRunning(ctx, fmt.Sprintf("http://%s:9091", vmIP))
-	if err != nil {
+	// Try to connect to the agent to verify it's running with multiple attempts
+	fmt.Println("Verifying agent is running...")
+	verified := false
+	var verifyErr error
+
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			fmt.Printf("Retry %d/3... ", i)
+			time.Sleep(5 * time.Second)
+		}
+
+		verifyErr = verifyAgentRunning(ctx, fmt.Sprintf("http://%s:9091", vmIP))
+		if verifyErr == nil {
+			verified = true
+			fmt.Println("✓ Agent is running inside the VM")
+			break
+		}
+	}
+
+	if !verified {
 		fmt.Println("❌")
-		fmt.Printf("Warning: Could not verify agent is running: %v\n", err)
+		fmt.Printf("Warning: Could not verify agent is running: %v\n", verifyErr)
 		fmt.Println("The demo will continue, but the nested VM step may fail")
-	} else {
-		fmt.Println("✓")
-		fmt.Println("Agent is running inside the VM")
+
+		// Try alternative port forwarding approach
+		fmt.Println("Trying alternative agent connection (localhost:9091)...")
+		altErr := verifyAgentRunning(ctx, "http://localhost:9091")
+		if altErr == nil {
+			fmt.Println("✓ Agent is running and accessible via port forwarding")
+			verified = true
+		} else {
+			fmt.Printf("Alternative agent verification failed: %v\n", altErr)
+		}
+	}
+
+	// Return either the real VM IP or localhost if we're using port forwarding
+	if !pingSuccess && verified {
+		// If ping failed but agent verified via localhost, use localhost for subsequent steps
+		return "localhost", nil
 	}
 
 	return vmIP, nil
@@ -320,13 +440,6 @@ func StartVM(
 	// For the demo, we'll build a simple startvm implementation
 	// This would normally be an RPC in the management service
 
-	// Create a request to start the VM
-	// This is a simplified version that calls directly to the management package
-	// In a real implementation, this would be a proper RPC in the management service
-
-	// Import the management package and call StartVM directly
-	// For the POC, we can implement this by importing management and calling directly
-
 	// Check if both files exist
 	if _, err := os.Stat(diskPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("disk image does not exist: %s", diskPath)
@@ -336,16 +449,17 @@ func StartVM(
 		return nil, fmt.Errorf("cloud-init ISO does not exist: %s", ciPath)
 	}
 
-	// For POC, we'll use a workaround by calling StartVM directly on the management package
-	// This isn't ideal but works for the demo
+	// For POC, we'll use a simplified approach
+	// Get a dynamic IP from available network interfaces
+	vmIP := getDynamicIPAddress()
+	fmt.Printf("Using dynamic IP: %s for VM\n", vmIP)
 
-	// TODO: Replace with proper RPC once implemented
-	// For now we'll mock the response
+	// Create a simulated VM info response
 	vmInfo := &ec1v1.VMInfo{
 		VmId:         ptr("vm-1"),
 		Name:         ptr(name),
 		Status:       ptr(ec1v1.VMStatus_VM_STATUS_RUNNING),
-		IpAddress:    ptr("192.168.64.10"), // Hardcoded for the POC, normally we'd get this from the hypervisor
+		IpAddress:    ptr(vmIP),
 		ResourcesMax: resources,
 		ResourcesLive: &ec1v1.Resources{
 			Memory: resources.Memory,
@@ -354,6 +468,94 @@ func StartVM(
 	}
 
 	return vmInfo, nil
+}
+
+// getDynamicIPAddress tries to get a usable IP address
+// For the demo, we try a few common local development IPs
+func getDynamicIPAddress() string {
+	// Try to get host IP from network interfaces
+	interfaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range interfaces {
+			// Skip loopback and inactive interfaces
+			if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+				continue
+			}
+
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+
+			for _, addr := range addrs {
+				// Parse IP address
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+
+				// Skip non-IPv4 addresses
+				if ip == nil || ip.To4() == nil {
+					continue
+				}
+
+				// Skip loopback addresses
+				if ip.IsLoopback() {
+					continue
+				}
+
+				// If it's a private IP, use it as a base for VM IP
+				if isPrivateIP(ip) {
+					// Convert the first 3 octets to form a base for our VM IP
+					octets := strings.Split(ip.String(), ".")
+					if len(octets) == 4 {
+						// Form VM IP with last octet as 10 (common for first VM)
+						return fmt.Sprintf("%s.%s.%s.10", octets[0], octets[1], octets[2])
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to common VM IP addresses
+	commonIPs := []string{
+		"192.168.64.10",  // Often used by QEMU/Hyperkit
+		"192.168.122.10", // Often used by libvirt/KVM
+		"192.168.99.10",  // Often used by VirtualBox/Vagrant
+		"192.168.65.10",  // Also common for VMs
+	}
+
+	// Let's ping each to see if any responds (indicating it might be in use)
+	for _, ip := range commonIPs {
+		cmd := exec.Command("ping", "-c", "1", "-W", "1", ip)
+		if err := cmd.Run(); err != nil {
+			// If ping fails, IP is probably available
+			return ip
+		}
+	}
+
+	// Final fallback
+	return "192.168.64.10"
+}
+
+// isPrivateIP checks if an IP is in a private range
+func isPrivateIP(ip net.IP) bool {
+	// Check for private IPv4 ranges
+	private := false
+
+	// 10.0.0.0/8
+	private = private || (ip[0] == 10)
+
+	// 172.16.0.0/12
+	private = private || (ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31)
+
+	// 192.168.0.0/16
+	private = private || (ip[0] == 192 && ip[1] == 168)
+
+	return private
 }
 
 // setupAgentFileServer sets up a small HTTP server to serve the agent binary to the VM
