@@ -37,6 +37,8 @@ const (
 	AgentServiceStartVMProcedure = "/ec1.v1poc1.AgentService/StartVM"
 	// AgentServiceStopVMProcedure is the fully-qualified name of the AgentService's StopVM RPC.
 	AgentServiceStopVMProcedure = "/ec1.v1poc1.AgentService/StopVM"
+	// AgentServiceVMStatusProcedure is the fully-qualified name of the AgentService's VMStatus RPC.
+	AgentServiceVMStatusProcedure = "/ec1.v1poc1.AgentService/VMStatus"
 	// AgentServiceGetVMStatusProcedure is the fully-qualified name of the AgentService's GetVMStatus
 	// RPC.
 	AgentServiceGetVMStatusProcedure = "/ec1.v1poc1.AgentService/GetVMStatus"
@@ -48,6 +50,8 @@ type AgentServiceClient interface {
 	StartVM(context.Context, *connect.Request[v1poc1.StartVMRequest]) (*connect.Response[v1poc1.StartVMResponse], error)
 	// StopVM stops a running virtual machine on the agent's host
 	StopVM(context.Context, *connect.Request[v1poc1.StopVMRequest]) (*connect.Response[v1poc1.StopVMResponse], error)
+	// GetVMStatus gets the status of a virtual machine on the agent's host
+	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest]) (*connect.ServerStreamForClient[v1poc1.VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
 }
@@ -77,6 +81,13 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		vMStatus: connect.NewClient[v1poc1.VMStatusRequest, v1poc1.VMStatusResponse](
+			httpClient,
+			baseURL+AgentServiceVMStatusProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("VMStatus")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		getVMStatus: connect.NewClient[v1poc1.GetVMStatusRequest, v1poc1.GetVMStatusResponse](
 			httpClient,
 			baseURL+AgentServiceGetVMStatusProcedure,
@@ -91,6 +102,7 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type agentServiceClient struct {
 	startVM     *connect.Client[v1poc1.StartVMRequest, v1poc1.StartVMResponse]
 	stopVM      *connect.Client[v1poc1.StopVMRequest, v1poc1.StopVMResponse]
+	vMStatus    *connect.Client[v1poc1.VMStatusRequest, v1poc1.VMStatusResponse]
 	getVMStatus *connect.Client[v1poc1.GetVMStatusRequest, v1poc1.GetVMStatusResponse]
 }
 
@@ -104,6 +116,11 @@ func (c *agentServiceClient) StopVM(ctx context.Context, req *connect.Request[v1
 	return c.stopVM.CallUnary(ctx, req)
 }
 
+// VMStatus calls ec1.v1poc1.AgentService.VMStatus.
+func (c *agentServiceClient) VMStatus(ctx context.Context, req *connect.Request[v1poc1.VMStatusRequest]) (*connect.ServerStreamForClient[v1poc1.VMStatusResponse], error) {
+	return c.vMStatus.CallServerStream(ctx, req)
+}
+
 // GetVMStatus calls ec1.v1poc1.AgentService.GetVMStatus.
 func (c *agentServiceClient) GetVMStatus(ctx context.Context, req *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error) {
 	return c.getVMStatus.CallUnary(ctx, req)
@@ -115,6 +132,8 @@ type AgentServiceHandler interface {
 	StartVM(context.Context, *connect.Request[v1poc1.StartVMRequest]) (*connect.Response[v1poc1.StartVMResponse], error)
 	// StopVM stops a running virtual machine on the agent's host
 	StopVM(context.Context, *connect.Request[v1poc1.StopVMRequest]) (*connect.Response[v1poc1.StopVMResponse], error)
+	// GetVMStatus gets the status of a virtual machine on the agent's host
+	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest], *connect.ServerStream[v1poc1.VMStatusResponse]) error
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
 }
@@ -140,6 +159,13 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceVMStatusHandler := connect.NewServerStreamHandler(
+		AgentServiceVMStatusProcedure,
+		svc.VMStatus,
+		connect.WithSchema(agentServiceMethods.ByName("VMStatus")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceGetVMStatusHandler := connect.NewUnaryHandler(
 		AgentServiceGetVMStatusProcedure,
 		svc.GetVMStatus,
@@ -153,6 +179,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceStartVMHandler.ServeHTTP(w, r)
 		case AgentServiceStopVMProcedure:
 			agentServiceStopVMHandler.ServeHTTP(w, r)
+		case AgentServiceVMStatusProcedure:
+			agentServiceVMStatusHandler.ServeHTTP(w, r)
 		case AgentServiceGetVMStatusProcedure:
 			agentServiceGetVMStatusHandler.ServeHTTP(w, r)
 		default:
@@ -170,6 +198,10 @@ func (UnimplementedAgentServiceHandler) StartVM(context.Context, *connect.Reques
 
 func (UnimplementedAgentServiceHandler) StopVM(context.Context, *connect.Request[v1poc1.StopVMRequest]) (*connect.Response[v1poc1.StopVMResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.StopVM is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest], *connect.ServerStream[v1poc1.VMStatusResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.VMStatus is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error) {

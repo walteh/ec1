@@ -6,6 +6,10 @@ require (
 	connectrpc.com/connect v1.18.1
 	github.com/Code-Hex/vz/v3 v3.6.0
 	github.com/google/cel-go v0.24.1
+	github.com/rs/xid v1.6.0
+	github.com/samber/oops v1.17.0
+	github.com/veqryn/slog-context v0.8.0
+	gitlab.com/tozd/go/errors v0.10.0
 	golang.org/x/net v0.39.0
 	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.6
@@ -16,7 +20,13 @@ require (
 	cel.dev/expr v0.19.1 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/oklog/ulid/v2 v2.1.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/samber/lo v1.49.1 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
+	go.opentelemetry.io/otel v1.34.0 // indirect
+	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect

@@ -21,6 +21,12 @@ service AgentService {
 
 
 	// GetVMStatus gets the status of a virtual machine on the agent's host
+	rpc VMStatus(VMStatusRequest) returns (stream VMStatusResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+
+
+	// GetVMStatus gets the status of a virtual machine on the agent's host
 	rpc GetVMStatus(GetVMStatusRequest) returns (GetVMStatusResponse) {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
@@ -81,14 +87,14 @@ message StopVMResponse {
 	string error = 2;
 }
 
-// GetVMStatusRequest is the request message for getting VM status
-message GetVMStatusRequest {
+// VMStatusRequest is the request message for getting VM status
+message VMStatusRequest {
 	// ID of the VM to get status for
 	string vm_id = 1;
 }
 
 // GetVMStatusResponse is the response message with VM status
-message GetVMStatusResponse {
+message VMStatusResponse {
 	// Status of the VM
 	VMStatus status = 1;
 
@@ -106,4 +112,15 @@ message VMNetworkConfig {
 
 	// Port forwarding rules
 	repeated PortForward port_forwards = 2;
+}
+
+// GetVMStatusRequest is the request message for getting VM status
+message GetVMStatusRequest {
+	// ID of the VM to get status for
+	string vm_id = 1;
+}
+
+// GetVMStatusResponse is the response message with VM status
+message GetVMStatusResponse {
+	VMStatusResponse response = 1;
 }

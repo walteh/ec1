@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
+	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -163,6 +164,10 @@ func (s *Server) StartVM(ctx context.Context, name, diskImagePath string, resour
 		DiskImagePath: strPtr(diskImagePath),
 		NetworkConfig: networkConfig,
 	})
+
+	if err := protovalidate.Validate(req.Msg); err != nil {
+		return nil, fmt.Errorf("validating start VM request: %w", err)
+	}
 
 	// Call the agent to start the VM
 	resp, err := agentClient.StartVM(ctx, req)

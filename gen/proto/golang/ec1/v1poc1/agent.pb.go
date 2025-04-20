@@ -286,8 +286,8 @@ func (x *StopVMResponse) GetError() string {
 	return ""
 }
 
-// GetVMStatusRequest is the request message for getting VM status
-type GetVMStatusRequest struct {
+// VMStatusRequest is the request message for getting VM status
+type VMStatusRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the VM to get status for
 	VmId          *string `protobuf:"bytes,1,opt,name=vm_id,json=vmId" json:"vm_id,omitempty"`
@@ -295,20 +295,20 @@ type GetVMStatusRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetVMStatusRequest) Reset() {
-	*x = GetVMStatusRequest{}
+func (x *VMStatusRequest) Reset() {
+	*x = VMStatusRequest{}
 	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetVMStatusRequest) String() string {
+func (x *VMStatusRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetVMStatusRequest) ProtoMessage() {}
+func (*VMStatusRequest) ProtoMessage() {}
 
-func (x *GetVMStatusRequest) ProtoReflect() protoreflect.Message {
+func (x *VMStatusRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -320,12 +320,12 @@ func (x *GetVMStatusRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetVMStatusRequest.ProtoReflect.Descriptor instead.
-func (*GetVMStatusRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use VMStatusRequest.ProtoReflect.Descriptor instead.
+func (*VMStatusRequest) Descriptor() ([]byte, []int) {
 	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetVMStatusRequest) GetVmId() string {
+func (x *VMStatusRequest) GetVmId() string {
 	if x != nil && x.VmId != nil {
 		return *x.VmId
 	}
@@ -333,7 +333,7 @@ func (x *GetVMStatusRequest) GetVmId() string {
 }
 
 // GetVMStatusResponse is the response message with VM status
-type GetVMStatusResponse struct {
+type VMStatusResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Status of the VM
 	Status *VMStatus `protobuf:"varint,1,opt,name=status,enum=ec1.v1poc1.VMStatus" json:"status,omitempty"`
@@ -345,20 +345,20 @@ type GetVMStatusResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetVMStatusResponse) Reset() {
-	*x = GetVMStatusResponse{}
+func (x *VMStatusResponse) Reset() {
+	*x = VMStatusResponse{}
 	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetVMStatusResponse) String() string {
+func (x *VMStatusResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetVMStatusResponse) ProtoMessage() {}
+func (*VMStatusResponse) ProtoMessage() {}
 
-func (x *GetVMStatusResponse) ProtoReflect() protoreflect.Message {
+func (x *VMStatusResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -370,26 +370,26 @@ func (x *GetVMStatusResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetVMStatusResponse.ProtoReflect.Descriptor instead.
-func (*GetVMStatusResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use VMStatusResponse.ProtoReflect.Descriptor instead.
+func (*VMStatusResponse) Descriptor() ([]byte, []int) {
 	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GetVMStatusResponse) GetStatus() VMStatus {
+func (x *VMStatusResponse) GetStatus() VMStatus {
 	if x != nil && x.Status != nil {
 		return *x.Status
 	}
 	return VMStatus_VM_STATUS_UNSPECIFIED
 }
 
-func (x *GetVMStatusResponse) GetIpAddress() string {
+func (x *VMStatusResponse) GetIpAddress() string {
 	if x != nil && x.IpAddress != nil {
 		return *x.IpAddress
 	}
 	return ""
 }
 
-func (x *GetVMStatusResponse) GetError() string {
+func (x *VMStatusResponse) GetError() string {
 	if x != nil && x.Error != nil {
 		return *x.Error
 	}
@@ -451,6 +451,97 @@ func (x *VMNetworkConfig) GetPortForwards() []*PortForward {
 	return nil
 }
 
+// GetVMStatusRequest is the request message for getting VM status
+type GetVMStatusRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the VM to get status for
+	VmId          *string `protobuf:"bytes,1,opt,name=vm_id,json=vmId" json:"vm_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVMStatusRequest) Reset() {
+	*x = GetVMStatusRequest{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVMStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVMStatusRequest) ProtoMessage() {}
+
+func (x *GetVMStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVMStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetVMStatusRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetVMStatusRequest) GetVmId() string {
+	if x != nil && x.VmId != nil {
+		return *x.VmId
+	}
+	return ""
+}
+
+// GetVMStatusResponse is the response message with VM status
+type GetVMStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Response      *VMStatusResponse      `protobuf:"bytes,1,opt,name=response" json:"response,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVMStatusResponse) Reset() {
+	*x = GetVMStatusResponse{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVMStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVMStatusResponse) ProtoMessage() {}
+
+func (x *GetVMStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVMStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetVMStatusResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetVMStatusResponse) GetResponse() *VMStatusResponse {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
 var File_ec1_v1poc1_agent_proto protoreflect.FileDescriptor
 
 const file_ec1_v1poc1_agent_proto_rawDesc = "" +
@@ -474,20 +565,25 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"@\n" +
 	"\x0eStopVMResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\")\n" +
-	"\x12GetVMStatusRequest\x12\x13\n" +
-	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\"x\n" +
-	"\x13GetVMStatusResponse\x12,\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"&\n" +
+	"\x0fVMStatusRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\"u\n" +
+	"\x10VMStatusResponse\x12,\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x14.ec1.v1poc1.VMStatusR\x06status\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x02 \x01(\tR\tipAddress\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"\x8b\x01\n" +
 	"\x0fVMNetworkConfig\x12:\n" +
 	"\fnetwork_type\x18\x01 \x01(\x0e2\x17.ec1.v1poc1.NetworkTypeR\vnetworkType\x12<\n" +
-	"\rport_forwards\x18\x02 \x03(\v2\x17.ec1.v1poc1.PortForwardR\fportForwards2\xf2\x01\n" +
+	"\rport_forwards\x18\x02 \x03(\v2\x17.ec1.v1poc1.PortForwardR\fportForwards\")\n" +
+	"\x12GetVMStatusRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\"O\n" +
+	"\x13GetVMStatusResponse\x128\n" +
+	"\bresponse\x18\x01 \x01(\v2\x1c.ec1.v1poc1.VMStatusResponseR\bresponse2\xc0\x02\n" +
 	"\fAgentService\x12G\n" +
 	"\aStartVM\x12\x1a.ec1.v1poc1.StartVMRequest\x1a\x1b.ec1.v1poc1.StartVMResponse\"\x03\x90\x02\x01\x12D\n" +
-	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12S\n" +
+	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12L\n" +
+	"\bVMStatus\x12\x1b.ec1.v1poc1.VMStatusRequest\x1a\x1c.ec1.v1poc1.VMStatusResponse\"\x03\x90\x02\x010\x01\x12S\n" +
 	"\vGetVMStatus\x12\x1e.ec1.v1poc1.GetVMStatusRequest\x1a\x1f.ec1.v1poc1.GetVMStatusResponse\"\x03\x90\x02\x01B\x98\x01\n" +
 	"\x0ecom.ec1.v1poc1B\n" +
 	"AgentProtoP\x01Z1github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1\xa2\x02\x03EVX\xaa\x02\n" +
@@ -506,39 +602,44 @@ func file_ec1_v1poc1_agent_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_agent_proto_rawDescData
 }
 
-var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_ec1_v1poc1_agent_proto_goTypes = []any{
 	(*StartVMRequest)(nil),      // 0: ec1.v1poc1.StartVMRequest
 	(*StartVMResponse)(nil),     // 1: ec1.v1poc1.StartVMResponse
 	(*StopVMRequest)(nil),       // 2: ec1.v1poc1.StopVMRequest
 	(*StopVMResponse)(nil),      // 3: ec1.v1poc1.StopVMResponse
-	(*GetVMStatusRequest)(nil),  // 4: ec1.v1poc1.GetVMStatusRequest
-	(*GetVMStatusResponse)(nil), // 5: ec1.v1poc1.GetVMStatusResponse
+	(*VMStatusRequest)(nil),     // 4: ec1.v1poc1.VMStatusRequest
+	(*VMStatusResponse)(nil),    // 5: ec1.v1poc1.VMStatusResponse
 	(*VMNetworkConfig)(nil),     // 6: ec1.v1poc1.VMNetworkConfig
-	(*Resources)(nil),           // 7: ec1.v1poc1.Resources
-	(VMStatus)(0),               // 8: ec1.v1poc1.VMStatus
-	(NetworkType)(0),            // 9: ec1.v1poc1.NetworkType
-	(*PortForward)(nil),         // 10: ec1.v1poc1.PortForward
+	(*GetVMStatusRequest)(nil),  // 7: ec1.v1poc1.GetVMStatusRequest
+	(*GetVMStatusResponse)(nil), // 8: ec1.v1poc1.GetVMStatusResponse
+	(*Resources)(nil),           // 9: ec1.v1poc1.Resources
+	(VMStatus)(0),               // 10: ec1.v1poc1.VMStatus
+	(NetworkType)(0),            // 11: ec1.v1poc1.NetworkType
+	(*PortForward)(nil),         // 12: ec1.v1poc1.PortForward
 }
 var file_ec1_v1poc1_agent_proto_depIdxs = []int32{
-	7,  // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
-	7,  // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
+	9,  // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
+	9,  // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
 	6,  // 2: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
-	8,  // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
-	8,  // 4: ec1.v1poc1.GetVMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
-	9,  // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
-	10, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
-	0,  // 7: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
-	2,  // 8: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
-	4,  // 9: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
-	1,  // 10: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
-	3,  // 11: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
-	5,  // 12: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	10, // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
+	10, // 4: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
+	11, // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
+	12, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
+	5,  // 7: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
+	0,  // 8: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
+	2,  // 9: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
+	4,  // 10: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
+	7,  // 11: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
+	1,  // 12: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
+	3,  // 13: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
+	5,  // 14: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
+	8,  // 15: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_agent_proto_init() }
@@ -554,7 +655,7 @@ func file_ec1_v1poc1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_agent_proto_rawDesc), len(file_ec1_v1poc1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -333,8 +333,10 @@ func (d *AppleDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReq
 
 	if !exists {
 		return &ec1v1.GetVMStatusResponse{
-			Status: ptr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
-			Error:  ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			Response: &ec1v1.VMStatusResponse{
+				Status: ptr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
+				Error:  ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			},
 		}, nil
 	}
 
@@ -342,8 +344,10 @@ func (d *AppleDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReq
 	// But for POC, we'll use the cached state which is updated via delegate
 
 	return &ec1v1.GetVMStatusResponse{
-		Status:    ptr(vm.State()),
-		IpAddress: ptr(vm.ipAddress),
+		Response: &ec1v1.VMStatusResponse{
+			Status:    ptr(vm.State()),
+			IpAddress: ptr(vm.ipAddress),
+		},
 	}, nil
 }
 

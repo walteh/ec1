@@ -197,8 +197,10 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 
 	if !exists {
 		return &ec1v1.GetVMStatusResponse{
-			Status: ptr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
-			Error:  ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			Response: &ec1v1.VMStatusResponse{
+				Status: ptr(ec1v1.VMStatus_VM_STATUS_UNSPECIFIED),
+				Error:  ptr(fmt.Sprintf("VM with ID %s not found", req.GetVmId())),
+			},
 		}, nil
 	}
 
@@ -206,8 +208,10 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 	state, _, err := vm.domain.GetState()
 	if err != nil {
 		return &ec1v1.GetVMStatusResponse{
-			Status: ptr(ec1v1.VMStatus_VM_STATUS_ERROR),
-			Error:  ptr(fmt.Sprintf("Failed to get VM state: %v", err)),
+			Response: &ec1v1.VMStatusResponse{
+				Status: ptr(ec1v1.VMStatus_VM_STATUS_ERROR),
+				Error:  ptr(fmt.Sprintf("Failed to get VM state: %v", err)),
+			},
 		}, nil
 	}
 
@@ -215,8 +219,10 @@ func (d *KVMDriver) GetVMStatus(ctx context.Context, req *ec1v1.GetVMStatusReque
 	status := mapLibvirtState(state)
 
 	return &ec1v1.GetVMStatusResponse{
-		Status:    ptr(status),
-		IpAddress: ptr(vm.ipAddress),
+		Response: &ec1v1.VMStatusResponse{
+			Status:    ptr(status),
+			IpAddress: ptr(vm.ipAddress),
+		},
 	}, nil
 }
 

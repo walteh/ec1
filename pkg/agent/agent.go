@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
+	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"github.com/walteh/ec1/pkg/hypervisor"
+	"github.com/walteh/ec1/pkg/id"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -15,16 +17,19 @@ import (
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )
 
+func ptr[T any](v T) *T {
+	return &v
+}
+
 // AgentConfig holds configuration for the agent
 type AgentConfig struct {
 	// Host address where the agent listens for incoming requests
 	HostAddr string
 
-	// ID of the agent
-	AgentID string
-
 	// Management server address for registration
 	MgtAddr string
+
+	IDStore IDStore
 }
 
 // Agent implements the EC1 Agent service
@@ -32,8 +37,20 @@ type Agent struct {
 	// Configuration
 	config AgentConfig
 
+	// ID of the agent
+	agentID id.ID
+
 	// Hypervisor driver
 	driver hypervisor.Driver
+
+	managementClient v1poc1connect.ManagementServiceClient
+
+	// VM status channel
+	vmStatusChan chan *ec1v1.VMStatusResponse
+}
+
+func (a *Agent) ID() id.ID {
+	return a.agentID
 }
 
 // Helper function to convert enum to pointer
@@ -49,9 +66,27 @@ func New(ctx context.Context, config AgentConfig) (*Agent, error) {
 		return nil, fmt.Errorf("creating hypervisor driver: %w", err)
 	}
 
+	agentID, ok, err := config.IDStore.GetInstanceID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting agent ID: %w", err)
+	}
+	if !ok {
+		agentID = id.NewID("agent")
+		if err := config.IDStore.SetInstanceID(ctx, agentID); err != nil {
+			return nil, fmt.Errorf("setting agent ID: %w", err)
+		}
+	}
+
+	managementClient := v1poc1connect.NewManagementServiceClient(
+		http.DefaultClient,
+		config.MgtAddr,
+	)
+
 	return &Agent{
-		config: config,
-		driver: driver,
+		config:           config,
+		driver:           driver,
+		agentID:          agentID,
+		managementClient: managementClient,
 	}, nil
 }
 
@@ -75,6 +110,23 @@ func (a *Agent) StopVM(ctx context.Context, req *connect.Request[ec1v1.StopVMReq
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+var _ v1poc1connect.AgentServiceHandler = &Agent{}
+
+// GetVMStatus handles the GetVMStatus RPC
+func (a *Agent) VMStatus(ctx context.Context, req *connect.Request[ec1v1.VMStatusRequest], stream *connect.ServerStream[ec1v1.VMStatusResponse]) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case vmStatus := <-a.vmStatusChan:
+			if err := stream.Send(vmStatus); err != nil {
+				fmt.Printf("error sending VM status: %v\n", err)
+				return err
+			}
+		}
+	}
 }
 
 // GetVMStatus handles the GetVMStatus RPC
@@ -107,15 +159,19 @@ func (a *Agent) RegisterWithManagement(ctx context.Context) error {
 
 	// Register with the management server
 	req := connect.NewRequest(&ec1v1.RegisterAgentRequest{
-		AgentId:        &a.config.AgentID,
+		AgentId:        ptr(a.agentID.String()),
 		HostAddress:    &a.config.HostAddr,
 		HypervisorType: enumPtr(a.driver.GetHypervisorType()),
 		TotalResources: resources,
 	})
 
+	if err := protovalidate.Validate(req.Msg); err != nil {
+		return fmt.Errorf("validating register agent request: %w", err)
+	}
+
 	_, err := mgtClient.RegisterAgent(ctx, req)
 	if err != nil {
-		return fmt.Errorf("registering with management server: %w", err)
+		return fmt.Errorf("calling management server to register agent: %w", err)
 	}
 
 	return nil

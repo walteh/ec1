@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AgentService_StartVM_FullMethodName     = "/ec1.v1poc1.AgentService/StartVM"
 	AgentService_StopVM_FullMethodName      = "/ec1.v1poc1.AgentService/StopVM"
+	AgentService_VMStatus_FullMethodName    = "/ec1.v1poc1.AgentService/VMStatus"
 	AgentService_GetVMStatus_FullMethodName = "/ec1.v1poc1.AgentService/GetVMStatus"
 )
 
@@ -34,6 +35,8 @@ type AgentServiceClient interface {
 	StartVM(ctx context.Context, in *StartVMRequest, opts ...grpc.CallOption) (*StartVMResponse, error)
 	// StopVM stops a running virtual machine on the agent's host
 	StopVM(ctx context.Context, in *StopVMRequest, opts ...grpc.CallOption) (*StopVMResponse, error)
+	// GetVMStatus gets the status of a virtual machine on the agent's host
+	VMStatus(ctx context.Context, in *VMStatusRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(ctx context.Context, in *GetVMStatusRequest, opts ...grpc.CallOption) (*GetVMStatusResponse, error)
 }
@@ -66,6 +69,25 @@ func (c *agentServiceClient) StopVM(ctx context.Context, in *StopVMRequest, opts
 	return out, nil
 }
 
+func (c *agentServiceClient) VMStatus(ctx context.Context, in *VMStatusRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VMStatusResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], AgentService_VMStatus_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[VMStatusRequest, VMStatusResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_VMStatusClient = grpc.ServerStreamingClient[VMStatusResponse]
+
 func (c *agentServiceClient) GetVMStatus(ctx context.Context, in *GetVMStatusRequest, opts ...grpc.CallOption) (*GetVMStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetVMStatusResponse)
@@ -87,6 +109,8 @@ type AgentServiceServer interface {
 	// StopVM stops a running virtual machine on the agent's host
 	StopVM(context.Context, *StopVMRequest) (*StopVMResponse, error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
+	VMStatus(*VMStatusRequest, grpc.ServerStreamingServer[VMStatusResponse]) error
+	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
@@ -103,6 +127,9 @@ func (UnimplementedAgentServiceServer) StartVM(context.Context, *StartVMRequest)
 }
 func (UnimplementedAgentServiceServer) StopVM(context.Context, *StopVMRequest) (*StopVMResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopVM not implemented")
+}
+func (UnimplementedAgentServiceServer) VMStatus(*VMStatusRequest, grpc.ServerStreamingServer[VMStatusResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method VMStatus not implemented")
 }
 func (UnimplementedAgentServiceServer) GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVMStatus not implemented")
@@ -164,6 +191,17 @@ func _AgentService_StopVM_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_VMStatus_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(VMStatusRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServiceServer).VMStatus(m, &grpc.GenericServerStream[VMStatusRequest, VMStatusResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_VMStatusServer = grpc.ServerStreamingServer[VMStatusResponse]
+
 func _AgentService_GetVMStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetVMStatusRequest)
 	if err := dec(in); err != nil {
@@ -202,6 +240,12 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AgentService_GetVMStatus_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "VMStatus",
+			Handler:       _AgentService_VMStatus_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "ec1/v1poc1/agent.proto",
 }
