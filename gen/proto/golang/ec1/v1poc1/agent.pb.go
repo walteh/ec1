@@ -542,6 +542,96 @@ func (x *GetVMStatusResponse) GetResponse() *VMStatusResponse {
 	return nil
 }
 
+type AgentProbeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentProbeRequest) Reset() {
+	*x = AgentProbeRequest{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentProbeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentProbeRequest) ProtoMessage() {}
+
+func (x *AgentProbeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentProbeRequest.ProtoReflect.Descriptor instead.
+func (*AgentProbeRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{9}
+}
+
+type AgentProbeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// live
+	Live *bool `protobuf:"varint,1,opt,name=live" json:"live,omitempty"`
+	// ready
+	Ready         *bool `protobuf:"varint,2,opt,name=ready" json:"ready,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentProbeResponse) Reset() {
+	*x = AgentProbeResponse{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentProbeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentProbeResponse) ProtoMessage() {}
+
+func (x *AgentProbeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentProbeResponse.ProtoReflect.Descriptor instead.
+func (*AgentProbeResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AgentProbeResponse) GetLive() bool {
+	if x != nil && x.Live != nil {
+		return *x.Live
+	}
+	return false
+}
+
+func (x *AgentProbeResponse) GetReady() bool {
+	if x != nil && x.Ready != nil {
+		return *x.Ready
+	}
+	return false
+}
+
 var File_ec1_v1poc1_agent_proto protoreflect.FileDescriptor
 
 const file_ec1_v1poc1_agent_proto_rawDesc = "" +
@@ -579,12 +669,18 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\x12GetVMStatusRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\"O\n" +
 	"\x13GetVMStatusResponse\x128\n" +
-	"\bresponse\x18\x01 \x01(\v2\x1c.ec1.v1poc1.VMStatusResponseR\bresponse2\xc0\x02\n" +
+	"\bresponse\x18\x01 \x01(\v2\x1c.ec1.v1poc1.VMStatusResponseR\bresponse\"\x13\n" +
+	"\x11AgentProbeRequest\">\n" +
+	"\x12AgentProbeResponse\x12\x12\n" +
+	"\x04live\x18\x01 \x01(\bR\x04live\x12\x14\n" +
+	"\x05ready\x18\x02 \x01(\bR\x05ready2\x94\x03\n" +
 	"\fAgentService\x12G\n" +
 	"\aStartVM\x12\x1a.ec1.v1poc1.StartVMRequest\x1a\x1b.ec1.v1poc1.StartVMResponse\"\x03\x90\x02\x01\x12D\n" +
 	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12L\n" +
 	"\bVMStatus\x12\x1b.ec1.v1poc1.VMStatusRequest\x1a\x1c.ec1.v1poc1.VMStatusResponse\"\x03\x90\x02\x010\x01\x12S\n" +
-	"\vGetVMStatus\x12\x1e.ec1.v1poc1.GetVMStatusRequest\x1a\x1f.ec1.v1poc1.GetVMStatusResponse\"\x03\x90\x02\x01B\x98\x01\n" +
+	"\vGetVMStatus\x12\x1e.ec1.v1poc1.GetVMStatusRequest\x1a\x1f.ec1.v1poc1.GetVMStatusResponse\"\x03\x90\x02\x01\x12R\n" +
+	"\n" +
+	"AgentProbe\x12\x1d.ec1.v1poc1.AgentProbeRequest\x1a\x1e.ec1.v1poc1.AgentProbeResponse\"\x03\x90\x02\x010\x01B\x98\x01\n" +
 	"\x0ecom.ec1.v1poc1B\n" +
 	"AgentProtoP\x01Z1github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1\xa2\x02\x03EVX\xaa\x02\n" +
 	"Ec1.V1poc1\xca\x02\n" +
@@ -602,7 +698,7 @@ func file_ec1_v1poc1_agent_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_agent_proto_rawDescData
 }
 
-var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_ec1_v1poc1_agent_proto_goTypes = []any{
 	(*StartVMRequest)(nil),      // 0: ec1.v1poc1.StartVMRequest
 	(*StartVMResponse)(nil),     // 1: ec1.v1poc1.StartVMResponse
@@ -613,30 +709,34 @@ var file_ec1_v1poc1_agent_proto_goTypes = []any{
 	(*VMNetworkConfig)(nil),     // 6: ec1.v1poc1.VMNetworkConfig
 	(*GetVMStatusRequest)(nil),  // 7: ec1.v1poc1.GetVMStatusRequest
 	(*GetVMStatusResponse)(nil), // 8: ec1.v1poc1.GetVMStatusResponse
-	(*Resources)(nil),           // 9: ec1.v1poc1.Resources
-	(VMStatus)(0),               // 10: ec1.v1poc1.VMStatus
-	(NetworkType)(0),            // 11: ec1.v1poc1.NetworkType
-	(*PortForward)(nil),         // 12: ec1.v1poc1.PortForward
+	(*AgentProbeRequest)(nil),   // 9: ec1.v1poc1.AgentProbeRequest
+	(*AgentProbeResponse)(nil),  // 10: ec1.v1poc1.AgentProbeResponse
+	(*Resources)(nil),           // 11: ec1.v1poc1.Resources
+	(VMStatus)(0),               // 12: ec1.v1poc1.VMStatus
+	(NetworkType)(0),            // 13: ec1.v1poc1.NetworkType
+	(*PortForward)(nil),         // 14: ec1.v1poc1.PortForward
 }
 var file_ec1_v1poc1_agent_proto_depIdxs = []int32{
-	9,  // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
-	9,  // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
+	11, // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
+	11, // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
 	6,  // 2: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
-	10, // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
-	10, // 4: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
-	11, // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
-	12, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
+	12, // 3: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
+	12, // 4: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
+	13, // 5: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
+	14, // 6: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
 	5,  // 7: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
 	0,  // 8: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
 	2,  // 9: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
 	4,  // 10: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
 	7,  // 11: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
-	1,  // 12: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
-	3,  // 13: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
-	5,  // 14: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
-	8,  // 15: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
+	9,  // 12: ec1.v1poc1.AgentService.AgentProbe:input_type -> ec1.v1poc1.AgentProbeRequest
+	1,  // 13: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
+	3,  // 14: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
+	5,  // 15: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
+	8,  // 16: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
+	10, // 17: ec1.v1poc1.AgentService.AgentProbe:output_type -> ec1.v1poc1.AgentProbeResponse
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -655,7 +755,7 @@ func file_ec1_v1poc1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_agent_proto_rawDesc), len(file_ec1_v1poc1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
@@ -47,6 +48,21 @@ type Agent struct {
 
 	// VM status channel
 	vmStatusChan chan *ec1v1.VMStatusResponse
+}
+
+// AgentProbe implements v1poc1connect.AgentServiceHandler.
+func (a *Agent) AgentProbe(ctx context.Context, req *connect.Request[ec1v1.AgentProbeRequest], stream *connect.ServerStream[ec1v1.AgentProbeResponse]) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.NewTicker(1 * time.Second).C:
+			stream.Send(&ec1v1.AgentProbeResponse{
+				Live:  ptr(true),
+				Ready: ptr(true),
+			})
+		}
+	}
 }
 
 func (a *Agent) ID() id.ID {

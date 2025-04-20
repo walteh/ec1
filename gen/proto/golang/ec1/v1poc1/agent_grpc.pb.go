@@ -23,6 +23,7 @@ const (
 	AgentService_StopVM_FullMethodName      = "/ec1.v1poc1.AgentService/StopVM"
 	AgentService_VMStatus_FullMethodName    = "/ec1.v1poc1.AgentService/VMStatus"
 	AgentService_GetVMStatus_FullMethodName = "/ec1.v1poc1.AgentService/GetVMStatus"
+	AgentService_AgentProbe_FullMethodName  = "/ec1.v1poc1.AgentService/AgentProbe"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -39,6 +40,7 @@ type AgentServiceClient interface {
 	VMStatus(ctx context.Context, in *VMStatusRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(ctx context.Context, in *GetVMStatusRequest, opts ...grpc.CallOption) (*GetVMStatusResponse, error)
+	AgentProbe(ctx context.Context, in *AgentProbeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AgentProbeResponse], error)
 }
 
 type agentServiceClient struct {
@@ -98,6 +100,25 @@ func (c *agentServiceClient) GetVMStatus(ctx context.Context, in *GetVMStatusReq
 	return out, nil
 }
 
+func (c *agentServiceClient) AgentProbe(ctx context.Context, in *AgentProbeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AgentProbeResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[1], AgentService_AgentProbe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AgentProbeRequest, AgentProbeResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_AgentProbeClient = grpc.ServerStreamingClient[AgentProbeResponse]
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -112,6 +133,7 @@ type AgentServiceServer interface {
 	VMStatus(*VMStatusRequest, grpc.ServerStreamingServer[VMStatusResponse]) error
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error)
+	AgentProbe(*AgentProbeRequest, grpc.ServerStreamingServer[AgentProbeResponse]) error
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -133,6 +155,9 @@ func (UnimplementedAgentServiceServer) VMStatus(*VMStatusRequest, grpc.ServerStr
 }
 func (UnimplementedAgentServiceServer) GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVMStatus not implemented")
+}
+func (UnimplementedAgentServiceServer) AgentProbe(*AgentProbeRequest, grpc.ServerStreamingServer[AgentProbeResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method AgentProbe not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -220,6 +245,17 @@ func _AgentService_GetVMStatus_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_AgentProbe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(AgentProbeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServiceServer).AgentProbe(m, &grpc.GenericServerStream[AgentProbeRequest, AgentProbeResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_AgentProbeServer = grpc.ServerStreamingServer[AgentProbeResponse]
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -244,6 +280,11 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "VMStatus",
 			Handler:       _AgentService_VMStatus_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "AgentProbe",
+			Handler:       _AgentService_AgentProbe_Handler,
 			ServerStreams: true,
 		},
 	},

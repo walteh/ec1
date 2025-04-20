@@ -30,6 +30,11 @@ service AgentService {
 	rpc GetVMStatus(GetVMStatusRequest) returns (GetVMStatusResponse) {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
+
+
+	rpc AgentProbe(AgentProbeRequest) returns (stream AgentProbeResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
 }
 
 // StartVMRequest is the request message for starting a VM
@@ -123,4 +128,14 @@ message GetVMStatusRequest {
 // GetVMStatusResponse is the response message with VM status
 message GetVMStatusResponse {
 	VMStatusResponse response = 1;
+}
+
+message AgentProbeRequest {}
+
+message AgentProbeResponse {
+	// live
+	bool live = 1;
+
+	// ready
+	bool ready = 2;
 }

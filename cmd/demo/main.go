@@ -13,6 +13,23 @@ import (
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 )
 
+// step 1: start up the management server (mac, native)
+// step 2: run up a linux vm for the agent
+// - create the qcow2 image, initalize it (run cloud-init) with cloud-init, lets use alpine nocloud for simplicity (we download it as needed)
+// - start the vm
+// step 3: ssh into the vm and install the agent
+// step 4: start the agent
+// - use systemd to start the agent
+// - make sure the agent is running and has registerd the probe with the management server
+
+// step 5: start a nested vm
+// - use the already created qcow2 image
+// - copy the image to the agent vm
+// - instruct the agent to start the vm
+// step 6: instruct the agent to run a wev server that returns "hello world"
+
+// via a raw http request on the host from the maangement server running program, access the web server on the nested vm and print the response
+
 func main() {
 	// Parse command line flags
 	var (

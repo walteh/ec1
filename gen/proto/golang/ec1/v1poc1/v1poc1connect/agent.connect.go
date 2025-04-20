@@ -42,6 +42,8 @@ const (
 	// AgentServiceGetVMStatusProcedure is the fully-qualified name of the AgentService's GetVMStatus
 	// RPC.
 	AgentServiceGetVMStatusProcedure = "/ec1.v1poc1.AgentService/GetVMStatus"
+	// AgentServiceAgentProbeProcedure is the fully-qualified name of the AgentService's AgentProbe RPC.
+	AgentServiceAgentProbeProcedure = "/ec1.v1poc1.AgentService/AgentProbe"
 )
 
 // AgentServiceClient is a client for the ec1.v1poc1.AgentService service.
@@ -54,6 +56,7 @@ type AgentServiceClient interface {
 	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest]) (*connect.ServerStreamForClient[v1poc1.VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
+	AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest]) (*connect.ServerStreamForClient[v1poc1.AgentProbeResponse], error)
 }
 
 // NewAgentServiceClient constructs a client for the ec1.v1poc1.AgentService service. By default, it
@@ -95,6 +98,13 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		agentProbe: connect.NewClient[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse](
+			httpClient,
+			baseURL+AgentServiceAgentProbeProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("AgentProbe")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -104,6 +114,7 @@ type agentServiceClient struct {
 	stopVM      *connect.Client[v1poc1.StopVMRequest, v1poc1.StopVMResponse]
 	vMStatus    *connect.Client[v1poc1.VMStatusRequest, v1poc1.VMStatusResponse]
 	getVMStatus *connect.Client[v1poc1.GetVMStatusRequest, v1poc1.GetVMStatusResponse]
+	agentProbe  *connect.Client[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]
 }
 
 // StartVM calls ec1.v1poc1.AgentService.StartVM.
@@ -126,6 +137,11 @@ func (c *agentServiceClient) GetVMStatus(ctx context.Context, req *connect.Reque
 	return c.getVMStatus.CallUnary(ctx, req)
 }
 
+// AgentProbe calls ec1.v1poc1.AgentService.AgentProbe.
+func (c *agentServiceClient) AgentProbe(ctx context.Context, req *connect.Request[v1poc1.AgentProbeRequest]) (*connect.ServerStreamForClient[v1poc1.AgentProbeResponse], error) {
+	return c.agentProbe.CallServerStream(ctx, req)
+}
+
 // AgentServiceHandler is an implementation of the ec1.v1poc1.AgentService service.
 type AgentServiceHandler interface {
 	// StartVM starts a new virtual machine on the agent's host
@@ -136,6 +152,7 @@ type AgentServiceHandler interface {
 	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest], *connect.ServerStream[v1poc1.VMStatusResponse]) error
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
+	AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest], *connect.ServerStream[v1poc1.AgentProbeResponse]) error
 }
 
 // NewAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -173,6 +190,13 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceAgentProbeHandler := connect.NewServerStreamHandler(
+		AgentServiceAgentProbeProcedure,
+		svc.AgentProbe,
+		connect.WithSchema(agentServiceMethods.ByName("AgentProbe")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/ec1.v1poc1.AgentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AgentServiceStartVMProcedure:
@@ -183,6 +207,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceVMStatusHandler.ServeHTTP(w, r)
 		case AgentServiceGetVMStatusProcedure:
 			agentServiceGetVMStatusHandler.ServeHTTP(w, r)
+		case AgentServiceAgentProbeProcedure:
+			agentServiceAgentProbeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -206,4 +232,8 @@ func (UnimplementedAgentServiceHandler) VMStatus(context.Context, *connect.Reque
 
 func (UnimplementedAgentServiceHandler) GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.GetVMStatus is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest], *connect.ServerStream[v1poc1.AgentProbeResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.AgentProbe is not implemented"))
 }
