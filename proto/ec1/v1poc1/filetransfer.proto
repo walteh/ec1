@@ -1,0 +1,23 @@
+edition = "2023";
+
+package ec1.v1poc1;
+
+// // AgentService provides VM management functionality on a host
+// service FileTransferService {
+//  rpc FileTransfer(stream FileTransferRequest) returns (FileTransferResponse) {
+//   option idempotency_level = NO_SIDE_EFFECTS;
+//  }
+// }
+
+// message FileTransferRequest {
+//  string name              = 1;
+//  uint32 file_byte_size    = 2;
+//  uint32 chunk_total_count = 3;
+//  bytes  chunk_bytes       = 4;
+//  uint32 chunk_byte_size   = 5;
+//  uint32 chunk_of_total    = 6;
+// }
+
+// message FileTransferResponse {
+//  bool success = 1;
+// }

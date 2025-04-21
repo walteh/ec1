@@ -75,6 +75,254 @@ func (DiskImageType) EnumDescriptor() ([]byte, []int) {
 	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
 }
 
+type StatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusRequest) Reset() {
+	*x = StatusRequest{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusRequest) ProtoMessage() {}
+
+func (x *StatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
+func (*StatusRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
+}
+
+type StatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       *string                `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
+	HostAddress   *string                `protobuf:"bytes,2,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
+	UptimeMs      *uint64                `protobuf:"varint,3,opt,name=uptime_ms,json=uptimeMs" json:"uptime_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusResponse) Reset() {
+	*x = StatusResponse{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusResponse) ProtoMessage() {}
+
+func (x *StatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
+func (*StatusResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StatusResponse) GetAgentId() string {
+	if x != nil && x.AgentId != nil {
+		return *x.AgentId
+	}
+	return ""
+}
+
+func (x *StatusResponse) GetHostAddress() string {
+	if x != nil && x.HostAddress != nil {
+		return *x.HostAddress
+	}
+	return ""
+}
+
+func (x *StatusResponse) GetUptimeMs() uint64 {
+	if x != nil && x.UptimeMs != nil {
+		return *x.UptimeMs
+	}
+	return 0
+}
+
+type FileTransferRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Name            *string                `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	FileByteSize    *uint32                `protobuf:"varint,2,opt,name=file_byte_size,json=fileByteSize" json:"file_byte_size,omitempty"`
+	ChunkTotalCount *uint32                `protobuf:"varint,3,opt,name=chunk_total_count,json=chunkTotalCount" json:"chunk_total_count,omitempty"`
+	ChunkBytes      []byte                 `protobuf:"bytes,4,opt,name=chunk_bytes,json=chunkBytes" json:"chunk_bytes,omitempty"`
+	ChunkByteSize   *uint32                `protobuf:"varint,5,opt,name=chunk_byte_size,json=chunkByteSize" json:"chunk_byte_size,omitempty"`
+	ChunkOfTotal    *uint32                `protobuf:"varint,6,opt,name=chunk_of_total,json=chunkOfTotal" json:"chunk_of_total,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *FileTransferRequest) Reset() {
+	*x = FileTransferRequest{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileTransferRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileTransferRequest) ProtoMessage() {}
+
+func (x *FileTransferRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileTransferRequest.ProtoReflect.Descriptor instead.
+func (*FileTransferRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FileTransferRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *FileTransferRequest) GetFileByteSize() uint32 {
+	if x != nil && x.FileByteSize != nil {
+		return *x.FileByteSize
+	}
+	return 0
+}
+
+func (x *FileTransferRequest) GetChunkTotalCount() uint32 {
+	if x != nil && x.ChunkTotalCount != nil {
+		return *x.ChunkTotalCount
+	}
+	return 0
+}
+
+func (x *FileTransferRequest) GetChunkBytes() []byte {
+	if x != nil {
+		return x.ChunkBytes
+	}
+	return nil
+}
+
+func (x *FileTransferRequest) GetChunkByteSize() uint32 {
+	if x != nil && x.ChunkByteSize != nil {
+		return *x.ChunkByteSize
+	}
+	return 0
+}
+
+func (x *FileTransferRequest) GetChunkOfTotal() uint32 {
+	if x != nil && x.ChunkOfTotal != nil {
+		return *x.ChunkOfTotal
+	}
+	return 0
+}
+
+type FileTransferResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exists        *bool                  `protobuf:"varint,1,opt,name=exists" json:"exists,omitempty"`
+	Size          *uint32                `protobuf:"varint,2,opt,name=size" json:"size,omitempty"`
+	Hash          *string                `protobuf:"bytes,3,opt,name=hash" json:"hash,omitempty"`
+	Error         *string                `protobuf:"bytes,4,opt,name=error" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileTransferResponse) Reset() {
+	*x = FileTransferResponse{}
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileTransferResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileTransferResponse) ProtoMessage() {}
+
+func (x *FileTransferResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileTransferResponse.ProtoReflect.Descriptor instead.
+func (*FileTransferResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *FileTransferResponse) GetExists() bool {
+	if x != nil && x.Exists != nil {
+		return *x.Exists
+	}
+	return false
+}
+
+func (x *FileTransferResponse) GetSize() uint32 {
+	if x != nil && x.Size != nil {
+		return *x.Size
+	}
+	return 0
+}
+
+func (x *FileTransferResponse) GetHash() string {
+	if x != nil && x.Hash != nil {
+		return *x.Hash
+	}
+	return ""
+}
+
+func (x *FileTransferResponse) GetError() string {
+	if x != nil && x.Error != nil {
+		return *x.Error
+	}
+	return ""
+}
+
 // StartVMRequest is the request message for starting a VM
 type StartVMRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -97,7 +345,7 @@ type StartVMRequest struct {
 
 func (x *StartVMRequest) Reset() {
 	*x = StartVMRequest{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[0]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -109,7 +357,7 @@ func (x *StartVMRequest) String() string {
 func (*StartVMRequest) ProtoMessage() {}
 
 func (x *StartVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[0]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -122,7 +370,7 @@ func (x *StartVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartVMRequest.ProtoReflect.Descriptor instead.
 func (*StartVMRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{0}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *StartVMRequest) GetVmId() string {
@@ -191,7 +439,7 @@ type StartVMResponse struct {
 
 func (x *StartVMResponse) Reset() {
 	*x = StartVMResponse{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[1]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -203,7 +451,7 @@ func (x *StartVMResponse) String() string {
 func (*StartVMResponse) ProtoMessage() {}
 
 func (x *StartVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[1]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -216,7 +464,7 @@ func (x *StartVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartVMResponse.ProtoReflect.Descriptor instead.
 func (*StartVMResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{1}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *StartVMResponse) GetVmId() string {
@@ -260,7 +508,7 @@ type StopVMRequest struct {
 
 func (x *StopVMRequest) Reset() {
 	*x = StopVMRequest{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[2]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -272,7 +520,7 @@ func (x *StopVMRequest) String() string {
 func (*StopVMRequest) ProtoMessage() {}
 
 func (x *StopVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[2]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -285,7 +533,7 @@ func (x *StopVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopVMRequest.ProtoReflect.Descriptor instead.
 func (*StopVMRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{2}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *StopVMRequest) GetVmId() string {
@@ -315,7 +563,7 @@ type StopVMResponse struct {
 
 func (x *StopVMResponse) Reset() {
 	*x = StopVMResponse{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[3]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -327,7 +575,7 @@ func (x *StopVMResponse) String() string {
 func (*StopVMResponse) ProtoMessage() {}
 
 func (x *StopVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[3]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -340,7 +588,7 @@ func (x *StopVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopVMResponse.ProtoReflect.Descriptor instead.
 func (*StopVMResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{3}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *StopVMResponse) GetSuccess() bool {
@@ -368,7 +616,7 @@ type VMStatusRequest struct {
 
 func (x *VMStatusRequest) Reset() {
 	*x = VMStatusRequest{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -380,7 +628,7 @@ func (x *VMStatusRequest) String() string {
 func (*VMStatusRequest) ProtoMessage() {}
 
 func (x *VMStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -393,7 +641,7 @@ func (x *VMStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMStatusRequest.ProtoReflect.Descriptor instead.
 func (*VMStatusRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{4}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *VMStatusRequest) GetVmId() string {
@@ -418,7 +666,7 @@ type VMStatusResponse struct {
 
 func (x *VMStatusResponse) Reset() {
 	*x = VMStatusResponse{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -430,7 +678,7 @@ func (x *VMStatusResponse) String() string {
 func (*VMStatusResponse) ProtoMessage() {}
 
 func (x *VMStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[5]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -443,7 +691,7 @@ func (x *VMStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMStatusResponse.ProtoReflect.Descriptor instead.
 func (*VMStatusResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{5}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *VMStatusResponse) GetStatus() VMStatus {
@@ -480,7 +728,7 @@ type VMNetworkConfig struct {
 
 func (x *VMNetworkConfig) Reset() {
 	*x = VMNetworkConfig{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -492,7 +740,7 @@ func (x *VMNetworkConfig) String() string {
 func (*VMNetworkConfig) ProtoMessage() {}
 
 func (x *VMNetworkConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -505,7 +753,7 @@ func (x *VMNetworkConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMNetworkConfig.ProtoReflect.Descriptor instead.
 func (*VMNetworkConfig) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{6}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *VMNetworkConfig) GetNetworkType() NetworkType {
@@ -533,7 +781,7 @@ type GetVMStatusRequest struct {
 
 func (x *GetVMStatusRequest) Reset() {
 	*x = GetVMStatusRequest{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +793,7 @@ func (x *GetVMStatusRequest) String() string {
 func (*GetVMStatusRequest) ProtoMessage() {}
 
 func (x *GetVMStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[7]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +806,7 @@ func (x *GetVMStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVMStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetVMStatusRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{7}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetVMStatusRequest) GetVmId() string {
@@ -578,7 +826,7 @@ type GetVMStatusResponse struct {
 
 func (x *GetVMStatusResponse) Reset() {
 	*x = GetVMStatusResponse{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -590,7 +838,7 @@ func (x *GetVMStatusResponse) String() string {
 func (*GetVMStatusResponse) ProtoMessage() {}
 
 func (x *GetVMStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[8]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +851,7 @@ func (x *GetVMStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVMStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetVMStatusResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{8}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetVMStatusResponse) GetResponse() *VMStatusResponse {
@@ -621,7 +869,7 @@ type AgentProbeRequest struct {
 
 func (x *AgentProbeRequest) Reset() {
 	*x = AgentProbeRequest{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -633,7 +881,7 @@ func (x *AgentProbeRequest) String() string {
 func (*AgentProbeRequest) ProtoMessage() {}
 
 func (x *AgentProbeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[9]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -646,7 +894,7 @@ func (x *AgentProbeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentProbeRequest.ProtoReflect.Descriptor instead.
 func (*AgentProbeRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{9}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{13}
 }
 
 type AgentProbeResponse struct {
@@ -661,7 +909,7 @@ type AgentProbeResponse struct {
 
 func (x *AgentProbeResponse) Reset() {
 	*x = AgentProbeResponse{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +921,7 @@ func (x *AgentProbeResponse) String() string {
 func (*AgentProbeResponse) ProtoMessage() {}
 
 func (x *AgentProbeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[10]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +934,7 @@ func (x *AgentProbeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentProbeResponse.ProtoReflect.Descriptor instead.
 func (*AgentProbeResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{10}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AgentProbeResponse) GetLive() bool {
@@ -716,7 +964,7 @@ type DiskImage struct {
 
 func (x *DiskImage) Reset() {
 	*x = DiskImage{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +976,7 @@ func (x *DiskImage) String() string {
 func (*DiskImage) ProtoMessage() {}
 
 func (x *DiskImage) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[11]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +989,7 @@ func (x *DiskImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskImage.ProtoReflect.Descriptor instead.
 func (*DiskImage) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{11}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DiskImage) GetPath() string {
@@ -769,7 +1017,7 @@ type CloudInitConfig struct {
 
 func (x *CloudInitConfig) Reset() {
 	*x = CloudInitConfig{}
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -781,7 +1029,7 @@ func (x *CloudInitConfig) String() string {
 func (*CloudInitConfig) ProtoMessage() {}
 
 func (x *CloudInitConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_agent_proto_msgTypes[12]
+	mi := &file_ec1_v1poc1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -794,7 +1042,7 @@ func (x *CloudInitConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloudInitConfig.ProtoReflect.Descriptor instead.
 func (*CloudInitConfig) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{12}
+	return file_ec1_v1poc1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CloudInitConfig) GetIsoPath() string {
@@ -809,7 +1057,25 @@ var File_ec1_v1poc1_agent_proto protoreflect.FileDescriptor
 const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\n" +
 	"\x16ec1/v1poc1/agent.proto\x12\n" +
-	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\xfc\x02\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x0f\n" +
+	"\rStatusRequest\"\x88\x01\n" +
+	"\x0eStatusResponse\x12,\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12+\n" +
+	"\fhost_address\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\vhostAddress\x12\x1b\n" +
+	"\tuptime_ms\x18\x03 \x01(\x04R\buptimeMs\"\xea\x01\n" +
+	"\x13FileTransferRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12$\n" +
+	"\x0efile_byte_size\x18\x02 \x01(\rR\ffileByteSize\x12*\n" +
+	"\x11chunk_total_count\x18\x03 \x01(\rR\x0fchunkTotalCount\x12\x1f\n" +
+	"\vchunk_bytes\x18\x04 \x01(\fR\n" +
+	"chunkBytes\x12&\n" +
+	"\x0fchunk_byte_size\x18\x05 \x01(\rR\rchunkByteSize\x12$\n" +
+	"\x0echunk_of_total\x18\x06 \x01(\rR\fchunkOfTotal\"l\n" +
+	"\x14FileTransferResponse\x12\x16\n" +
+	"\x06exists\x18\x01 \x01(\bR\x06exists\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\rR\x04size\x12\x12\n" +
+	"\x04hash\x18\x03 \x01(\tR\x04hash\x12\x14\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\xfc\x02\n" +
 	"\x0eStartVMRequest\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12:\n" +
@@ -859,14 +1125,16 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"\x1bDISK_IMAGE_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DISK_IMAGE_TYPE_RAW\x10\x01\x12\x19\n" +
 	"\x15DISK_IMAGE_TYPE_QCOW2\x10\x02\x12\x17\n" +
-	"\x13DISK_IMAGE_TYPE_VHD\x10\x032\x94\x03\n" +
+	"\x13DISK_IMAGE_TYPE_VHD\x10\x032\xb6\x04\n" +
 	"\fAgentService\x12G\n" +
 	"\aStartVM\x12\x1a.ec1.v1poc1.StartVMRequest\x1a\x1b.ec1.v1poc1.StartVMResponse\"\x03\x90\x02\x01\x12D\n" +
 	"\x06StopVM\x12\x19.ec1.v1poc1.StopVMRequest\x1a\x1a.ec1.v1poc1.StopVMResponse\"\x03\x90\x02\x01\x12L\n" +
 	"\bVMStatus\x12\x1b.ec1.v1poc1.VMStatusRequest\x1a\x1c.ec1.v1poc1.VMStatusResponse\"\x03\x90\x02\x010\x01\x12S\n" +
-	"\vGetVMStatus\x12\x1e.ec1.v1poc1.GetVMStatusRequest\x1a\x1f.ec1.v1poc1.GetVMStatusResponse\"\x03\x90\x02\x01\x12R\n" +
+	"\vGetVMStatus\x12\x1e.ec1.v1poc1.GetVMStatusRequest\x1a\x1f.ec1.v1poc1.GetVMStatusResponse\"\x03\x90\x02\x01\x12T\n" +
 	"\n" +
-	"AgentProbe\x12\x1d.ec1.v1poc1.AgentProbeRequest\x1a\x1e.ec1.v1poc1.AgentProbeResponse\"\x03\x90\x02\x010\x01B\x98\x01\n" +
+	"AgentProbe\x12\x1d.ec1.v1poc1.AgentProbeRequest\x1a\x1e.ec1.v1poc1.AgentProbeResponse\"\x03\x90\x02\x01(\x010\x01\x12X\n" +
+	"\fFileTransfer\x12\x1f.ec1.v1poc1.FileTransferRequest\x1a .ec1.v1poc1.FileTransferResponse\"\x03\x90\x02\x01(\x01\x12D\n" +
+	"\x06Status\x12\x19.ec1.v1poc1.StatusRequest\x1a\x1a.ec1.v1poc1.StatusResponse\"\x03\x90\x02\x01B\x98\x01\n" +
 	"\x0ecom.ec1.v1poc1B\n" +
 	"AgentProtoP\x01Z1github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1\xa2\x02\x03EVX\xaa\x02\n" +
 	"Ec1.V1poc1\xca\x02\n" +
@@ -885,51 +1153,59 @@ func file_ec1_v1poc1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_ec1_v1poc1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_ec1_v1poc1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_ec1_v1poc1_agent_proto_goTypes = []any{
-	(DiskImageType)(0),          // 0: ec1.v1poc1.DiskImageType
-	(*StartVMRequest)(nil),      // 1: ec1.v1poc1.StartVMRequest
-	(*StartVMResponse)(nil),     // 2: ec1.v1poc1.StartVMResponse
-	(*StopVMRequest)(nil),       // 3: ec1.v1poc1.StopVMRequest
-	(*StopVMResponse)(nil),      // 4: ec1.v1poc1.StopVMResponse
-	(*VMStatusRequest)(nil),     // 5: ec1.v1poc1.VMStatusRequest
-	(*VMStatusResponse)(nil),    // 6: ec1.v1poc1.VMStatusResponse
-	(*VMNetworkConfig)(nil),     // 7: ec1.v1poc1.VMNetworkConfig
-	(*GetVMStatusRequest)(nil),  // 8: ec1.v1poc1.GetVMStatusRequest
-	(*GetVMStatusResponse)(nil), // 9: ec1.v1poc1.GetVMStatusResponse
-	(*AgentProbeRequest)(nil),   // 10: ec1.v1poc1.AgentProbeRequest
-	(*AgentProbeResponse)(nil),  // 11: ec1.v1poc1.AgentProbeResponse
-	(*DiskImage)(nil),           // 12: ec1.v1poc1.DiskImage
-	(*CloudInitConfig)(nil),     // 13: ec1.v1poc1.CloudInitConfig
-	(*Resources)(nil),           // 14: ec1.v1poc1.Resources
-	(VMStatus)(0),               // 15: ec1.v1poc1.VMStatus
-	(NetworkType)(0),            // 16: ec1.v1poc1.NetworkType
-	(*PortForward)(nil),         // 17: ec1.v1poc1.PortForward
+	(DiskImageType)(0),           // 0: ec1.v1poc1.DiskImageType
+	(*StatusRequest)(nil),        // 1: ec1.v1poc1.StatusRequest
+	(*StatusResponse)(nil),       // 2: ec1.v1poc1.StatusResponse
+	(*FileTransferRequest)(nil),  // 3: ec1.v1poc1.FileTransferRequest
+	(*FileTransferResponse)(nil), // 4: ec1.v1poc1.FileTransferResponse
+	(*StartVMRequest)(nil),       // 5: ec1.v1poc1.StartVMRequest
+	(*StartVMResponse)(nil),      // 6: ec1.v1poc1.StartVMResponse
+	(*StopVMRequest)(nil),        // 7: ec1.v1poc1.StopVMRequest
+	(*StopVMResponse)(nil),       // 8: ec1.v1poc1.StopVMResponse
+	(*VMStatusRequest)(nil),      // 9: ec1.v1poc1.VMStatusRequest
+	(*VMStatusResponse)(nil),     // 10: ec1.v1poc1.VMStatusResponse
+	(*VMNetworkConfig)(nil),      // 11: ec1.v1poc1.VMNetworkConfig
+	(*GetVMStatusRequest)(nil),   // 12: ec1.v1poc1.GetVMStatusRequest
+	(*GetVMStatusResponse)(nil),  // 13: ec1.v1poc1.GetVMStatusResponse
+	(*AgentProbeRequest)(nil),    // 14: ec1.v1poc1.AgentProbeRequest
+	(*AgentProbeResponse)(nil),   // 15: ec1.v1poc1.AgentProbeResponse
+	(*DiskImage)(nil),            // 16: ec1.v1poc1.DiskImage
+	(*CloudInitConfig)(nil),      // 17: ec1.v1poc1.CloudInitConfig
+	(*Resources)(nil),            // 18: ec1.v1poc1.Resources
+	(VMStatus)(0),                // 19: ec1.v1poc1.VMStatus
+	(NetworkType)(0),             // 20: ec1.v1poc1.NetworkType
+	(*PortForward)(nil),          // 21: ec1.v1poc1.PortForward
 }
 var file_ec1_v1poc1_agent_proto_depIdxs = []int32{
-	14, // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
-	14, // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
-	12, // 2: ec1.v1poc1.StartVMRequest.disk_image:type_name -> ec1.v1poc1.DiskImage
-	13, // 3: ec1.v1poc1.StartVMRequest.cloud_init:type_name -> ec1.v1poc1.CloudInitConfig
-	7,  // 4: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
-	15, // 5: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
-	15, // 6: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
-	16, // 7: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
-	17, // 8: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
-	6,  // 9: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
+	18, // 0: ec1.v1poc1.StartVMRequest.resources_max:type_name -> ec1.v1poc1.Resources
+	18, // 1: ec1.v1poc1.StartVMRequest.resources_boot:type_name -> ec1.v1poc1.Resources
+	16, // 2: ec1.v1poc1.StartVMRequest.disk_image:type_name -> ec1.v1poc1.DiskImage
+	17, // 3: ec1.v1poc1.StartVMRequest.cloud_init:type_name -> ec1.v1poc1.CloudInitConfig
+	11, // 4: ec1.v1poc1.StartVMRequest.network_config:type_name -> ec1.v1poc1.VMNetworkConfig
+	19, // 5: ec1.v1poc1.StartVMResponse.status:type_name -> ec1.v1poc1.VMStatus
+	19, // 6: ec1.v1poc1.VMStatusResponse.status:type_name -> ec1.v1poc1.VMStatus
+	20, // 7: ec1.v1poc1.VMNetworkConfig.network_type:type_name -> ec1.v1poc1.NetworkType
+	21, // 8: ec1.v1poc1.VMNetworkConfig.port_forwards:type_name -> ec1.v1poc1.PortForward
+	10, // 9: ec1.v1poc1.GetVMStatusResponse.response:type_name -> ec1.v1poc1.VMStatusResponse
 	0,  // 10: ec1.v1poc1.DiskImage.type:type_name -> ec1.v1poc1.DiskImageType
-	1,  // 11: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
-	3,  // 12: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
-	5,  // 13: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
-	8,  // 14: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
-	10, // 15: ec1.v1poc1.AgentService.AgentProbe:input_type -> ec1.v1poc1.AgentProbeRequest
-	2,  // 16: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
-	4,  // 17: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
-	6,  // 18: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
-	9,  // 19: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
-	11, // 20: ec1.v1poc1.AgentService.AgentProbe:output_type -> ec1.v1poc1.AgentProbeResponse
-	16, // [16:21] is the sub-list for method output_type
-	11, // [11:16] is the sub-list for method input_type
+	5,  // 11: ec1.v1poc1.AgentService.StartVM:input_type -> ec1.v1poc1.StartVMRequest
+	7,  // 12: ec1.v1poc1.AgentService.StopVM:input_type -> ec1.v1poc1.StopVMRequest
+	9,  // 13: ec1.v1poc1.AgentService.VMStatus:input_type -> ec1.v1poc1.VMStatusRequest
+	12, // 14: ec1.v1poc1.AgentService.GetVMStatus:input_type -> ec1.v1poc1.GetVMStatusRequest
+	14, // 15: ec1.v1poc1.AgentService.AgentProbe:input_type -> ec1.v1poc1.AgentProbeRequest
+	3,  // 16: ec1.v1poc1.AgentService.FileTransfer:input_type -> ec1.v1poc1.FileTransferRequest
+	1,  // 17: ec1.v1poc1.AgentService.Status:input_type -> ec1.v1poc1.StatusRequest
+	6,  // 18: ec1.v1poc1.AgentService.StartVM:output_type -> ec1.v1poc1.StartVMResponse
+	8,  // 19: ec1.v1poc1.AgentService.StopVM:output_type -> ec1.v1poc1.StopVMResponse
+	10, // 20: ec1.v1poc1.AgentService.VMStatus:output_type -> ec1.v1poc1.VMStatusResponse
+	13, // 21: ec1.v1poc1.AgentService.GetVMStatus:output_type -> ec1.v1poc1.GetVMStatusResponse
+	15, // 22: ec1.v1poc1.AgentService.AgentProbe:output_type -> ec1.v1poc1.AgentProbeResponse
+	4,  // 23: ec1.v1poc1.AgentService.FileTransfer:output_type -> ec1.v1poc1.FileTransferResponse
+	2,  // 24: ec1.v1poc1.AgentService.Status:output_type -> ec1.v1poc1.StatusResponse
+	18, // [18:25] is the sub-list for method output_type
+	11, // [11:18] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -948,7 +1224,7 @@ func file_ec1_v1poc1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_agent_proto_rawDesc), len(file_ec1_v1poc1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   13,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

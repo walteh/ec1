@@ -33,20 +33,22 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// ManagementServiceRegisterAgentProcedure is the fully-qualified name of the ManagementService's
-	// RegisterAgent RPC.
-	ManagementServiceRegisterAgentProcedure = "/ec1.v1poc1.ManagementService/RegisterAgent"
-	// ManagementServiceReportAgentStatusProcedure is the fully-qualified name of the
-	// ManagementService's ReportAgentStatus RPC.
-	ManagementServiceReportAgentStatusProcedure = "/ec1.v1poc1.ManagementService/ReportAgentStatus"
+	// ManagementServiceIdentifyRemoteAgentProcedure is the fully-qualified name of the
+	// ManagementService's IdentifyRemoteAgent RPC.
+	ManagementServiceIdentifyRemoteAgentProcedure = "/ec1.v1poc1.ManagementService/IdentifyRemoteAgent"
+	// ManagementServiceInitializeLocalAgentInsideLocalVMProcedure is the fully-qualified name of the
+	// ManagementService's InitializeLocalAgentInsideLocalVM RPC.
+	ManagementServiceInitializeLocalAgentInsideLocalVMProcedure = "/ec1.v1poc1.ManagementService/InitializeLocalAgentInsideLocalVM"
+	// ManagementServiceInitilizeRemoteAgentProcedure is the fully-qualified name of the
+	// ManagementService's InitilizeRemoteAgent RPC.
+	ManagementServiceInitilizeRemoteAgentProcedure = "/ec1.v1poc1.ManagementService/InitilizeRemoteAgent"
 )
 
 // ManagementServiceClient is a client for the ec1.v1poc1.ManagementService service.
 type ManagementServiceClient interface {
-	// RegisterAgent registers an agent with the management server
-	RegisterAgent(context.Context, *connect.Request[v1poc1.RegisterAgentRequest]) (*connect.Response[v1poc1.RegisterAgentResponse], error)
-	// ReportAgentStatus reports the agent's current status
-	ReportAgentStatus(context.Context, *connect.Request[v1poc1.ReportAgentStatusRequest]) (*connect.Response[v1poc1.ReportAgentStatusResponse], error)
+	IdentifyRemoteAgent(context.Context, *connect.Request[v1poc1.IdentifyRemoteAgentRequest]) (*connect.Response[v1poc1.IdentifyRemoteAgentResponse], error)
+	InitializeLocalAgentInsideLocalVM(context.Context, *connect.Request[v1poc1.InitializeLocalAgentInsideLocalVMRequest]) (*connect.Response[v1poc1.InitializeLocalAgentInsideLocalVMResponse], error)
+	InitilizeRemoteAgent(context.Context, *connect.Request[v1poc1.InitializeRemoteAgentRequest]) (*connect.Response[v1poc1.InitializeRemoteAgentResponse], error)
 }
 
 // NewManagementServiceClient constructs a client for the ec1.v1poc1.ManagementService service. By
@@ -60,17 +62,24 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 	baseURL = strings.TrimRight(baseURL, "/")
 	managementServiceMethods := v1poc1.File_ec1_v1poc1_management_proto.Services().ByName("ManagementService").Methods()
 	return &managementServiceClient{
-		registerAgent: connect.NewClient[v1poc1.RegisterAgentRequest, v1poc1.RegisterAgentResponse](
+		identifyRemoteAgent: connect.NewClient[v1poc1.IdentifyRemoteAgentRequest, v1poc1.IdentifyRemoteAgentResponse](
 			httpClient,
-			baseURL+ManagementServiceRegisterAgentProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("RegisterAgent")),
+			baseURL+ManagementServiceIdentifyRemoteAgentProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("IdentifyRemoteAgent")),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
-		reportAgentStatus: connect.NewClient[v1poc1.ReportAgentStatusRequest, v1poc1.ReportAgentStatusResponse](
+		initializeLocalAgentInsideLocalVM: connect.NewClient[v1poc1.InitializeLocalAgentInsideLocalVMRequest, v1poc1.InitializeLocalAgentInsideLocalVMResponse](
 			httpClient,
-			baseURL+ManagementServiceReportAgentStatusProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("ReportAgentStatus")),
+			baseURL+ManagementServiceInitializeLocalAgentInsideLocalVMProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("InitializeLocalAgentInsideLocalVM")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		initilizeRemoteAgent: connect.NewClient[v1poc1.InitializeRemoteAgentRequest, v1poc1.InitializeRemoteAgentResponse](
+			httpClient,
+			baseURL+ManagementServiceInitilizeRemoteAgentProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("InitilizeRemoteAgent")),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
@@ -79,26 +88,32 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 
 // managementServiceClient implements ManagementServiceClient.
 type managementServiceClient struct {
-	registerAgent     *connect.Client[v1poc1.RegisterAgentRequest, v1poc1.RegisterAgentResponse]
-	reportAgentStatus *connect.Client[v1poc1.ReportAgentStatusRequest, v1poc1.ReportAgentStatusResponse]
+	identifyRemoteAgent               *connect.Client[v1poc1.IdentifyRemoteAgentRequest, v1poc1.IdentifyRemoteAgentResponse]
+	initializeLocalAgentInsideLocalVM *connect.Client[v1poc1.InitializeLocalAgentInsideLocalVMRequest, v1poc1.InitializeLocalAgentInsideLocalVMResponse]
+	initilizeRemoteAgent              *connect.Client[v1poc1.InitializeRemoteAgentRequest, v1poc1.InitializeRemoteAgentResponse]
 }
 
-// RegisterAgent calls ec1.v1poc1.ManagementService.RegisterAgent.
-func (c *managementServiceClient) RegisterAgent(ctx context.Context, req *connect.Request[v1poc1.RegisterAgentRequest]) (*connect.Response[v1poc1.RegisterAgentResponse], error) {
-	return c.registerAgent.CallUnary(ctx, req)
+// IdentifyRemoteAgent calls ec1.v1poc1.ManagementService.IdentifyRemoteAgent.
+func (c *managementServiceClient) IdentifyRemoteAgent(ctx context.Context, req *connect.Request[v1poc1.IdentifyRemoteAgentRequest]) (*connect.Response[v1poc1.IdentifyRemoteAgentResponse], error) {
+	return c.identifyRemoteAgent.CallUnary(ctx, req)
 }
 
-// ReportAgentStatus calls ec1.v1poc1.ManagementService.ReportAgentStatus.
-func (c *managementServiceClient) ReportAgentStatus(ctx context.Context, req *connect.Request[v1poc1.ReportAgentStatusRequest]) (*connect.Response[v1poc1.ReportAgentStatusResponse], error) {
-	return c.reportAgentStatus.CallUnary(ctx, req)
+// InitializeLocalAgentInsideLocalVM calls
+// ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM.
+func (c *managementServiceClient) InitializeLocalAgentInsideLocalVM(ctx context.Context, req *connect.Request[v1poc1.InitializeLocalAgentInsideLocalVMRequest]) (*connect.Response[v1poc1.InitializeLocalAgentInsideLocalVMResponse], error) {
+	return c.initializeLocalAgentInsideLocalVM.CallUnary(ctx, req)
+}
+
+// InitilizeRemoteAgent calls ec1.v1poc1.ManagementService.InitilizeRemoteAgent.
+func (c *managementServiceClient) InitilizeRemoteAgent(ctx context.Context, req *connect.Request[v1poc1.InitializeRemoteAgentRequest]) (*connect.Response[v1poc1.InitializeRemoteAgentResponse], error) {
+	return c.initilizeRemoteAgent.CallUnary(ctx, req)
 }
 
 // ManagementServiceHandler is an implementation of the ec1.v1poc1.ManagementService service.
 type ManagementServiceHandler interface {
-	// RegisterAgent registers an agent with the management server
-	RegisterAgent(context.Context, *connect.Request[v1poc1.RegisterAgentRequest]) (*connect.Response[v1poc1.RegisterAgentResponse], error)
-	// ReportAgentStatus reports the agent's current status
-	ReportAgentStatus(context.Context, *connect.Request[v1poc1.ReportAgentStatusRequest]) (*connect.Response[v1poc1.ReportAgentStatusResponse], error)
+	IdentifyRemoteAgent(context.Context, *connect.Request[v1poc1.IdentifyRemoteAgentRequest]) (*connect.Response[v1poc1.IdentifyRemoteAgentResponse], error)
+	InitializeLocalAgentInsideLocalVM(context.Context, *connect.Request[v1poc1.InitializeLocalAgentInsideLocalVMRequest]) (*connect.Response[v1poc1.InitializeLocalAgentInsideLocalVMResponse], error)
+	InitilizeRemoteAgent(context.Context, *connect.Request[v1poc1.InitializeRemoteAgentRequest]) (*connect.Response[v1poc1.InitializeRemoteAgentResponse], error)
 }
 
 // NewManagementServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -108,26 +123,35 @@ type ManagementServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	managementServiceMethods := v1poc1.File_ec1_v1poc1_management_proto.Services().ByName("ManagementService").Methods()
-	managementServiceRegisterAgentHandler := connect.NewUnaryHandler(
-		ManagementServiceRegisterAgentProcedure,
-		svc.RegisterAgent,
-		connect.WithSchema(managementServiceMethods.ByName("RegisterAgent")),
+	managementServiceIdentifyRemoteAgentHandler := connect.NewUnaryHandler(
+		ManagementServiceIdentifyRemoteAgentProcedure,
+		svc.IdentifyRemoteAgent,
+		connect.WithSchema(managementServiceMethods.ByName("IdentifyRemoteAgent")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
-	managementServiceReportAgentStatusHandler := connect.NewUnaryHandler(
-		ManagementServiceReportAgentStatusProcedure,
-		svc.ReportAgentStatus,
-		connect.WithSchema(managementServiceMethods.ByName("ReportAgentStatus")),
+	managementServiceInitializeLocalAgentInsideLocalVMHandler := connect.NewUnaryHandler(
+		ManagementServiceInitializeLocalAgentInsideLocalVMProcedure,
+		svc.InitializeLocalAgentInsideLocalVM,
+		connect.WithSchema(managementServiceMethods.ByName("InitializeLocalAgentInsideLocalVM")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	managementServiceInitilizeRemoteAgentHandler := connect.NewUnaryHandler(
+		ManagementServiceInitilizeRemoteAgentProcedure,
+		svc.InitilizeRemoteAgent,
+		connect.WithSchema(managementServiceMethods.ByName("InitilizeRemoteAgent")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/ec1.v1poc1.ManagementService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case ManagementServiceRegisterAgentProcedure:
-			managementServiceRegisterAgentHandler.ServeHTTP(w, r)
-		case ManagementServiceReportAgentStatusProcedure:
-			managementServiceReportAgentStatusHandler.ServeHTTP(w, r)
+		case ManagementServiceIdentifyRemoteAgentProcedure:
+			managementServiceIdentifyRemoteAgentHandler.ServeHTTP(w, r)
+		case ManagementServiceInitializeLocalAgentInsideLocalVMProcedure:
+			managementServiceInitializeLocalAgentInsideLocalVMHandler.ServeHTTP(w, r)
+		case ManagementServiceInitilizeRemoteAgentProcedure:
+			managementServiceInitilizeRemoteAgentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -137,10 +161,14 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 // UnimplementedManagementServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedManagementServiceHandler struct{}
 
-func (UnimplementedManagementServiceHandler) RegisterAgent(context.Context, *connect.Request[v1poc1.RegisterAgentRequest]) (*connect.Response[v1poc1.RegisterAgentResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.ManagementService.RegisterAgent is not implemented"))
+func (UnimplementedManagementServiceHandler) IdentifyRemoteAgent(context.Context, *connect.Request[v1poc1.IdentifyRemoteAgentRequest]) (*connect.Response[v1poc1.IdentifyRemoteAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.ManagementService.IdentifyRemoteAgent is not implemented"))
 }
 
-func (UnimplementedManagementServiceHandler) ReportAgentStatus(context.Context, *connect.Request[v1poc1.ReportAgentStatusRequest]) (*connect.Response[v1poc1.ReportAgentStatusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.ManagementService.ReportAgentStatus is not implemented"))
+func (UnimplementedManagementServiceHandler) InitializeLocalAgentInsideLocalVM(context.Context, *connect.Request[v1poc1.InitializeLocalAgentInsideLocalVMRequest]) (*connect.Response[v1poc1.InitializeLocalAgentInsideLocalVMResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM is not implemented"))
+}
+
+func (UnimplementedManagementServiceHandler) InitilizeRemoteAgent(context.Context, *connect.Request[v1poc1.InitializeRemoteAgentRequest]) (*connect.Response[v1poc1.InitializeRemoteAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.ManagementService.InitilizeRemoteAgent is not implemented"))
 }

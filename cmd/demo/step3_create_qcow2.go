@@ -75,9 +75,19 @@ func CreateQCOW2Image(ctx context.Context) (*Image, error) {
 		return nil, fmt.Errorf("injecting cloud-init config: %w", err)
 	}
 
+	absPath, err := filepath.Abs(localImage)
+	if err != nil {
+		return nil, fmt.Errorf("getting absolute path to qcow2: %w", err)
+	}
+
+	absIsoPath, err := filepath.Abs(isoPath)
+	if err != nil {
+		return nil, fmt.Errorf("getting absolute path to iso: %w", err)
+	}
+
 	return &Image{
-		Qcow2Path:            localImage,
-		CloudInitSeedISOPath: isoPath,
+		Qcow2Path:            absPath,
+		CloudInitSeedISOPath: absIsoPath,
 		cleanup:              cleanup,
 	}, nil
 }

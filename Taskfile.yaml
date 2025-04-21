@@ -3,8 +3,7 @@ version: "3"
 vars:
     GO_MODULES:
         sh: cat go.work | grep -oEh  '\t+(\./*[^[:space:]]*)' | tr -d '\t'
-    JSONSCHEMA_FILES:
-        sh: find . -type f -name '*.schema.json'
+
     GO_ROOT_PKG:
         sh: cat go.mod | grep -oE '^module[^\S]+' | cut -d' ' -f2
     GO_COMMAND: ./go
@@ -202,3 +201,35 @@ tasks:
           - |-
             codesign --verbose --deep --force --options=runtime --entitlements=entitlements.plist  --timestamp -s -  ./bin/demo
           - ./bin/demo
+
+    jsonschema-single:
+        internal: true
+        requires: {vars: [ITEMNAME, ITEM]}
+        cmds:
+          - mkdir -p ./gen/jsonschema/go/{{.ITEMNAME}}
+          - |-
+            go tool github.com/ogen-go/ogen/cmd/jschemagen ./schemas/{{.ITEM}} --target=./gen/jsonschema/go/{{.ITEMNAME}}.go --package={{splitList "/" .ITEMNAME | last}}
+
+    jsonschema:
+        run: once
+        vars:
+            JSONSCHEMA_FILES:
+                sh: cd schemas && find . -type f -name '*.json'
+        cmds:
+          - for: {var: JSONSCHEMA_FILES}
+            vars:
+                ITEMNAME: '{{ splitList "/" .ITEM | rest | rest | join "/" | replace ".json" "" | replace "-" "_"}}'
+                ITEM: "{{.ITEM}}"
+
+            task: jsonschema-single
+
+        generates:
+          - ./gen/jsonschema/go/*.go
+        sources:
+          - "**/*.schema.json"
+
+    tmpd:
+        cmds:
+          - bun run ./clean.js ./gen/schemas/cloudinit/schema-cloud-config-v1.json ./bin/cleaned-schema-cloud-config-v1.schema2.json
+          - mkdir -p bin/tmp
+          - go tool github.com/ogen-go/ogen/cmd/jschemagen --target bin/tmp/me.go -package api ./bin/cleaned-schema-cloud-config-v1.schema2.json

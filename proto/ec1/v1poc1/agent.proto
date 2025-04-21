@@ -32,9 +32,49 @@ service AgentService {
 	}
 
 
-	rpc AgentProbe(AgentProbeRequest) returns (stream AgentProbeResponse) {
+	rpc AgentProbe(stream AgentProbeRequest) returns (stream AgentProbeResponse) {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
+
+
+	rpc FileTransfer(stream FileTransferRequest) returns (FileTransferResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+
+
+	rpc Status(StatusRequest) returns (StatusResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+	string agent_id = 1 [
+		(validate.field).string.(id).agent = true
+	];
+
+	string host_address = 2 [
+		(validate.field).string.uri = true
+	];
+
+	uint64 uptime_ms = 3;
+}
+
+message FileTransferRequest {
+	string name              = 1;
+	uint32 file_byte_size    = 2;
+	uint32 chunk_total_count = 3;
+	bytes  chunk_bytes       = 4;
+	uint32 chunk_byte_size   = 5;
+	uint32 chunk_of_total    = 6;
+}
+
+message FileTransferResponse {
+	bool   exists = 1;
+	uint32 size   = 2;
+	string hash   = 3;
+	string error  = 4;
 }
 
 // StartVMRequest is the request message for starting a VM

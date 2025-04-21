@@ -44,6 +44,11 @@ const (
 	AgentServiceGetVMStatusProcedure = "/ec1.v1poc1.AgentService/GetVMStatus"
 	// AgentServiceAgentProbeProcedure is the fully-qualified name of the AgentService's AgentProbe RPC.
 	AgentServiceAgentProbeProcedure = "/ec1.v1poc1.AgentService/AgentProbe"
+	// AgentServiceFileTransferProcedure is the fully-qualified name of the AgentService's FileTransfer
+	// RPC.
+	AgentServiceFileTransferProcedure = "/ec1.v1poc1.AgentService/FileTransfer"
+	// AgentServiceStatusProcedure is the fully-qualified name of the AgentService's Status RPC.
+	AgentServiceStatusProcedure = "/ec1.v1poc1.AgentService/Status"
 )
 
 // AgentServiceClient is a client for the ec1.v1poc1.AgentService service.
@@ -56,7 +61,9 @@ type AgentServiceClient interface {
 	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest]) (*connect.ServerStreamForClient[v1poc1.VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
-	AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest]) (*connect.ServerStreamForClient[v1poc1.AgentProbeResponse], error)
+	AgentProbe(context.Context) *connect.BidiStreamForClient[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]
+	FileTransfer(context.Context) *connect.ClientStreamForClient[v1poc1.FileTransferRequest, v1poc1.FileTransferResponse]
+	Status(context.Context, *connect.Request[v1poc1.StatusRequest]) (*connect.Response[v1poc1.StatusResponse], error)
 }
 
 // NewAgentServiceClient constructs a client for the ec1.v1poc1.AgentService service. By default, it
@@ -105,16 +112,32 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		fileTransfer: connect.NewClient[v1poc1.FileTransferRequest, v1poc1.FileTransferResponse](
+			httpClient,
+			baseURL+AgentServiceFileTransferProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("FileTransfer")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		status: connect.NewClient[v1poc1.StatusRequest, v1poc1.StatusResponse](
+			httpClient,
+			baseURL+AgentServiceStatusProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("Status")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // agentServiceClient implements AgentServiceClient.
 type agentServiceClient struct {
-	startVM     *connect.Client[v1poc1.StartVMRequest, v1poc1.StartVMResponse]
-	stopVM      *connect.Client[v1poc1.StopVMRequest, v1poc1.StopVMResponse]
-	vMStatus    *connect.Client[v1poc1.VMStatusRequest, v1poc1.VMStatusResponse]
-	getVMStatus *connect.Client[v1poc1.GetVMStatusRequest, v1poc1.GetVMStatusResponse]
-	agentProbe  *connect.Client[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]
+	startVM      *connect.Client[v1poc1.StartVMRequest, v1poc1.StartVMResponse]
+	stopVM       *connect.Client[v1poc1.StopVMRequest, v1poc1.StopVMResponse]
+	vMStatus     *connect.Client[v1poc1.VMStatusRequest, v1poc1.VMStatusResponse]
+	getVMStatus  *connect.Client[v1poc1.GetVMStatusRequest, v1poc1.GetVMStatusResponse]
+	agentProbe   *connect.Client[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]
+	fileTransfer *connect.Client[v1poc1.FileTransferRequest, v1poc1.FileTransferResponse]
+	status       *connect.Client[v1poc1.StatusRequest, v1poc1.StatusResponse]
 }
 
 // StartVM calls ec1.v1poc1.AgentService.StartVM.
@@ -138,8 +161,18 @@ func (c *agentServiceClient) GetVMStatus(ctx context.Context, req *connect.Reque
 }
 
 // AgentProbe calls ec1.v1poc1.AgentService.AgentProbe.
-func (c *agentServiceClient) AgentProbe(ctx context.Context, req *connect.Request[v1poc1.AgentProbeRequest]) (*connect.ServerStreamForClient[v1poc1.AgentProbeResponse], error) {
-	return c.agentProbe.CallServerStream(ctx, req)
+func (c *agentServiceClient) AgentProbe(ctx context.Context) *connect.BidiStreamForClient[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse] {
+	return c.agentProbe.CallBidiStream(ctx)
+}
+
+// FileTransfer calls ec1.v1poc1.AgentService.FileTransfer.
+func (c *agentServiceClient) FileTransfer(ctx context.Context) *connect.ClientStreamForClient[v1poc1.FileTransferRequest, v1poc1.FileTransferResponse] {
+	return c.fileTransfer.CallClientStream(ctx)
+}
+
+// Status calls ec1.v1poc1.AgentService.Status.
+func (c *agentServiceClient) Status(ctx context.Context, req *connect.Request[v1poc1.StatusRequest]) (*connect.Response[v1poc1.StatusResponse], error) {
+	return c.status.CallUnary(ctx, req)
 }
 
 // AgentServiceHandler is an implementation of the ec1.v1poc1.AgentService service.
@@ -152,7 +185,9 @@ type AgentServiceHandler interface {
 	VMStatus(context.Context, *connect.Request[v1poc1.VMStatusRequest], *connect.ServerStream[v1poc1.VMStatusResponse]) error
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *connect.Request[v1poc1.GetVMStatusRequest]) (*connect.Response[v1poc1.GetVMStatusResponse], error)
-	AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest], *connect.ServerStream[v1poc1.AgentProbeResponse]) error
+	AgentProbe(context.Context, *connect.BidiStream[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]) error
+	FileTransfer(context.Context, *connect.ClientStream[v1poc1.FileTransferRequest]) (*connect.Response[v1poc1.FileTransferResponse], error)
+	Status(context.Context, *connect.Request[v1poc1.StatusRequest]) (*connect.Response[v1poc1.StatusResponse], error)
 }
 
 // NewAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -190,10 +225,24 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
-	agentServiceAgentProbeHandler := connect.NewServerStreamHandler(
+	agentServiceAgentProbeHandler := connect.NewBidiStreamHandler(
 		AgentServiceAgentProbeProcedure,
 		svc.AgentProbe,
 		connect.WithSchema(agentServiceMethods.ByName("AgentProbe")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceFileTransferHandler := connect.NewClientStreamHandler(
+		AgentServiceFileTransferProcedure,
+		svc.FileTransfer,
+		connect.WithSchema(agentServiceMethods.ByName("FileTransfer")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceStatusHandler := connect.NewUnaryHandler(
+		AgentServiceStatusProcedure,
+		svc.Status,
+		connect.WithSchema(agentServiceMethods.ByName("Status")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
@@ -209,6 +258,10 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceGetVMStatusHandler.ServeHTTP(w, r)
 		case AgentServiceAgentProbeProcedure:
 			agentServiceAgentProbeHandler.ServeHTTP(w, r)
+		case AgentServiceFileTransferProcedure:
+			agentServiceFileTransferHandler.ServeHTTP(w, r)
+		case AgentServiceStatusProcedure:
+			agentServiceStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -234,6 +287,14 @@ func (UnimplementedAgentServiceHandler) GetVMStatus(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.GetVMStatus is not implemented"))
 }
 
-func (UnimplementedAgentServiceHandler) AgentProbe(context.Context, *connect.Request[v1poc1.AgentProbeRequest], *connect.ServerStream[v1poc1.AgentProbeResponse]) error {
+func (UnimplementedAgentServiceHandler) AgentProbe(context.Context, *connect.BidiStream[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.AgentProbe is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) FileTransfer(context.Context, *connect.ClientStream[v1poc1.FileTransferRequest]) (*connect.Response[v1poc1.FileTransferResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.FileTransfer is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) Status(context.Context, *connect.Request[v1poc1.StatusRequest]) (*connect.Response[v1poc1.StatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ec1.v1poc1.AgentService.Status is not implemented"))
 }

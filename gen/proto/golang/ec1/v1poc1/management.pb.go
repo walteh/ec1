@@ -22,245 +22,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// RegisterAgentRequest is the request message for registering an agent
-type RegisterAgentRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for the agent
-	// cel validation with agent-xid
-	AgentId *string `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
-	// Host address where the agent is running
-	HostAddress *string `protobuf:"bytes,2,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
-	// Type of hypervisor the agent is managing
-	HypervisorType *HypervisorType `protobuf:"varint,3,opt,name=hypervisor_type,json=hypervisorType,enum=ec1.v1poc1.HypervisorType" json:"hypervisor_type,omitempty"`
-	// Available resources managed by the agent
-	TotalResources *Resources `protobuf:"bytes,4,opt,name=total_resources,json=totalResources" json:"total_resources,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *RegisterAgentRequest) Reset() {
-	*x = RegisterAgentRequest{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterAgentRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterAgentRequest) ProtoMessage() {}
-
-func (x *RegisterAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterAgentRequest.ProtoReflect.Descriptor instead.
-func (*RegisterAgentRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *RegisterAgentRequest) GetAgentId() string {
-	if x != nil && x.AgentId != nil {
-		return *x.AgentId
-	}
-	return ""
-}
-
-func (x *RegisterAgentRequest) GetHostAddress() string {
-	if x != nil && x.HostAddress != nil {
-		return *x.HostAddress
-	}
-	return ""
-}
-
-func (x *RegisterAgentRequest) GetHypervisorType() HypervisorType {
-	if x != nil && x.HypervisorType != nil {
-		return *x.HypervisorType
-	}
-	return HypervisorType_HYPERVISOR_TYPE_UNSPECIFIED
-}
-
-func (x *RegisterAgentRequest) GetTotalResources() *Resources {
-	if x != nil {
-		return x.TotalResources
-	}
-	return nil
-}
-
-// RegisterAgentResponse is the response message after registering an agent
-type RegisterAgentResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Success status of registration
-	Success *bool `protobuf:"varint,1,opt,name=success" json:"success,omitempty"`
-	// Error message, if any
-	Error         *string `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RegisterAgentResponse) Reset() {
-	*x = RegisterAgentResponse{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterAgentResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterAgentResponse) ProtoMessage() {}
-
-func (x *RegisterAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterAgentResponse.ProtoReflect.Descriptor instead.
-func (*RegisterAgentResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *RegisterAgentResponse) GetSuccess() bool {
-	if x != nil && x.Success != nil {
-		return *x.Success
-	}
-	return false
-}
-
-func (x *RegisterAgentResponse) GetError() string {
-	if x != nil && x.Error != nil {
-		return *x.Error
-	}
-	return ""
-}
-
-// ReportAgentStatusRequest is the request message for reporting agent status
-type ReportAgentStatusRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier for the agent
-	AgentId *string `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
-	// List of VMs running on the agent
-	Vms           []*VMInfo `protobuf:"bytes,2,rep,name=vms" json:"vms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReportAgentStatusRequest) Reset() {
-	*x = ReportAgentStatusRequest{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReportAgentStatusRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReportAgentStatusRequest) ProtoMessage() {}
-
-func (x *ReportAgentStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReportAgentStatusRequest.ProtoReflect.Descriptor instead.
-func (*ReportAgentStatusRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ReportAgentStatusRequest) GetAgentId() string {
-	if x != nil && x.AgentId != nil {
-		return *x.AgentId
-	}
-	return ""
-}
-
-func (x *ReportAgentStatusRequest) GetVms() []*VMInfo {
-	if x != nil {
-		return x.Vms
-	}
-	return nil
-}
-
-// ReportAgentStatusResponse is the response message after reporting agent status
-type ReportAgentStatusResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Success status
-	Success *bool `protobuf:"varint,1,opt,name=success" json:"success,omitempty"`
-	// Error message, if any
-	Error         *string `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReportAgentStatusResponse) Reset() {
-	*x = ReportAgentStatusResponse{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReportAgentStatusResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReportAgentStatusResponse) ProtoMessage() {}
-
-func (x *ReportAgentStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReportAgentStatusResponse.ProtoReflect.Descriptor instead.
-func (*ReportAgentStatusResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *ReportAgentStatusResponse) GetSuccess() bool {
-	if x != nil && x.Success != nil {
-		return *x.Success
-	}
-	return false
-}
-
-func (x *ReportAgentStatusResponse) GetError() string {
-	if x != nil && x.Error != nil {
-		return *x.Error
-	}
-	return ""
-}
-
 // VMInfo provides information about a running VM
 type VMInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -280,7 +41,7 @@ type VMInfo struct {
 
 func (x *VMInfo) Reset() {
 	*x = VMInfo{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -292,7 +53,7 @@ func (x *VMInfo) String() string {
 func (*VMInfo) ProtoMessage() {}
 
 func (x *VMInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -305,7 +66,7 @@ func (x *VMInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMInfo.ProtoReflect.Descriptor instead.
 func (*VMInfo) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *VMInfo) GetVmId() string {
@@ -350,26 +111,324 @@ func (x *VMInfo) GetResourcesLive() *Resources {
 	return nil
 }
 
+type InitializeLocalAgentInsideLocalVMRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Qcow2ImagePath    *string                `protobuf:"bytes,1,opt,name=qcow2_image_path,json=qcow2ImagePath" json:"qcow2_image_path,omitempty"`
+	CloudinitMetadata *string                `protobuf:"bytes,2,opt,name=cloudinit_metadata,json=cloudinitMetadata" json:"cloudinit_metadata,omitempty"`
+	CloudinitUserdata *string                `protobuf:"bytes,3,opt,name=cloudinit_userdata,json=cloudinitUserdata" json:"cloudinit_userdata,omitempty"`
+	Arch              *string                `protobuf:"bytes,4,opt,name=arch" json:"arch,omitempty"`
+	Os                *string                `protobuf:"bytes,5,opt,name=os" json:"os,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) Reset() {
+	*x = InitializeLocalAgentInsideLocalVMRequest{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitializeLocalAgentInsideLocalVMRequest) ProtoMessage() {}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitializeLocalAgentInsideLocalVMRequest.ProtoReflect.Descriptor instead.
+func (*InitializeLocalAgentInsideLocalVMRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) GetQcow2ImagePath() string {
+	if x != nil && x.Qcow2ImagePath != nil {
+		return *x.Qcow2ImagePath
+	}
+	return ""
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) GetCloudinitMetadata() string {
+	if x != nil && x.CloudinitMetadata != nil {
+		return *x.CloudinitMetadata
+	}
+	return ""
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) GetCloudinitUserdata() string {
+	if x != nil && x.CloudinitUserdata != nil {
+		return *x.CloudinitUserdata
+	}
+	return ""
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) GetArch() string {
+	if x != nil && x.Arch != nil {
+		return *x.Arch
+	}
+	return ""
+}
+
+func (x *InitializeLocalAgentInsideLocalVMRequest) GetOs() string {
+	if x != nil && x.Os != nil {
+		return *x.Os
+	}
+	return ""
+}
+
+type InitializeLocalAgentInsideLocalVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InitializeLocalAgentInsideLocalVMResponse) Reset() {
+	*x = InitializeLocalAgentInsideLocalVMResponse{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitializeLocalAgentInsideLocalVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitializeLocalAgentInsideLocalVMResponse) ProtoMessage() {}
+
+func (x *InitializeLocalAgentInsideLocalVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitializeLocalAgentInsideLocalVMResponse.ProtoReflect.Descriptor instead.
+func (*InitializeLocalAgentInsideLocalVMResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{2}
+}
+
+type InitializeRemoteAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	HostAddress   *string                `protobuf:"bytes,1,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
+	SshUsername   *string                `protobuf:"bytes,2,opt,name=ssh_username,json=sshUsername" json:"ssh_username,omitempty"`
+	SshPassword   *string                `protobuf:"bytes,3,opt,name=ssh_password,json=sshPassword" json:"ssh_password,omitempty"`
+	Arch          *string                `protobuf:"bytes,4,opt,name=arch" json:"arch,omitempty"`
+	Os            *string                `protobuf:"bytes,5,opt,name=os" json:"os,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InitializeRemoteAgentRequest) Reset() {
+	*x = InitializeRemoteAgentRequest{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitializeRemoteAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitializeRemoteAgentRequest) ProtoMessage() {}
+
+func (x *InitializeRemoteAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitializeRemoteAgentRequest.ProtoReflect.Descriptor instead.
+func (*InitializeRemoteAgentRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *InitializeRemoteAgentRequest) GetHostAddress() string {
+	if x != nil && x.HostAddress != nil {
+		return *x.HostAddress
+	}
+	return ""
+}
+
+func (x *InitializeRemoteAgentRequest) GetSshUsername() string {
+	if x != nil && x.SshUsername != nil {
+		return *x.SshUsername
+	}
+	return ""
+}
+
+func (x *InitializeRemoteAgentRequest) GetSshPassword() string {
+	if x != nil && x.SshPassword != nil {
+		return *x.SshPassword
+	}
+	return ""
+}
+
+func (x *InitializeRemoteAgentRequest) GetArch() string {
+	if x != nil && x.Arch != nil {
+		return *x.Arch
+	}
+	return ""
+}
+
+func (x *InitializeRemoteAgentRequest) GetOs() string {
+	if x != nil && x.Os != nil {
+		return *x.Os
+	}
+	return ""
+}
+
+type InitializeRemoteAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InitializeRemoteAgentResponse) Reset() {
+	*x = InitializeRemoteAgentResponse{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitializeRemoteAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitializeRemoteAgentResponse) ProtoMessage() {}
+
+func (x *InitializeRemoteAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitializeRemoteAgentResponse.ProtoReflect.Descriptor instead.
+func (*InitializeRemoteAgentResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
+}
+
+type IdentifyRemoteAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       *string                `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
+	HostAddress   *string                `protobuf:"bytes,2,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdentifyRemoteAgentRequest) Reset() {
+	*x = IdentifyRemoteAgentRequest{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdentifyRemoteAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdentifyRemoteAgentRequest) ProtoMessage() {}
+
+func (x *IdentifyRemoteAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdentifyRemoteAgentRequest.ProtoReflect.Descriptor instead.
+func (*IdentifyRemoteAgentRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *IdentifyRemoteAgentRequest) GetAgentId() string {
+	if x != nil && x.AgentId != nil {
+		return *x.AgentId
+	}
+	return ""
+}
+
+func (x *IdentifyRemoteAgentRequest) GetHostAddress() string {
+	if x != nil && x.HostAddress != nil {
+		return *x.HostAddress
+	}
+	return ""
+}
+
+type IdentifyRemoteAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdentifyRemoteAgentResponse) Reset() {
+	*x = IdentifyRemoteAgentResponse{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdentifyRemoteAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdentifyRemoteAgentResponse) ProtoMessage() {}
+
+func (x *IdentifyRemoteAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdentifyRemoteAgentResponse.ProtoReflect.Descriptor instead.
+func (*IdentifyRemoteAgentResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{6}
+}
+
 var File_ec1_v1poc1_management_proto protoreflect.FileDescriptor
 
 const file_ec1_v1poc1_management_proto_rawDesc = "" +
 	"\n" +
 	"\x1bec1/v1poc1/management.proto\x12\n" +
-	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\xf6\x01\n" +
-	"\x14RegisterAgentRequest\x12,\n" +
-	"\bagent_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12+\n" +
-	"\fhost_address\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x88\x01\x01R\vhostAddress\x12C\n" +
-	"\x0fhypervisor_type\x18\x03 \x01(\x0e2\x1a.ec1.v1poc1.HypervisorTypeR\x0ehypervisorType\x12>\n" +
-	"\x0ftotal_resources\x18\x04 \x01(\v2\x15.ec1.v1poc1.ResourcesR\x0etotalResources\"G\n" +
-	"\x15RegisterAgentResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"n\n" +
-	"\x18ReportAgentStatusRequest\x12,\n" +
-	"\bagent_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12$\n" +
-	"\x03vms\x18\x02 \x03(\v2\x12.ec1.v1poc1.VMInfoR\x03vms\"K\n" +
-	"\x19ReportAgentStatusResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\x95\x02\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x95\x02\n" +
 	"\x06VMInfo\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -377,10 +436,29 @@ const file_ec1_v1poc1_management_proto_rawDesc = "" +
 	"\n" +
 	"ip_address\x18\x04 \x01(\tB\b\xbaH\x05r\x03\xf0\x01\x01R\tipAddress\x12:\n" +
 	"\rresources_max\x18\x05 \x01(\v2\x15.ec1.v1poc1.ResourcesR\fresourcesMax\x12<\n" +
-	"\x0eresources_live\x18\x06 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesLive2\xd5\x01\n" +
-	"\x11ManagementService\x12Y\n" +
-	"\rRegisterAgent\x12 .ec1.v1poc1.RegisterAgentRequest\x1a!.ec1.v1poc1.RegisterAgentResponse\"\x03\x90\x02\x01\x12e\n" +
-	"\x11ReportAgentStatus\x12$.ec1.v1poc1.ReportAgentStatusRequest\x1a%.ec1.v1poc1.ReportAgentStatusResponse\"\x03\x90\x02\x01B\x9d\x01\n" +
+	"\x0eresources_live\x18\x06 \x01(\v2\x15.ec1.v1poc1.ResourcesR\rresourcesLive\"\xd6\x01\n" +
+	"(InitializeLocalAgentInsideLocalVMRequest\x12(\n" +
+	"\x10qcow2_image_path\x18\x01 \x01(\tR\x0eqcow2ImagePath\x12-\n" +
+	"\x12cloudinit_metadata\x18\x02 \x01(\tR\x11cloudinitMetadata\x12-\n" +
+	"\x12cloudinit_userdata\x18\x03 \x01(\tR\x11cloudinitUserdata\x12\x12\n" +
+	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x0e\n" +
+	"\x02os\x18\x05 \x01(\tR\x02os\"+\n" +
+	")InitializeLocalAgentInsideLocalVMResponse\"\xb8\x01\n" +
+	"\x1cInitializeRemoteAgentRequest\x12.\n" +
+	"\fhost_address\x18\x01 \x01(\tB\v\xbaH\b\xc8\x01\x01r\x03\x88\x01\x01R\vhostAddress\x12!\n" +
+	"\fssh_username\x18\x02 \x01(\tR\vsshUsername\x12!\n" +
+	"\fssh_password\x18\x03 \x01(\tR\vsshPassword\x12\x12\n" +
+	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x0e\n" +
+	"\x02os\x18\x05 \x01(\tR\x02os\"\x1f\n" +
+	"\x1dInitializeRemoteAgentResponse\"}\n" +
+	"\x1aIdentifyRemoteAgentRequest\x12/\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x14\xbaH\x11\xc8\x01\x01r\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12.\n" +
+	"\fhost_address\x18\x02 \x01(\tB\v\xbaH\b\xc8\x01\x01r\x03\x88\x01\x01R\vhostAddress\"\x1d\n" +
+	"\x1bIdentifyRemoteAgentResponse2\x8a\x03\n" +
+	"\x11ManagementService\x12k\n" +
+	"\x13IdentifyRemoteAgent\x12&.ec1.v1poc1.IdentifyRemoteAgentRequest\x1a'.ec1.v1poc1.IdentifyRemoteAgentResponse\"\x03\x90\x02\x01\x12\x95\x01\n" +
+	"!InitializeLocalAgentInsideLocalVM\x124.ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest\x1a5.ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse\"\x03\x90\x02\x01\x12p\n" +
+	"\x14InitilizeRemoteAgent\x12(.ec1.v1poc1.InitializeRemoteAgentRequest\x1a).ec1.v1poc1.InitializeRemoteAgentResponse\"\x03\x90\x02\x01B\x9d\x01\n" +
 	"\x0ecom.ec1.v1poc1B\x0fManagementProtoP\x01Z1github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1\xa2\x02\x03EVX\xaa\x02\n" +
 	"Ec1.V1poc1\xca\x02\n" +
 	"Ec1\\V1poc1\xe2\x02\x16Ec1\\V1poc1\\GPBMetadata\xea\x02\vEc1::V1poc1b\beditionsp\xe8\a"
@@ -397,33 +475,33 @@ func file_ec1_v1poc1_management_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_management_proto_rawDescData
 }
 
-var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_ec1_v1poc1_management_proto_goTypes = []any{
-	(*RegisterAgentRequest)(nil),      // 0: ec1.v1poc1.RegisterAgentRequest
-	(*RegisterAgentResponse)(nil),     // 1: ec1.v1poc1.RegisterAgentResponse
-	(*ReportAgentStatusRequest)(nil),  // 2: ec1.v1poc1.ReportAgentStatusRequest
-	(*ReportAgentStatusResponse)(nil), // 3: ec1.v1poc1.ReportAgentStatusResponse
-	(*VMInfo)(nil),                    // 4: ec1.v1poc1.VMInfo
-	(HypervisorType)(0),               // 5: ec1.v1poc1.HypervisorType
-	(*Resources)(nil),                 // 6: ec1.v1poc1.Resources
-	(VMStatus)(0),                     // 7: ec1.v1poc1.VMStatus
+	(*VMInfo)(nil), // 0: ec1.v1poc1.VMInfo
+	(*InitializeLocalAgentInsideLocalVMRequest)(nil),  // 1: ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
+	(*InitializeLocalAgentInsideLocalVMResponse)(nil), // 2: ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
+	(*InitializeRemoteAgentRequest)(nil),              // 3: ec1.v1poc1.InitializeRemoteAgentRequest
+	(*InitializeRemoteAgentResponse)(nil),             // 4: ec1.v1poc1.InitializeRemoteAgentResponse
+	(*IdentifyRemoteAgentRequest)(nil),                // 5: ec1.v1poc1.IdentifyRemoteAgentRequest
+	(*IdentifyRemoteAgentResponse)(nil),               // 6: ec1.v1poc1.IdentifyRemoteAgentResponse
+	(VMStatus)(0),                                     // 7: ec1.v1poc1.VMStatus
+	(*Resources)(nil),                                 // 8: ec1.v1poc1.Resources
 }
 var file_ec1_v1poc1_management_proto_depIdxs = []int32{
-	5, // 0: ec1.v1poc1.RegisterAgentRequest.hypervisor_type:type_name -> ec1.v1poc1.HypervisorType
-	6, // 1: ec1.v1poc1.RegisterAgentRequest.total_resources:type_name -> ec1.v1poc1.Resources
-	4, // 2: ec1.v1poc1.ReportAgentStatusRequest.vms:type_name -> ec1.v1poc1.VMInfo
-	7, // 3: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
-	6, // 4: ec1.v1poc1.VMInfo.resources_max:type_name -> ec1.v1poc1.Resources
-	6, // 5: ec1.v1poc1.VMInfo.resources_live:type_name -> ec1.v1poc1.Resources
-	0, // 6: ec1.v1poc1.ManagementService.RegisterAgent:input_type -> ec1.v1poc1.RegisterAgentRequest
-	2, // 7: ec1.v1poc1.ManagementService.ReportAgentStatus:input_type -> ec1.v1poc1.ReportAgentStatusRequest
-	1, // 8: ec1.v1poc1.ManagementService.RegisterAgent:output_type -> ec1.v1poc1.RegisterAgentResponse
-	3, // 9: ec1.v1poc1.ManagementService.ReportAgentStatus:output_type -> ec1.v1poc1.ReportAgentStatusResponse
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7, // 0: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
+	8, // 1: ec1.v1poc1.VMInfo.resources_max:type_name -> ec1.v1poc1.Resources
+	8, // 2: ec1.v1poc1.VMInfo.resources_live:type_name -> ec1.v1poc1.Resources
+	5, // 3: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:input_type -> ec1.v1poc1.IdentifyRemoteAgentRequest
+	1, // 4: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:input_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
+	3, // 5: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:input_type -> ec1.v1poc1.InitializeRemoteAgentRequest
+	6, // 6: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:output_type -> ec1.v1poc1.IdentifyRemoteAgentResponse
+	2, // 7: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:output_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
+	4, // 8: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:output_type -> ec1.v1poc1.InitializeRemoteAgentResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_management_proto_init() }
@@ -439,7 +517,7 @@ func file_ec1_v1poc1_management_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_management_proto_rawDesc), len(file_ec1_v1poc1_management_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

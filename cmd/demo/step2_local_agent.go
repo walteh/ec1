@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/pkg/agent"
 )
 
@@ -45,7 +46,7 @@ func StartLocalAgent(ctx context.Context, agentAddr, mgtAddr string) error {
 
 // For testing and direct invocation, we also provide a function that runs
 // the agent in the same process
-func StartLocalAgentInProcess(ctx context.Context, agentAddr, mgtAddr string) error {
+func StartLocalAgentInProcess(ctx context.Context, agentAddr, mgtAddr string) (v1poc1connect.AgentServiceClient, error) {
 	fmt.Println("Starting local agent in current process...")
 
 	// Create agent configuration
@@ -58,11 +59,16 @@ func StartLocalAgentInProcess(ctx context.Context, agentAddr, mgtAddr string) er
 	// Create and start the agent
 	a, err := agent.New(ctx, config)
 	if err != nil {
-		return fmt.Errorf("creating agent: %w", err)
+		return nil, fmt.Errorf("creating agent: %w", err)
 	}
 
 	fmt.Printf("Starting EC1 Agent (ID: %s) on %s\n", a.ID(), agentAddr)
 	fmt.Printf("Connecting to management server at %s\n", mgtAddr)
 
-	return a.Start(ctx)
+	err = a.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("starting agent: %w", err)
+	}
+
+	return a, nil
 }

@@ -8,65 +8,29 @@ import "ec1/validate/validate.proto";
 
 // ManagementService provides functions for agents to register and report status
 service ManagementService {
-	// RegisterAgent registers an agent with the management server
-	rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse) {
+	// // RegisterAgent registers an agent with the management server
+	// rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse) {
+	//  option idempotency_level = NO_SIDE_EFFECTS;
+	// }
+
+	// // ReportAgentStatus reports the agent's current status
+	// rpc ReportAgentStatus(ReportAgentStatusRequest) returns (ReportAgentStatusResponse) {
+	//  option idempotency_level = NO_SIDE_EFFECTS;
+	// }
+
+	rpc IdentifyRemoteAgent(IdentifyRemoteAgentRequest) returns (IdentifyRemoteAgentResponse) {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
 
 
-	// ReportAgentStatus reports the agent's current status
-	rpc ReportAgentStatus(ReportAgentStatusRequest) returns (ReportAgentStatusResponse) {
+	rpc InitializeLocalAgentInsideLocalVM(InitializeLocalAgentInsideLocalVMRequest) returns (InitializeLocalAgentInsideLocalVMResponse) {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
-}
 
-// RegisterAgentRequest is the request message for registering an agent
-message RegisterAgentRequest {
-	// Unique identifier for the agent
-	// cel validation with agent-xid
-	string agent_id = 1 [
-		(validate.field).string.(id).agent = true
-	];
 
-	// Host address where the agent is running
-	string host_address = 2 [
-		(validate.field).string.uri = true
-	];
-
-	// Type of hypervisor the agent is managing
-	HypervisorType hypervisor_type = 3;
-
-	// Available resources managed by the agent
-	Resources total_resources = 4;
-}
-
-// RegisterAgentResponse is the response message after registering an agent
-message RegisterAgentResponse {
-	// Success status of registration
-	bool success = 1;
-
-	// Error message, if any
-	string error = 2;
-}
-
-// ReportAgentStatusRequest is the request message for reporting agent status
-message ReportAgentStatusRequest {
-	// Unique identifier for the agent
-	string agent_id = 1 [
-		(validate.field).string.(id).agent = true
-	];
-
-	// List of VMs running on the agent
-	repeated VMInfo vms = 2;
-}
-
-// ReportAgentStatusResponse is the response message after reporting agent status
-message ReportAgentStatusResponse {
-	// Success status
-	bool success = 1;
-
-	// Error message, if any
-	string error = 2;
+	rpc InitilizeRemoteAgent(InitializeRemoteAgentRequest) returns (InitializeRemoteAgentResponse) {
+		option idempotency_level = NO_SIDE_EFFECTS;
+	}
 }
 
 // VMInfo provides information about a running VM
@@ -91,3 +55,91 @@ message VMInfo {
 
 	Resources resources_live = 6;
 }
+
+message InitializeLocalAgentInsideLocalVMRequest {
+	string qcow2_image_path   = 1;
+	string cloudinit_metadata = 2;
+	string cloudinit_userdata = 3;
+
+	string arch = 4;
+	string os   = 5;
+}
+
+message InitializeLocalAgentInsideLocalVMResponse {}
+
+message InitializeRemoteAgentRequest {
+	string host_address = 1 [
+		(validate.field).string.uri = true,
+		(validate.field).required   = true
+	];
+
+	string ssh_username = 2;
+	string ssh_password = 3;
+
+	string arch = 4;
+	string os   = 5;
+}
+
+message InitializeRemoteAgentResponse {}
+
+message IdentifyRemoteAgentRequest {
+	string agent_id     = 1 [
+		(validate.field).string.(id).agent = true,
+		(validate.field).required          = true
+	];
+	string host_address = 2 [
+		(validate.field).string.uri = true,
+		(validate.field).required   = true
+	];
+}
+
+message IdentifyRemoteAgentResponse {}
+
+// // RegisterAgentRequest is the request message for registering an agent
+// message RegisterAgentRequest {
+//  // Unique identifier for the agent
+//  // cel validation with agent-xid
+//  string agent_id = 1 [
+//   (validate.field).string.(id).agent = true
+//  ];
+
+//  // Host address where the agent is running
+//  string host_address = 2 [
+//   (validate.field).string.uri = true
+//  ];
+
+//  // Type of hypervisor the agent is managing
+//  HypervisorType hypervisor_type = 3;
+
+//  // Available resources managed by the agent
+//  Resources total_resources = 4;
+// }
+
+// // RegisterAgentResponse is the response message after registering an agent
+// message RegisterAgentResponse {
+//  // Success status of registration
+//  bool success = 1;
+
+//  // Error message, if any
+//  string error = 2;
+// }
+
+// // ReportAgentStatusRequest is the request message for reporting agent status
+// message ReportAgentStatusRequest {
+//  // Unique identifier for the agent
+//  string agent_id = 1 [
+//   (validate.field).string.(id).agent = true
+//  ];
+
+//  // List of VMs running on the agent
+//  repeated VMInfo vms = 2;
+// }
+
+// // ReportAgentStatusResponse is the response message after reporting agent status
+// message ReportAgentStatusResponse {
+//  // Success status
+//  bool success = 1;
+
+//  // Error message, if any
+//  string error = 2;
+// }

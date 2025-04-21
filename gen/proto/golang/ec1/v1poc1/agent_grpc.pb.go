@@ -19,11 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_StartVM_FullMethodName     = "/ec1.v1poc1.AgentService/StartVM"
-	AgentService_StopVM_FullMethodName      = "/ec1.v1poc1.AgentService/StopVM"
-	AgentService_VMStatus_FullMethodName    = "/ec1.v1poc1.AgentService/VMStatus"
-	AgentService_GetVMStatus_FullMethodName = "/ec1.v1poc1.AgentService/GetVMStatus"
-	AgentService_AgentProbe_FullMethodName  = "/ec1.v1poc1.AgentService/AgentProbe"
+	AgentService_StartVM_FullMethodName      = "/ec1.v1poc1.AgentService/StartVM"
+	AgentService_StopVM_FullMethodName       = "/ec1.v1poc1.AgentService/StopVM"
+	AgentService_VMStatus_FullMethodName     = "/ec1.v1poc1.AgentService/VMStatus"
+	AgentService_GetVMStatus_FullMethodName  = "/ec1.v1poc1.AgentService/GetVMStatus"
+	AgentService_AgentProbe_FullMethodName   = "/ec1.v1poc1.AgentService/AgentProbe"
+	AgentService_FileTransfer_FullMethodName = "/ec1.v1poc1.AgentService/FileTransfer"
+	AgentService_Status_FullMethodName       = "/ec1.v1poc1.AgentService/Status"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -40,7 +42,9 @@ type AgentServiceClient interface {
 	VMStatus(ctx context.Context, in *VMStatusRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VMStatusResponse], error)
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(ctx context.Context, in *GetVMStatusRequest, opts ...grpc.CallOption) (*GetVMStatusResponse, error)
-	AgentProbe(ctx context.Context, in *AgentProbeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AgentProbeResponse], error)
+	AgentProbe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentProbeRequest, AgentProbeResponse], error)
+	FileTransfer(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[FileTransferRequest, FileTransferResponse], error)
+	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 }
 
 type agentServiceClient struct {
@@ -100,24 +104,41 @@ func (c *agentServiceClient) GetVMStatus(ctx context.Context, in *GetVMStatusReq
 	return out, nil
 }
 
-func (c *agentServiceClient) AgentProbe(ctx context.Context, in *AgentProbeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AgentProbeResponse], error) {
+func (c *agentServiceClient) AgentProbe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentProbeRequest, AgentProbeResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[1], AgentService_AgentProbe_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &grpc.GenericClientStream[AgentProbeRequest, AgentProbeResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_AgentProbeClient = grpc.ServerStreamingClient[AgentProbeResponse]
+type AgentService_AgentProbeClient = grpc.BidiStreamingClient[AgentProbeRequest, AgentProbeResponse]
+
+func (c *agentServiceClient) FileTransfer(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[FileTransferRequest, FileTransferResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[2], AgentService_FileTransfer_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[FileTransferRequest, FileTransferResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_FileTransferClient = grpc.ClientStreamingClient[FileTransferRequest, FileTransferResponse]
+
+func (c *agentServiceClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, AgentService_Status_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
@@ -133,7 +154,9 @@ type AgentServiceServer interface {
 	VMStatus(*VMStatusRequest, grpc.ServerStreamingServer[VMStatusResponse]) error
 	// GetVMStatus gets the status of a virtual machine on the agent's host
 	GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error)
-	AgentProbe(*AgentProbeRequest, grpc.ServerStreamingServer[AgentProbeResponse]) error
+	AgentProbe(grpc.BidiStreamingServer[AgentProbeRequest, AgentProbeResponse]) error
+	FileTransfer(grpc.ClientStreamingServer[FileTransferRequest, FileTransferResponse]) error
+	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -156,8 +179,14 @@ func (UnimplementedAgentServiceServer) VMStatus(*VMStatusRequest, grpc.ServerStr
 func (UnimplementedAgentServiceServer) GetVMStatus(context.Context, *GetVMStatusRequest) (*GetVMStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVMStatus not implemented")
 }
-func (UnimplementedAgentServiceServer) AgentProbe(*AgentProbeRequest, grpc.ServerStreamingServer[AgentProbeResponse]) error {
+func (UnimplementedAgentServiceServer) AgentProbe(grpc.BidiStreamingServer[AgentProbeRequest, AgentProbeResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method AgentProbe not implemented")
+}
+func (UnimplementedAgentServiceServer) FileTransfer(grpc.ClientStreamingServer[FileTransferRequest, FileTransferResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FileTransfer not implemented")
+}
+func (UnimplementedAgentServiceServer) Status(context.Context, *StatusRequest) (*StatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -246,15 +275,36 @@ func _AgentService_GetVMStatus_Handler(srv interface{}, ctx context.Context, dec
 }
 
 func _AgentService_AgentProbe_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(AgentProbeRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(AgentServiceServer).AgentProbe(m, &grpc.GenericServerStream[AgentProbeRequest, AgentProbeResponse]{ServerStream: stream})
+	return srv.(AgentServiceServer).AgentProbe(&grpc.GenericServerStream[AgentProbeRequest, AgentProbeResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_AgentProbeServer = grpc.ServerStreamingServer[AgentProbeResponse]
+type AgentService_AgentProbeServer = grpc.BidiStreamingServer[AgentProbeRequest, AgentProbeResponse]
+
+func _AgentService_FileTransfer_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServiceServer).FileTransfer(&grpc.GenericServerStream[FileTransferRequest, FileTransferResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_FileTransferServer = grpc.ClientStreamingServer[FileTransferRequest, FileTransferResponse]
+
+func _AgentService_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_Status_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).Status(ctx, req.(*StatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -275,6 +325,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetVMStatus",
 			Handler:    _AgentService_GetVMStatus_Handler,
 		},
+		{
+			MethodName: "Status",
+			Handler:    _AgentService_Status_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -286,6 +340,12 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "AgentProbe",
 			Handler:       _AgentService_AgentProbe_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "FileTransfer",
+			Handler:       _AgentService_FileTransfer_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "ec1/v1poc1/agent.proto",

@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ManagementService_RegisterAgent_FullMethodName     = "/ec1.v1poc1.ManagementService/RegisterAgent"
-	ManagementService_ReportAgentStatus_FullMethodName = "/ec1.v1poc1.ManagementService/ReportAgentStatus"
+	ManagementService_IdentifyRemoteAgent_FullMethodName               = "/ec1.v1poc1.ManagementService/IdentifyRemoteAgent"
+	ManagementService_InitializeLocalAgentInsideLocalVM_FullMethodName = "/ec1.v1poc1.ManagementService/InitializeLocalAgentInsideLocalVM"
+	ManagementService_InitilizeRemoteAgent_FullMethodName              = "/ec1.v1poc1.ManagementService/InitilizeRemoteAgent"
 )
 
 // ManagementServiceClient is the client API for ManagementService service.
@@ -29,10 +30,9 @@ const (
 //
 // ManagementService provides functions for agents to register and report status
 type ManagementServiceClient interface {
-	// RegisterAgent registers an agent with the management server
-	RegisterAgent(ctx context.Context, in *RegisterAgentRequest, opts ...grpc.CallOption) (*RegisterAgentResponse, error)
-	// ReportAgentStatus reports the agent's current status
-	ReportAgentStatus(ctx context.Context, in *ReportAgentStatusRequest, opts ...grpc.CallOption) (*ReportAgentStatusResponse, error)
+	IdentifyRemoteAgent(ctx context.Context, in *IdentifyRemoteAgentRequest, opts ...grpc.CallOption) (*IdentifyRemoteAgentResponse, error)
+	InitializeLocalAgentInsideLocalVM(ctx context.Context, in *InitializeLocalAgentInsideLocalVMRequest, opts ...grpc.CallOption) (*InitializeLocalAgentInsideLocalVMResponse, error)
+	InitilizeRemoteAgent(ctx context.Context, in *InitializeRemoteAgentRequest, opts ...grpc.CallOption) (*InitializeRemoteAgentResponse, error)
 }
 
 type managementServiceClient struct {
@@ -43,20 +43,30 @@ func NewManagementServiceClient(cc grpc.ClientConnInterface) ManagementServiceCl
 	return &managementServiceClient{cc}
 }
 
-func (c *managementServiceClient) RegisterAgent(ctx context.Context, in *RegisterAgentRequest, opts ...grpc.CallOption) (*RegisterAgentResponse, error) {
+func (c *managementServiceClient) IdentifyRemoteAgent(ctx context.Context, in *IdentifyRemoteAgentRequest, opts ...grpc.CallOption) (*IdentifyRemoteAgentResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RegisterAgentResponse)
-	err := c.cc.Invoke(ctx, ManagementService_RegisterAgent_FullMethodName, in, out, cOpts...)
+	out := new(IdentifyRemoteAgentResponse)
+	err := c.cc.Invoke(ctx, ManagementService_IdentifyRemoteAgent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *managementServiceClient) ReportAgentStatus(ctx context.Context, in *ReportAgentStatusRequest, opts ...grpc.CallOption) (*ReportAgentStatusResponse, error) {
+func (c *managementServiceClient) InitializeLocalAgentInsideLocalVM(ctx context.Context, in *InitializeLocalAgentInsideLocalVMRequest, opts ...grpc.CallOption) (*InitializeLocalAgentInsideLocalVMResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReportAgentStatusResponse)
-	err := c.cc.Invoke(ctx, ManagementService_ReportAgentStatus_FullMethodName, in, out, cOpts...)
+	out := new(InitializeLocalAgentInsideLocalVMResponse)
+	err := c.cc.Invoke(ctx, ManagementService_InitializeLocalAgentInsideLocalVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *managementServiceClient) InitilizeRemoteAgent(ctx context.Context, in *InitializeRemoteAgentRequest, opts ...grpc.CallOption) (*InitializeRemoteAgentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitializeRemoteAgentResponse)
+	err := c.cc.Invoke(ctx, ManagementService_InitilizeRemoteAgent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,10 +79,9 @@ func (c *managementServiceClient) ReportAgentStatus(ctx context.Context, in *Rep
 //
 // ManagementService provides functions for agents to register and report status
 type ManagementServiceServer interface {
-	// RegisterAgent registers an agent with the management server
-	RegisterAgent(context.Context, *RegisterAgentRequest) (*RegisterAgentResponse, error)
-	// ReportAgentStatus reports the agent's current status
-	ReportAgentStatus(context.Context, *ReportAgentStatusRequest) (*ReportAgentStatusResponse, error)
+	IdentifyRemoteAgent(context.Context, *IdentifyRemoteAgentRequest) (*IdentifyRemoteAgentResponse, error)
+	InitializeLocalAgentInsideLocalVM(context.Context, *InitializeLocalAgentInsideLocalVMRequest) (*InitializeLocalAgentInsideLocalVMResponse, error)
+	InitilizeRemoteAgent(context.Context, *InitializeRemoteAgentRequest) (*InitializeRemoteAgentResponse, error)
 	mustEmbedUnimplementedManagementServiceServer()
 }
 
@@ -83,11 +92,14 @@ type ManagementServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedManagementServiceServer struct{}
 
-func (UnimplementedManagementServiceServer) RegisterAgent(context.Context, *RegisterAgentRequest) (*RegisterAgentResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RegisterAgent not implemented")
+func (UnimplementedManagementServiceServer) IdentifyRemoteAgent(context.Context, *IdentifyRemoteAgentRequest) (*IdentifyRemoteAgentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IdentifyRemoteAgent not implemented")
 }
-func (UnimplementedManagementServiceServer) ReportAgentStatus(context.Context, *ReportAgentStatusRequest) (*ReportAgentStatusResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReportAgentStatus not implemented")
+func (UnimplementedManagementServiceServer) InitializeLocalAgentInsideLocalVM(context.Context, *InitializeLocalAgentInsideLocalVMRequest) (*InitializeLocalAgentInsideLocalVMResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitializeLocalAgentInsideLocalVM not implemented")
+}
+func (UnimplementedManagementServiceServer) InitilizeRemoteAgent(context.Context, *InitializeRemoteAgentRequest) (*InitializeRemoteAgentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitilizeRemoteAgent not implemented")
 }
 func (UnimplementedManagementServiceServer) mustEmbedUnimplementedManagementServiceServer() {}
 func (UnimplementedManagementServiceServer) testEmbeddedByValue()                           {}
@@ -110,38 +122,56 @@ func RegisterManagementServiceServer(s grpc.ServiceRegistrar, srv ManagementServ
 	s.RegisterService(&ManagementService_ServiceDesc, srv)
 }
 
-func _ManagementService_RegisterAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterAgentRequest)
+func _ManagementService_IdentifyRemoteAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IdentifyRemoteAgentRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ManagementServiceServer).RegisterAgent(ctx, in)
+		return srv.(ManagementServiceServer).IdentifyRemoteAgent(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ManagementService_RegisterAgent_FullMethodName,
+		FullMethod: ManagementService_IdentifyRemoteAgent_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ManagementServiceServer).RegisterAgent(ctx, req.(*RegisterAgentRequest))
+		return srv.(ManagementServiceServer).IdentifyRemoteAgent(ctx, req.(*IdentifyRemoteAgentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ManagementService_ReportAgentStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReportAgentStatusRequest)
+func _ManagementService_InitializeLocalAgentInsideLocalVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitializeLocalAgentInsideLocalVMRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ManagementServiceServer).ReportAgentStatus(ctx, in)
+		return srv.(ManagementServiceServer).InitializeLocalAgentInsideLocalVM(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ManagementService_ReportAgentStatus_FullMethodName,
+		FullMethod: ManagementService_InitializeLocalAgentInsideLocalVM_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ManagementServiceServer).ReportAgentStatus(ctx, req.(*ReportAgentStatusRequest))
+		return srv.(ManagementServiceServer).InitializeLocalAgentInsideLocalVM(ctx, req.(*InitializeLocalAgentInsideLocalVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ManagementService_InitilizeRemoteAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitializeRemoteAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServiceServer).InitilizeRemoteAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ManagementService_InitilizeRemoteAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServiceServer).InitilizeRemoteAgent(ctx, req.(*InitializeRemoteAgentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -154,12 +184,16 @@ var ManagementService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ManagementServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "RegisterAgent",
-			Handler:    _ManagementService_RegisterAgent_Handler,
+			MethodName: "IdentifyRemoteAgent",
+			Handler:    _ManagementService_IdentifyRemoteAgent_Handler,
 		},
 		{
-			MethodName: "ReportAgentStatus",
-			Handler:    _ManagementService_ReportAgentStatus_Handler,
+			MethodName: "InitializeLocalAgentInsideLocalVM",
+			Handler:    _ManagementService_InitializeLocalAgentInsideLocalVM_Handler,
+		},
+		{
+			MethodName: "InitilizeRemoteAgent",
+			Handler:    _ManagementService_InitilizeRemoteAgent_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

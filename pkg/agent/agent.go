@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"github.com/walteh/ec1/pkg/hypervisor"
@@ -23,6 +24,8 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+var _ v1poc1connect.AgentServiceHandler = &Agent{}
+
 // AgentConfig holds configuration for the agent
 type AgentConfig struct {
 	// Host address where the agent listens for incoming requests
@@ -32,6 +35,8 @@ type AgentConfig struct {
 	MgtAddr string
 
 	IDStore IDStore
+
+	InMemoryManagementClient v1poc1connect.ManagementServiceClient
 }
 
 // Agent implements the EC1 Agent service
@@ -52,7 +57,7 @@ type Agent struct {
 }
 
 // AgentProbe implements v1poc1connect.AgentServiceHandler.
-func (a *Agent) AgentProbe(ctx context.Context, req *connect.Request[ec1v1.AgentProbeRequest], stream *connect.ServerStream[ec1v1.AgentProbeResponse]) error {
+func (a *Agent) AgentProbe(ctx context.Context, stream *connect.BidiStream[v1poc1.AgentProbeRequest, v1poc1.AgentProbeResponse]) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,10 +99,15 @@ func New(ctx context.Context, config AgentConfig) (*Agent, error) {
 		}
 	}
 
-	managementClient := v1poc1connect.NewManagementServiceClient(
-		http.DefaultClient,
-		config.MgtAddr,
-	)
+	var managementClient v1poc1connect.ManagementServiceClient
+	if config.InMemoryManagementClient != nil {
+		managementClient = config.InMemoryManagementClient
+	} else {
+		managementClient = v1poc1connect.NewManagementServiceClient(
+			http.DefaultClient,
+			config.MgtAddr,
+		)
+	}
 
 	return &Agent{
 		config:           config,
@@ -194,8 +204,6 @@ func (a *Agent) StopVM(ctx context.Context, req *connect.Request[ec1v1.StopVMReq
 	return connect.NewResponse(resp), nil
 }
 
-var _ v1poc1connect.AgentServiceHandler = &Agent{}
-
 // GetVMStatus handles the GetVMStatus RPC
 func (a *Agent) VMStatus(ctx context.Context, req *connect.Request[ec1v1.VMStatusRequest], stream *connect.ServerStream[ec1v1.VMStatusResponse]) error {
 	for {
@@ -239,13 +247,15 @@ func (a *Agent) RegisterWithManagement(ctx context.Context) error {
 		Cpu:    &cpu,
 	}
 
-	// Register with the management server
-	req := connect.NewRequest(&ec1v1.RegisterAgentRequest{
-		AgentId:        ptr(a.agentID.String()),
-		HostAddress:    &a.config.HostAddr,
-		HypervisorType: enumPtr(a.driver.GetHypervisorType()),
-		TotalResources: resources,
-	})
+	// // Register with the management server
+	// req := connect.NewRequest(&ec1v1.Reg{
+	// 	AgentId:        ptr(a.agentID.String()),
+	// 	HostAddress:    &a.config.HostAddr,
+	// 	HypervisorType: enumPtr(a.driver.GetHypervisorType()),
+	// 	TotalResources: resources,
+	// })
+
+	// we probably need to probe here - tbh i need to do a more thorough job of figuring out how to do this whole thing fits together with diagrams or something
 
 	if err := protovalidate.Validate(req.Msg); err != nil {
 		return fmt.Errorf("validating register agent request: %w", err)
