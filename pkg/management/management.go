@@ -11,12 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/tozd/go/errors"
+
 	"connectrpc.com/connect"
 	"github.com/pkg/sftp"
+	slogctx "github.com/veqryn/slog-context"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"github.com/walteh/ec1/pkg/agent"
+	"github.com/walteh/ec1/pkg/id"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -24,11 +28,17 @@ import (
 
 var _ v1poc1connect.ManagementServiceHandler = &Server{}
 
+const OWN_AGENT_ID = "agent-00000000000000000000"
+
 // Agent represents a registered agent
 type RegisteredAgent struct {
-	ID      string
-	Address string
-	Client  v1poc1connect.AgentServiceClient
+	ID     string
+	NodeIP string
+	// AgentConnectUri    string
+	LastProbeTime      time.Time
+	LastProbeLiveness  bool
+	LastProbeReadiness bool
+	IsInMemory         bool
 
 	// Address        string
 	// HypervisorType ec1v1.HypervisorType
@@ -41,16 +51,21 @@ type Server struct {
 	// Configuration
 	config ServerConfig
 
-	// Registered agents
-	agents     map[string]*RegisteredAgent
-	agentMutex sync.RWMutex
-	ownAgent   v1poc1connect.AgentServiceClient
+	// ownAgent v1poc1connect.AgentServiceClient
+
+	clients       map[string]v1poc1connect.AgentServiceClient
+	clientClosers map[string]func()
+
+	clientsMutex           sync.RWMutex
+	clientsIndividualMutex sync.RWMutex
+
+	db *Database
 }
 
 // ServerConfig holds configuration for the management server
 type ServerConfig struct {
 	// Address where the server listens for incoming requests
-	HostAddr string
+	// HostAddr string
 }
 
 // New creates a new management server
@@ -58,59 +73,157 @@ func New(ctx context.Context, config ServerConfig) (*Server, error) {
 
 	srv := &Server{
 		config: config,
-		agents: make(map[string]*RegisteredAgent),
 	}
 
-	c, err := agent.New(ctx, agent.AgentConfig{
-		HostAddr:                 "localhost:9091",
-		IDStore:                  &agent.FSIDStore{},
-		InMemoryManagementClient: srv,
-	})
+	db, err := NewDatabase("./wrk/mgt.db")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", err)
+		return nil, errors.Errorf("failed to create database: %w", err)
 	}
-
-	ownAgent, cleanup := agent.NewInMemoryAgentClient(ctx, c)
-	defer cleanup()
-
-	srv.ownAgent = ownAgent
-
-	_, err = srv.IdentifyRemoteAgent(ctx, connect.NewRequest(&ec1v1.IdentifyRemoteAgentRequest{
-		AgentId:     ptr("own-agent"),
-		HostAddress: ptr("localhost:9091"),
-		// TotalResources: ptr(ec1v1.Resources{Cpu: ptr("1"), Memory: ptr("1024")}),
-		// HypervisorType: ptr(ec1v1.HypervisorType_HYPERVISOR_TYPE_MAC_VIRTUALIZATION),
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("failed to register own agent: %w", err)
-	}
+	srv.db = db
 
 	return srv, nil
+}
+
+func (s *Server) startProbeLoop(ctx context.Context, registeredAgent RegisteredAgent) error {
+
+	s.clientsMutex.Lock()
+	id := s.clients[registeredAgent.ID]
+	s.clientsMutex.Unlock()
+
+	if id != nil {
+		return errors.New("agent already registered: " + registeredAgent.ID)
+	}
+
+	var client v1poc1connect.AgentServiceClient
+	if registeredAgent.IsInMemory {
+		c, err := agent.New(ctx, agent.AgentConfig{
+			HostAddr:                 ":memory:",
+			MgtAddr:                  ":memory:",
+			IDStore:                  &agent.FSIDStore{},
+			InMemoryManagementClient: s,
+		})
+		if err != nil {
+			return errors.Errorf("failed to create agent: %w", err)
+		}
+		i, cleanup := agent.NewInMemoryAgentClient(ctx, c)
+		defer cleanup()
+		client = i
+	} else {
+		client = v1poc1connect.NewAgentServiceClient(http.DefaultClient, fmt.Sprintf("%s:9091/ec1-agent", registeredAgent.NodeIP))
+	}
+
+	// make the probe request
+	probeStream := client.AgentProbe(ctx)
+	err := probeStream.Send(&ec1v1.AgentProbeRequest{})
+	if err != nil {
+		return errors.Errorf("failed to make probe request: %w", err)
+	}
+
+	defer probeStream.CloseRequest()
+
+	// wait for the probe response
+	resp, err := probeStream.Receive()
+	if err != nil {
+		return errors.Errorf("failed to receive probe response: %w", err)
+	}
+
+	registeredAgent, err = s.OnAgentProbe(ctx, registeredAgent, resp)
+	if err != nil {
+		return errors.Errorf("failed to handle probe response: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	s.clientsMutex.Lock()
+	s.clients[registeredAgent.ID] = client
+	s.clientClosers[registeredAgent.ID] = cancel
+	s.clientsMutex.Unlock()
+
+	fmt.Printf("Agent registered: %s @ %s\n", registeredAgent.ID, registeredAgent.NodeIP)
+
+	probeChannel := make(chan *ec1v1.AgentProbeResponse)
+	probeErrChannel := make(chan error)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				resp, err := probeStream.Receive()
+				if err != nil {
+					slogctx.Error(ctx, "failed to receive probe response", "error", err)
+					probeErrChannel <- err
+					return
+				}
+				probeChannel <- resp
+			}
+		}
+	}()
+	go func() {
+		defer func() {
+			s.clientsMutex.Lock()
+			s.clients[registeredAgent.ID] = nil
+			s.clientClosers[registeredAgent.ID] = nil
+			s.clientsMutex.Unlock()
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-probeErrChannel:
+				if err != nil {
+					slogctx.Error(ctx, "failed to receive probe response", "error", err)
+				}
+				return
+			case resp := <-probeChannel:
+				registeredAgent, err = s.OnAgentProbe(ctx, registeredAgent, resp)
+				if err != nil {
+					slogctx.Error(ctx, "failed to handle probe response", "error", err)
+				}
+			}
+		}
+	}()
+
+	return nil
 }
 
 func ptr[T any](v T) *T {
 	return &v
 }
 
-func (s *Server) OnAgentProbe(ctx context.Context, agent *RegisteredAgent, resp *ec1v1.AgentProbeResponse) error {
+func (s *Server) OnAgentProbe(ctx context.Context, agent RegisteredAgent, resp *ec1v1.AgentProbeResponse) (RegisteredAgent, error) {
 	fmt.Printf("Probe response: %v\n", resp)
-	return nil
+	// save in the database
+	agent.LastProbeTime = time.Now()
+	agent.LastProbeLiveness = resp.GetLive()
+	agent.LastProbeReadiness = resp.GetReady()
+	err := s.db.SaveAgent(agent)
+	if err != nil {
+		return agent, errors.Errorf("failed to save agent: %w", err)
+	}
+	return agent, nil
 }
 
 // StartVM starts a VM on an appropriate agent
-func (s *Server) StartVM(ctx context.Context, agent *RegisteredAgent, cloudInitPath, qcow2Path string, resourcesMax *ec1v1.Resources, networkConfig *ec1v1.VMNetworkConfig) (*ec1v1.VMInfo, error) {
+func (s *Server) StartVM(ctx context.Context, agent RegisteredAgent, cloudInitPath, qcow2Path string, resourcesMax *ec1v1.Resources, networkConfig *ec1v1.VMNetworkConfig) (*ec1v1.StartVMResponse, error) {
 
 	// upload the disk image to the agent
 	err := s.uploadViaAgent(ctx, agent, qcow2Path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload disk image: %w", err)
+		return nil, errors.Errorf("failed to upload disk image: %w", err)
 	}
 
 	// upload the cloud init file to the agent
 	err = s.uploadViaAgent(ctx, agent, cloudInitPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload cloud init file: %w", err)
+		return nil, errors.Errorf("failed to upload cloud init file: %w", err)
 	}
+
+	agentClient, cleanup, err := s.useAgentClient(ctx, agent)
+	if err != nil {
+		return nil, errors.Errorf("failed to use agent client: %w", err)
+	}
+	defer cleanup()
 
 	// Prepare the request
 	req := connect.NewRequest(&ec1v1.StartVMRequest{
@@ -124,23 +237,23 @@ func (s *Server) StartVM(ctx context.Context, agent *RegisteredAgent, cloudInitP
 	})
 
 	if err := protovalidate.Validate(req.Msg); err != nil {
-		return nil, fmt.Errorf("validating start VM request: %w", err)
+		return nil, errors.Errorf("validating start VM request: %w", err)
 	}
 
 	// Call the agent to start the VM
-	resp, err := agent.Client.StartVM(ctx, req)
+	resp, err := agentClient.StartVM(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start VM on agent %s: %w", agent.ID, err)
+		return nil, errors.Errorf("failed to start VM on agent %s: %w", agent.ID, err)
 	}
 
-	// Create VM info from response
-	vmInfo := &ec1v1.VMInfo{
-		VmId:          resp.Msg.VmId,
-		Status:        resp.Msg.Status,
-		IpAddress:     resp.Msg.IpAddress,
-		ResourcesMax:  resourcesMax,
-		ResourcesLive: resourcesMax, // For POC, assume live = max
-	}
+	// // Create VM info from response
+	// vmInfo := &ec1v1.VMInfo{
+	// 	VmId:          resp.Msg.VmId,
+	// 	Status:        resp.Msg.Status,
+	// 	IpAddress:     resp.Msg.IpAddress,
+	// 	ResourcesMax:  resourcesMax,
+	// 	ResourcesLive: resourcesMax, // For POC, assume live = max
+	// }
 
 	// // Store the VM info
 	// s.agentMutex.Lock()
@@ -153,7 +266,7 @@ func (s *Server) StartVM(ctx context.Context, agent *RegisteredAgent, cloudInitP
 		resp.Msg.GetIpAddress(),
 	)
 
-	return vmInfo, nil
+	return resp.Msg, nil
 }
 
 // Helper function to convert string to string pointer
@@ -167,7 +280,7 @@ func boolPtr(b bool) *bool {
 }
 
 // Start starts the management server
-func (s *Server) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context, hostAddr string) (func() error, error) {
 	// Create Connect-based service
 	path, handler := v1poc1connect.NewManagementServiceHandler(s)
 
@@ -176,43 +289,91 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle(path, handler)
 
 	server := &http.Server{
-		Addr:    s.config.HostAddr,
+		Addr:    hostAddr,
 		Handler: h2c.NewHandler(mux, &http2.Server{}),
 	}
 
 	// Create listener
-	listener, err := net.Listen("tcp", s.config.HostAddr)
+	listener, err := net.Listen("tcp", hostAddr)
 	if err != nil {
-		return fmt.Errorf("starting listener: %w", err)
+		return nil, errors.Errorf("starting listener: %w", err)
 	}
 
 	// Start serving
-	fmt.Printf("EC1 Management Server listening on %s\n", s.config.HostAddr)
+	fmt.Printf("EC1 Management Server listening on %s\n", hostAddr)
 	go func() {
 		<-ctx.Done()
-		server.Shutdown(context.Background())
+		server.Shutdown(ctx)
 	}()
 
-	return server.Serve(listener)
+	err = s.startProbeLoop(ctx, RegisteredAgent{
+		ID:         OWN_AGENT_ID,
+		NodeIP:     ":memory:",
+		IsInMemory: true,
+	})
+	if err != nil {
+		return nil, errors.Errorf("failed to start probe loop: %w", err)
+	}
+
+	// init the clients
+	registeredAgents, err := s.db.GetAllAgents()
+	if err != nil {
+		return nil, errors.Errorf("failed to get all agents: %w", err)
+	}
+
+	for _, agent := range registeredAgents {
+		err := s.startProbeLoop(ctx, agent)
+		if err != nil {
+			return nil, errors.Errorf("starting probe loop for agent %s: %w", agent.ID, err)
+		}
+	}
+
+	return func() error {
+		return server.Serve(listener)
+	}, nil
 }
 
-func (s *Server) uploadViaAgent(ctx context.Context, agent *RegisteredAgent, path string) error {
+func (s *Server) useAgentClient(ctx context.Context, agent RegisteredAgent) (v1poc1connect.AgentServiceClient, func(), error) {
+
+	s.clientsMutex.Lock()
+	client := s.clients[agent.ID]
+	s.clientsMutex.Unlock()
+
+	if client == nil {
+		return nil, nil, errors.Errorf("agent not found: %s", agent.ID)
+	}
+
+	s.clientsIndividualMutex.Lock()
+
+	return client, func() {
+		s.clientsIndividualMutex.Unlock()
+	}, nil
+
+}
+
+func (s *Server) uploadViaAgent(ctx context.Context, agent RegisteredAgent, path string) error {
 
 	// get the size of the disk image
 	diskImageStats, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("failed to get disk image size: %w", err)
+		return errors.Errorf("failed to get disk image size: %w", err)
 	}
 	diskImageSize := diskImageStats.Size()
 
 	// upload the disk image to the agent
 	diskImage, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open disk image: %w", err)
+		return errors.Errorf("failed to open disk image: %w", err)
 	}
 	defer diskImage.Close()
 
-	agentClientFileUploadReq := agent.Client.FileTransfer(ctx)
+	agentClient, cleanup, err := s.useAgentClient(ctx, agent)
+	if err != nil {
+		return errors.Errorf("failed to use agent client: %w", err)
+	}
+	defer cleanup()
+
+	agentClientFileUploadReq := agentClient.FileTransfer(ctx)
 
 	chunkSize := 1024
 
@@ -226,7 +387,7 @@ func (s *Server) uploadViaAgent(ctx context.Context, agent *RegisteredAgent, pat
 				break // End of file
 			}
 			fmt.Println("Error reading file:", err)
-			return fmt.Errorf("failed to read disk image: %w", err)
+			return errors.Errorf("failed to read disk image: %w", err)
 		}
 		bytesToSend := buffer[:bytesRead]
 
@@ -238,7 +399,7 @@ func (s *Server) uploadViaAgent(ctx context.Context, agent *RegisteredAgent, pat
 			ChunkTotalCount: ptr(uint32(diskImageSize / int64(chunkSize))),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to send file transfer request: %w", err)
+			return errors.Errorf("failed to send file transfer request: %w", err)
 		}
 
 		totalBytesRead += len(bytesToSend)
@@ -246,11 +407,11 @@ func (s *Server) uploadViaAgent(ctx context.Context, agent *RegisteredAgent, pat
 
 	resp, err := agentClientFileUploadReq.CloseAndReceive()
 	if err != nil {
-		return fmt.Errorf("failed to close and receive file transfer request: %w", err)
+		return errors.Errorf("failed to close and receive file transfer request: %w", err)
 	}
 
 	if resp.Msg.GetError() != "" {
-		return fmt.Errorf("failed to upload disk image: %s", resp.Msg.GetError())
+		return errors.Errorf("failed to upload disk image: %s", resp.Msg.GetError())
 	}
 
 	return nil
@@ -289,45 +450,30 @@ func copyViaSFTP(sshClient *ssh.Client, srcPath, dstPath string) error {
 func (s *Server) IdentifyRemoteAgent(ctx context.Context, req *connect.Request[ec1v1.IdentifyRemoteAgentRequest]) (*connect.Response[ec1v1.IdentifyRemoteAgentResponse], error) {
 	agentID := req.Msg.GetAgentId()
 
-	// Create a new agent entry
-	agent := &RegisteredAgent{
-		ID:      agentID,
-		Address: req.Msg.GetHostAddress(),
-		Client:  v1poc1connect.NewAgentServiceClient(http.DefaultClient, req.Msg.GetHostAddress()),
+	_, found, err := s.db.GetAgent(agentID)
+	if err != nil {
+		return nil, errors.Errorf("failed to get agent: %w", err)
 	}
+
+	if found {
+		slogctx.Info(ctx, "agent already registered", "agent_id", agentID, "node_ip", req.Msg.GetNodeIp())
+		return connect.NewResponse(&ec1v1.IdentifyRemoteAgentResponse{}), nil
+	}
+
+	// Create a new agent entry
+	agent := RegisteredAgent{
+		ID:     agentID,
+		NodeIP: req.Msg.GetNodeIp(),
+		// AgentConnectUri: req.Msg.GetAgentConnectUri(),
+	}
+
+	// client := v1poc1connect.NewAgentServiceClient(http.DefaultClient, req.Msg.GetAgentConnectUri())
 
 	// Register the agent
-	s.agentMutex.Lock()
-	s.agents[agentID] = agent
-	s.agentMutex.Unlock()
-
-	// make the probe request
-	probeStream := agent.Client.AgentProbe(ctx)
-	err := probeStream.Send(&ec1v1.AgentProbeRequest{})
+	err = s.db.SaveAgent(agent)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make probe request: %w", err)
+		return nil, errors.Errorf("failed to save agent: %w", err)
 	}
-
-	fmt.Printf("Agent registered: %s\n", agentID)
-
-	// wait for the probe response
-	_, err = probeStream.Receive()
-	if err != nil {
-		return nil, fmt.Errorf("failed to receive probe response: %w", err)
-	}
-
-	go func() {
-		for {
-			resp, err := probeStream.Receive()
-			if err != nil {
-				return
-			}
-			err = s.OnAgentProbe(ctx, agent, resp)
-			if err != nil {
-				fmt.Printf("failed to handle probe response: %s\n", err)
-			}
-		}
-	}()
 
 	// Return success
 	return connect.NewResponse(&ec1v1.IdentifyRemoteAgentResponse{}), nil
@@ -336,15 +482,9 @@ func (s *Server) IdentifyRemoteAgent(ctx context.Context, req *connect.Request[e
 // InitializeLocalAgentInsideLocalVM implements v1poc1connect.ManagementServiceHandler.
 func (s *Server) InitializeLocalAgentInsideLocalVM(ctx context.Context, req *connect.Request[ec1v1.InitializeLocalAgentInsideLocalVMRequest]) (*connect.Response[ec1v1.InitializeLocalAgentInsideLocalVMResponse], error) {
 
-	ownRegisteredAgent := &RegisteredAgent{
-		ID:      "own-agent",
-		Address: "localhost:9091",
-		Client:  s.ownAgent,
-	}
-
 	agentBinary, err := GetAgentBinary(ctx, req.Msg.GetArch(), req.Msg.GetOs())
 	if err != nil {
-		return nil, fmt.Errorf("failed 	to get agent binary: %w", err)
+		return nil, errors.Errorf("getting agent binary: %w", err)
 	}
 
 	extraFiles := map[string]string{
@@ -353,23 +493,30 @@ func (s *Server) InitializeLocalAgentInsideLocalVM(ctx context.Context, req *con
 
 	cloudInitISO, cleanup, err := CreateCloudInitISO(ctx, req.Msg.GetCloudinitMetadata(), req.Msg.GetCloudinitUserdata(), extraFiles, addAgentBinaryToSystemd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cloud init ISO: %w", err)
+		return nil, errors.Errorf("failed to create cloud init ISO: %w", err)
 	}
 	defer cleanup()
+
+	ownRegisteredAgent, found, err := s.db.GetAgent(OWN_AGENT_ID)
+	if err != nil || !found {
+		return nil, errors.Errorf("failed to get own agent: %w", err)
+	}
 
 	// use the local agent to start a new VM
 	vm, err := s.StartVM(ctx, ownRegisteredAgent, req.Msg.GetQcow2ImagePath(), cloudInitISO, ptr(ec1v1.Resources{Cpu: ptr("1"), Memory: ptr("1024")}), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start VM: %w", err)
+		return nil, errors.Errorf("failed to start VM: %w", err)
 	}
 
 	_, err = s.InitilizeRemoteAgent(ctx, connect.NewRequest(&ec1v1.InitializeRemoteAgentRequest{
-		HostAddress: vm.IpAddress,
+		NodeIp:      vm.IpAddress,
 		Arch:        ptr(req.Msg.GetArch()),
 		Os:          ptr(req.Msg.GetOs()),
+		SshUsername: vm.SshUsername,
+		SshPassword: vm.SshPassword,
 	}))
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize remote agent: %w", err)
+		return nil, errors.Errorf("failed to initialize remote agent: %w", err)
 	}
 
 	// TODO: register the VM with the management server
@@ -379,16 +526,16 @@ func (s *Server) InitializeLocalAgentInsideLocalVM(ctx context.Context, req *con
 
 // StartLocalAgent starts the agent on the local machine in a separate process
 func GetAgentBinary(ctx context.Context, archstr, osstr string) (string, error) {
-	path := fmt.Sprintf("bin/agent-%s-%s", archstr, osstr)
+	path := fmt.Sprintf("build/agent-%s-%s", osstr, archstr)
 
 	_, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to get agent binary: %w", err)
+		return "", errors.Errorf("checking for agent binary: %w", err)
 	}
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to get absolute path: %w", err)
+		return "", errors.Errorf("getting absolute path: %w", err)
 	}
 
 	return absPath, nil
@@ -397,7 +544,7 @@ func GetAgentBinary(ctx context.Context, archstr, osstr string) (string, error) 
 func (s *Server) runCommandViaSSH(ctx context.Context, sshClient *ssh.Client, command string) (string, error) {
 	session, err := sshClient.NewSession()
 	if err != nil {
-		return "", fmt.Errorf("failed to create new SSH session: %w", err)
+		return "", errors.Errorf("failed to create new SSH session: %w", err)
 	}
 	defer session.Close()
 
@@ -409,12 +556,12 @@ func (s *Server) runCommandViaSSH(ctx context.Context, sshClient *ssh.Client, co
 
 	if err != nil {
 		output, _ := io.ReadAll(pr)
-		return "", fmt.Errorf("failed to run command: %w, output: %s", err, string(output))
+		return "", errors.Errorf("failed to run command: %w, output: %s", err, string(output))
 	}
 
 	output, err := io.ReadAll(pr)
 	if err != nil {
-		return "", fmt.Errorf("failed to read command output: %w", err)
+		return "", errors.Errorf("failed to read command output: %w", err)
 	}
 
 	return string(output), nil
@@ -423,58 +570,70 @@ func (s *Server) runCommandViaSSH(ctx context.Context, sshClient *ssh.Client, co
 // InitilizeRemoteAgent implements v1poc1connect.ManagementServiceHandler.
 func (s *Server) InitilizeRemoteAgent(ctx context.Context, req *connect.Request[ec1v1.InitializeRemoteAgentRequest]) (*connect.Response[ec1v1.InitializeRemoteAgentResponse], error) {
 
-	sshClient, err := ssh.Dial("tcp", req.Msg.GetHostAddress(), &ssh.ClientConfig{
+	sshClient, err := ssh.Dial("tcp", req.Msg.GetNodeIp(), &ssh.ClientConfig{
 		User: req.Msg.GetSshUsername(),
 		Auth: []ssh.AuthMethod{
 			ssh.Password(req.Msg.GetSshPassword()),
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial SSH: %w", err)
+		return nil, errors.Errorf("failed to dial SSH: %w", err)
 	}
 	defer sshClient.Close()
 
 	agentBinary, err := GetAgentBinary(ctx, req.Msg.GetArch(), req.Msg.GetOs())
 	if err != nil {
-		return nil, fmt.Errorf("failed 	to get agent binary: %w", err)
+		return nil, errors.Errorf("getting agent binary: %w", err)
 	}
 
 	// upload the agent binary to the agent
 	err = s.uploadViaSSH(ctx, sshClient, agentBinary, "/bin/ec1-agent")
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload agent binary: %w", err)
+		return nil, errors.Errorf("failed to upload agent binary: %w", err)
 	}
 
 	// call the agent binary "setup" command on the remote machine
 	output, err := s.runCommandViaSSH(ctx, sshClient, "/bin/ec1-agent")
 	if err != nil {
-		return nil, fmt.Errorf("failed to run setup command: %w, output: %s", err, output)
+		return nil, errors.Errorf("failed to run setup command: %w, output: %s", err, output)
 	}
 
 	fmt.Printf("Setup command output: %s\n", output)
 
+	id := id.NewID("agent")
+
+	output, err = s.runCommandViaSSH(ctx, sshClient, "echo "+id.String()+" > /etc/ec1/agent-id")
+	if err != nil {
+		return nil, errors.Errorf("failed to write agent ID: %w, output: %s", err, output)
+	}
+
 	// now that the agent is setup, we trigger systemd to start the agent
 	output, err = s.runCommandViaSSH(ctx, sshClient, "systemctl start ec1-agent")
 	if err != nil {
-		return nil, fmt.Errorf("failed to start agent: %w, output: %s", err, output)
+		return nil, errors.Errorf("failed to start agent: %w, output: %s", err, output)
 	}
 
 	// the agent should have started and contacted us - make a temporary agent client to confirm
-	agentClient := v1poc1connect.NewAgentServiceClient(http.DefaultClient, req.Msg.GetHostAddress())
+	// agentClient := v1poc1connect.NewAgentServiceClient(http.DefaultClient, req.Msg.GetHostAddress())
+
+	agentData := RegisteredAgent{
+		ID:     id.String(),
+		NodeIP: req.Msg.GetNodeIp(),
+		// AgentConnectUri: req.Msg.GetHostAddress() + ":9091/ec1-agent",
+		IsInMemory: false,
+	}
+
+	err = s.db.SaveAgent(agentData)
+	if err != nil {
+		return nil, errors.Errorf("failed to save agent: %w", err)
+	}
 
 	// wait for the agent to register
 	time.Sleep(1 * time.Second)
 
-	// make a probe request
-	statusResp, err := agentClient.Status(ctx, connect.NewRequest(&ec1v1.StatusRequest{}))
+	err = s.startProbeLoop(ctx, agentData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make probe request: %w", err)
-	}
-
-	fmt.Printf("Agent status: %v\n", statusResp.Msg)
-
-	if s.agents[statusResp.Msg.GetAgentId()] == nil {
-		return nil, fmt.Errorf("agent not found")
+		return nil, errors.Errorf("failed to start probe loop: %w", err)
 	}
 
 	return connect.NewResponse(&ec1v1.InitializeRemoteAgentResponse{}), nil

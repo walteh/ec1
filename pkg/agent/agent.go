@@ -10,7 +10,6 @@ import (
 
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"github.com/walteh/ec1/pkg/hypervisor"
 	"github.com/walteh/ec1/pkg/id"
 	"golang.org/x/net/http2"
@@ -54,6 +53,17 @@ type Agent struct {
 
 	// VM status channel
 	vmStatusChan chan *ec1v1.VMStatusResponse
+
+	startUpTime time.Time
+}
+
+// Status implements v1poc1connect.AgentServiceHandler.
+func (a *Agent) Status(ctx context.Context, req *connect.Request[ec1v1.StatusRequest]) (*connect.Response[ec1v1.StatusResponse], error) {
+	return connect.NewResponse(&ec1v1.StatusResponse{
+		AgentId:     ptr(a.agentID.String()),
+		HostAddress: ptr(a.config.HostAddr),
+		UptimeMs:    ptr(uint64(time.Since(a.startUpTime).Milliseconds())),
+	}), nil
 }
 
 // AgentProbe implements v1poc1connect.AgentServiceHandler.
@@ -230,44 +240,44 @@ func (a *Agent) GetVMStatus(ctx context.Context, req *connect.Request[ec1v1.GetV
 	return connect.NewResponse(resp), nil
 }
 
-// RegisterWithManagement registers this agent with the management server
-func (a *Agent) RegisterWithManagement(ctx context.Context) error {
-	// Create a client to the management server
-	mgtClient := v1poc1connect.NewManagementServiceClient(
-		http.DefaultClient,
-		a.config.MgtAddr,
-	)
+// // RegisterWithManagement registers this agent with the management server
+// func (a *Agent) RegisterWithManagement(ctx context.Context) error {
+// 	// Create a client to the management server
+// 	mgtClient := v1poc1connect.NewManagementServiceClient(
+// 		http.DefaultClient,
+// 		a.config.MgtAddr,
+// 	)
 
-	// Get total resources from the hypervisor (in real impl)
-	// For the POC, we'll hardcode some resource values
-	memory := "4Gi"
-	cpu := "4"
-	resources := &ec1v1.Resources{
-		Memory: &memory,
-		Cpu:    &cpu,
-	}
+// 	// Get total resources from the hypervisor (in real impl)
+// 	// For the POC, we'll hardcode some resource values
+// 	memory := "4Gi"
+// 	cpu := "4"
+// 	resources := &ec1v1.Resources{
+// 		Memory: &memory,
+// 		Cpu:    &cpu,
+// 	}
 
-	// // Register with the management server
-	// req := connect.NewRequest(&ec1v1.Reg{
-	// 	AgentId:        ptr(a.agentID.String()),
-	// 	HostAddress:    &a.config.HostAddr,
-	// 	HypervisorType: enumPtr(a.driver.GetHypervisorType()),
-	// 	TotalResources: resources,
-	// })
+// 	// // Register with the management server
+// 	req := connect.NewRequest(&ec1v1.Regi{
+// 		AgentId:        ptr(a.agentID.String()),
+// 		HostAddress:    &a.config.HostAddr,
+// 		HypervisorType: enumPtr(a.driver.GetHypervisorType()),
+// 		TotalResources: resources,
+// 	})
 
-	// we probably need to probe here - tbh i need to do a more thorough job of figuring out how to do this whole thing fits together with diagrams or something
+// 	// we probably need to probe here - tbh i need to do a more thorough job of figuring out how to do this whole thing fits together with diagrams or something
 
-	if err := protovalidate.Validate(req.Msg); err != nil {
-		return fmt.Errorf("validating register agent request: %w", err)
-	}
+// 	if err := protovalidate.Validate(req.Msg); err != nil {
+// 		return fmt.Errorf("validating register agent request: %w", err)
+// 	}
 
-	_, err := mgtClient.RegisterAgent(ctx, req)
-	if err != nil {
-		return fmt.Errorf("calling management server to register agent: %w", err)
-	}
+// 	_, err := a.managementClient.RegisterAgent(ctx, req)
+// 	if err != nil {
+// 		return fmt.Errorf("calling management server to register agent: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // Start starts the agent service
 func (a *Agent) Start(ctx context.Context) error {
@@ -290,13 +300,6 @@ func (a *Agent) Start(ctx context.Context) error {
 	listener, err := net.Listen("tcp", a.config.HostAddr)
 	if err != nil {
 		return fmt.Errorf("starting listener: %w", err)
-	}
-
-	// Register with management server
-	if a.config.MgtAddr != "" {
-		if err := a.RegisterWithManagement(ctx); err != nil {
-			return err
-		}
 	}
 
 	// Start serving

@@ -4,15 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"connectrpc.com/connect"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/pkg/clog"
+	"github.com/walteh/ec1/pkg/agent"
 	"github.com/walteh/ec1/pkg/management"
 )
 
@@ -37,9 +37,9 @@ import (
 func main() {
 	// Parse command line flags
 	var (
-		// mgtAddr    = flag.String("mgt", "http://localhost:9090", "Management server address")
-		// localAgent = flag.String("agent", "localhost:9091", "Local agent address")
-		clean = flag.Bool("clean", false, "Clean up before starting (removes existing binaries and images)")
+		mgtAddr    = flag.String("mgt", "http://localhost:9090", "Management server address")
+		localAgent = flag.String("agent", "localhost:9091", "Local agent address")
+		clean      = flag.Bool("clean", false, "Clean up before starting (removes existing binaries and images)")
 		// diskPath   = flag.String("disk", "", "Path to disk image")
 	)
 	flag.Parse()
@@ -47,10 +47,6 @@ func main() {
 	// Create a context that is canceled on interrupt signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: true}).WithGroup("agent")
-
-	_, ctx = clog.NewLoggerFromHandler(ctx, handler)
 
 	// Set up signal handling
 	sigCh := make(chan os.Signal, 1)
@@ -68,7 +64,7 @@ func main() {
 	}
 
 	// Handle different actions
-	if err := runEC1Demo(ctx); err != nil {
+	if err := runEC1Demo(ctx, *mgtAddr, *localAgent); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running demo: %v\n", err)
 		os.Exit(1)
 	}
@@ -80,6 +76,8 @@ func ptr[T any](v T) *T {
 
 type DemoContext struct {
 	ManagementClient v1poc1connect.ManagementServiceClient
+	AgentClient      v1poc1connect.AgentServiceClient
+	Qcow2Image       *Image
 }
 
 // runEC1Demo runs the complete EC1 nested virtualization demo
@@ -92,38 +90,82 @@ func runEC1Demo(ctx context.Context) error {
 	defer cancelServers()
 
 	// Use a WaitGroup to ensure servers have started before proceeding
+	var wg sync.WaitGroup
 
 	// Step 1: Start management server in-process
 	fmt.Println("\n=== Step 1: Starting Management Server ===")
 
-	mgr, err := management.New(serverCtx, management.ServerConfig{})
-	if err != nil {
-		return fmt.Errorf("failed to create management server: %w", err)
+	managerInstance := management.New(management.ServerConfig{
+		HostAddr: "localhost:9090",
+	})
+
+	managerClient, cleanup := management.NewInMemoryManagementClient(ctx, managerInstance)
+	defer cleanup()
+
+	agentInstance, err := agent.New(ctx, agent.AgentConfig{
+		HostAddr:                 "localhost:9091",
+		InMemoryManagementClient: managerClient,
+	})
+
+	agentClient, cleanup := agent.NewInMemoryAgentClient(ctx, agentInstance)
+	defer cleanup()
+
+	demoCtx := DemoContext{
+		ManagementClient: managerClient,
+		AgentClient:      agentClient,
 	}
 
-	serve, err := mgr.Start(ctx, "localhost:9096")
+	// Step 3: Create QCOW2 image
+	fmt.Println("\n=== Step 3: Creating QCOW2 Image ===")
+	qcow2Path, err := CreateQCOW2Image(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting management server: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("creating QCOW2 image: %w", err)
 	}
 
-	go func() {
-		if err := serve(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error serving management server: %v\n", err)
-			os.Exit(1)
-		}
-	}()
+	defer qcow2Path.Cleanup()
 
-	_, err = mgr.InitializeLocalAgentInsideLocalVM(ctx, connect.NewRequest(&ec1v1.InitializeLocalAgentInsideLocalVMRequest{
-		Qcow2ImagePath:    ptr("./build/nocloud_alpine-3.21.2-aarch64-uefi-cloudinit-r0.qcow2"),
-		CloudinitMetadata: ptr(""),
-		CloudinitUserdata: ptr(""),
-		Arch:              ptr("arm64"),
-		Os:                ptr("linux"),
-	}))
+	// Steps 4-6: Start Linux VM and set up agent
+	fmt.Println("\n=== Steps 4-6: Starting Linux VM and Setting Up Agent ===")
+	resp, err := demoCtx.ManagementClient.StartVM(ctx, connect.NewRequest(&ec1v1.StartVMRequest{
+		Name: ptr("demo-vm"),
+		DiskImage: &ec1v1.DiskImage{
+			Path: ptr(qcow2Path.Qcow2Path),
+			Type: ptr(ec1v1.DiskImageType_DISK_IMAGE_TYPE_QCOW2),
+		},
+		CloudInit: &ec1v1.CloudInitConfig{
+			IsoPath: ptr(qcow2Path.CloudInitSeedISOPath),
+		},
+		ResourcesMax: &ec1v1.Resources{
+			Cpu:    ptr("1"),
+			Memory: ptr("1024"),
+		},
+		NetworkConfig: &ec1v1.VMNetworkConfig{
+			NetworkType: ptr(ec1v1.NetworkType_NETWORK_TYPE_NAT),
+		},
+	})
+)
 	if err != nil {
-		return fmt.Errorf("failed to initialize local agent inside local VM: %w", err)
+		return fmt.Errorf("starting VM: %w", err)
 	}
+
+	vmIP := resp.Msg.GetIpAddress()
+
+	// Step 7-8: Start nested VM and web server
+	fmt.Println("\n=== Steps 7-8: Starting Nested VM and Web Server ===")
+	linuxAgentAddr := fmt.Sprintf("http://%s:9091", vmIP)
+	if err := StartNestedVM(ctx, linuxAgentAddr); err != nil {
+		return fmt.Errorf("starting nested VM: %w", err)
+	}
+
+	// Final step: Access web server
+	fmt.Println("\n=== Accessing Web Server on Nested VM ===")
+	if err := AccessWebServer(ctx, vmIP); err != nil {
+		return fmt.Errorf("accessing web server: %w", err)
+	}
+
+	fmt.Println("\nEC1 Nested Virtualization Demo completed successfully!")
+	fmt.Println("To clean up resources, restart the demo with --clean flag")
+	fmt.Println("Press Ctrl+C to exit")
 
 	// The demo is complete, but we'll keep the management server and agent running
 	// until the context is canceled (e.g., by pressing Ctrl+C)

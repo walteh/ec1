@@ -196,11 +196,15 @@ tasks:
         desc: runs the demo
         platforms: [darwin]
         cmds:
-          - rm -rf ./bin/demo
-          - go build -o ./bin/demo ./cmd/demo
+          - rm -rf ./build
+          - GOOS=linux GOARCH=arm64 go build -o ./build/agent-linux-arm64 ./cmd/agent
+          - GOOS=linux GOARCH=amd64 go build -o ./build/agent-linux-amd64 ./cmd/agent
+          - GOOS=darwin GOARCH=arm64 go build -o ./build/agent-darwin-arm64 ./cmd/agent
+          - cp ~/Developer/disk-images/nocloud_alpine-3.21.2-aarch64-uefi-cloudinit-r0.qcow2 ./build
+          - go build -o ./build/demo ./cmd/demo
           - |-
-            codesign --verbose --deep --force --options=runtime --entitlements=entitlements.plist  --timestamp -s -  ./bin/demo
-          - ./bin/demo
+            codesign --verbose --deep --force --options=runtime --entitlements=entitlements.plist  --timestamp -s -  ./build/demo
+          - ./build/demo
 
     jsonschema-single:
         internal: true

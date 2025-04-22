@@ -22,6 +22,110 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type AgentStartupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       *string                `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
+	NodeIp        *string                `protobuf:"bytes,2,opt,name=node_ip,json=nodeIp" json:"node_ip,omitempty"`
+	Arch          *string                `protobuf:"bytes,3,opt,name=arch" json:"arch,omitempty"`
+	Os            *string                `protobuf:"bytes,4,opt,name=os" json:"os,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentStartupRequest) Reset() {
+	*x = AgentStartupRequest{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentStartupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentStartupRequest) ProtoMessage() {}
+
+func (x *AgentStartupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentStartupRequest.ProtoReflect.Descriptor instead.
+func (*AgentStartupRequest) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *AgentStartupRequest) GetAgentId() string {
+	if x != nil && x.AgentId != nil {
+		return *x.AgentId
+	}
+	return ""
+}
+
+func (x *AgentStartupRequest) GetNodeIp() string {
+	if x != nil && x.NodeIp != nil {
+		return *x.NodeIp
+	}
+	return ""
+}
+
+func (x *AgentStartupRequest) GetArch() string {
+	if x != nil && x.Arch != nil {
+		return *x.Arch
+	}
+	return ""
+}
+
+func (x *AgentStartupRequest) GetOs() string {
+	if x != nil && x.Os != nil {
+		return *x.Os
+	}
+	return ""
+}
+
+type AgentStartupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentStartupResponse) Reset() {
+	*x = AgentStartupResponse{}
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentStartupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentStartupResponse) ProtoMessage() {}
+
+func (x *AgentStartupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentStartupResponse.ProtoReflect.Descriptor instead.
+func (*AgentStartupResponse) Descriptor() ([]byte, []int) {
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{1}
+}
+
 // VMInfo provides information about a running VM
 type VMInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -41,7 +145,7 @@ type VMInfo struct {
 
 func (x *VMInfo) Reset() {
 	*x = VMInfo{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -53,7 +157,7 @@ func (x *VMInfo) String() string {
 func (*VMInfo) ProtoMessage() {}
 
 func (x *VMInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[0]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -66,7 +170,7 @@ func (x *VMInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMInfo.ProtoReflect.Descriptor instead.
 func (*VMInfo) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{0}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *VMInfo) GetVmId() string {
@@ -124,7 +228,7 @@ type InitializeLocalAgentInsideLocalVMRequest struct {
 
 func (x *InitializeLocalAgentInsideLocalVMRequest) Reset() {
 	*x = InitializeLocalAgentInsideLocalVMRequest{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -136,7 +240,7 @@ func (x *InitializeLocalAgentInsideLocalVMRequest) String() string {
 func (*InitializeLocalAgentInsideLocalVMRequest) ProtoMessage() {}
 
 func (x *InitializeLocalAgentInsideLocalVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[1]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -149,7 +253,7 @@ func (x *InitializeLocalAgentInsideLocalVMRequest) ProtoReflect() protoreflect.M
 
 // Deprecated: Use InitializeLocalAgentInsideLocalVMRequest.ProtoReflect.Descriptor instead.
 func (*InitializeLocalAgentInsideLocalVMRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{1}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *InitializeLocalAgentInsideLocalVMRequest) GetQcow2ImagePath() string {
@@ -195,7 +299,7 @@ type InitializeLocalAgentInsideLocalVMResponse struct {
 
 func (x *InitializeLocalAgentInsideLocalVMResponse) Reset() {
 	*x = InitializeLocalAgentInsideLocalVMResponse{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -207,7 +311,7 @@ func (x *InitializeLocalAgentInsideLocalVMResponse) String() string {
 func (*InitializeLocalAgentInsideLocalVMResponse) ProtoMessage() {}
 
 func (x *InitializeLocalAgentInsideLocalVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[2]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -220,12 +324,12 @@ func (x *InitializeLocalAgentInsideLocalVMResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use InitializeLocalAgentInsideLocalVMResponse.ProtoReflect.Descriptor instead.
 func (*InitializeLocalAgentInsideLocalVMResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{2}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
 }
 
 type InitializeRemoteAgentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	HostAddress   *string                `protobuf:"bytes,1,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
+	NodeIp        *string                `protobuf:"bytes,1,opt,name=node_ip,json=nodeIp" json:"node_ip,omitempty"`
 	SshUsername   *string                `protobuf:"bytes,2,opt,name=ssh_username,json=sshUsername" json:"ssh_username,omitempty"`
 	SshPassword   *string                `protobuf:"bytes,3,opt,name=ssh_password,json=sshPassword" json:"ssh_password,omitempty"`
 	Arch          *string                `protobuf:"bytes,4,opt,name=arch" json:"arch,omitempty"`
@@ -236,7 +340,7 @@ type InitializeRemoteAgentRequest struct {
 
 func (x *InitializeRemoteAgentRequest) Reset() {
 	*x = InitializeRemoteAgentRequest{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -248,7 +352,7 @@ func (x *InitializeRemoteAgentRequest) String() string {
 func (*InitializeRemoteAgentRequest) ProtoMessage() {}
 
 func (x *InitializeRemoteAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[3]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -261,12 +365,12 @@ func (x *InitializeRemoteAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitializeRemoteAgentRequest.ProtoReflect.Descriptor instead.
 func (*InitializeRemoteAgentRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{3}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *InitializeRemoteAgentRequest) GetHostAddress() string {
-	if x != nil && x.HostAddress != nil {
-		return *x.HostAddress
+func (x *InitializeRemoteAgentRequest) GetNodeIp() string {
+	if x != nil && x.NodeIp != nil {
+		return *x.NodeIp
 	}
 	return ""
 }
@@ -307,7 +411,7 @@ type InitializeRemoteAgentResponse struct {
 
 func (x *InitializeRemoteAgentResponse) Reset() {
 	*x = InitializeRemoteAgentResponse{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -319,7 +423,7 @@ func (x *InitializeRemoteAgentResponse) String() string {
 func (*InitializeRemoteAgentResponse) ProtoMessage() {}
 
 func (x *InitializeRemoteAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[4]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -332,20 +436,20 @@ func (x *InitializeRemoteAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitializeRemoteAgentResponse.ProtoReflect.Descriptor instead.
 func (*InitializeRemoteAgentResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{4}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{6}
 }
 
 type IdentifyRemoteAgentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       *string                `protobuf:"bytes,1,opt,name=agent_id,json=agentId" json:"agent_id,omitempty"`
-	HostAddress   *string                `protobuf:"bytes,2,opt,name=host_address,json=hostAddress" json:"host_address,omitempty"`
+	NodeIp        *string                `protobuf:"bytes,2,opt,name=node_ip,json=nodeIp" json:"node_ip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IdentifyRemoteAgentRequest) Reset() {
 	*x = IdentifyRemoteAgentRequest{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -357,7 +461,7 @@ func (x *IdentifyRemoteAgentRequest) String() string {
 func (*IdentifyRemoteAgentRequest) ProtoMessage() {}
 
 func (x *IdentifyRemoteAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[5]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -370,7 +474,7 @@ func (x *IdentifyRemoteAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentifyRemoteAgentRequest.ProtoReflect.Descriptor instead.
 func (*IdentifyRemoteAgentRequest) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{5}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *IdentifyRemoteAgentRequest) GetAgentId() string {
@@ -380,9 +484,9 @@ func (x *IdentifyRemoteAgentRequest) GetAgentId() string {
 	return ""
 }
 
-func (x *IdentifyRemoteAgentRequest) GetHostAddress() string {
-	if x != nil && x.HostAddress != nil {
-		return *x.HostAddress
+func (x *IdentifyRemoteAgentRequest) GetNodeIp() string {
+	if x != nil && x.NodeIp != nil {
+		return *x.NodeIp
 	}
 	return ""
 }
@@ -395,7 +499,7 @@ type IdentifyRemoteAgentResponse struct {
 
 func (x *IdentifyRemoteAgentResponse) Reset() {
 	*x = IdentifyRemoteAgentResponse{}
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -407,7 +511,7 @@ func (x *IdentifyRemoteAgentResponse) String() string {
 func (*IdentifyRemoteAgentResponse) ProtoMessage() {}
 
 func (x *IdentifyRemoteAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ec1_v1poc1_management_proto_msgTypes[6]
+	mi := &file_ec1_v1poc1_management_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -420,7 +524,7 @@ func (x *IdentifyRemoteAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentifyRemoteAgentResponse.ProtoReflect.Descriptor instead.
 func (*IdentifyRemoteAgentResponse) Descriptor() ([]byte, []int) {
-	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{6}
+	return file_ec1_v1poc1_management_proto_rawDescGZIP(), []int{8}
 }
 
 var File_ec1_v1poc1_management_proto protoreflect.FileDescriptor
@@ -428,7 +532,14 @@ var File_ec1_v1poc1_management_proto protoreflect.FileDescriptor
 const file_ec1_v1poc1_management_proto_rawDesc = "" +
 	"\n" +
 	"\x1bec1/v1poc1/management.proto\x12\n" +
-	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x95\x02\n" +
+	"ec1.v1poc1\x1a\x17ec1/v1poc1/common.proto\x1a\x1cec1/v1poc1/constraints.proto\x1a\x1bec1/validate/validate.proto\"\x8f\x01\n" +
+	"\x13AgentStartupRequest\x12/\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x14\xbaH\x11\xc8\x01\x01r\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12#\n" +
+	"\anode_ip\x18\x02 \x01(\tB\n" +
+	"\xbaH\a\xc8\x01\x01r\x02x\x01R\x06nodeIp\x12\x12\n" +
+	"\x04arch\x18\x03 \x01(\tR\x04arch\x12\x0e\n" +
+	"\x02os\x18\x04 \x01(\tR\x02os\"\x16\n" +
+	"\x14AgentStartupResponse\"\x95\x02\n" +
 	"\x06VMInfo\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -443,17 +554,19 @@ const file_ec1_v1poc1_management_proto_rawDesc = "" +
 	"\x12cloudinit_userdata\x18\x03 \x01(\tR\x11cloudinitUserdata\x12\x12\n" +
 	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x0e\n" +
 	"\x02os\x18\x05 \x01(\tR\x02os\"+\n" +
-	")InitializeLocalAgentInsideLocalVMResponse\"\xb8\x01\n" +
-	"\x1cInitializeRemoteAgentRequest\x12.\n" +
-	"\fhost_address\x18\x01 \x01(\tB\v\xbaH\b\xc8\x01\x01r\x03\x88\x01\x01R\vhostAddress\x12!\n" +
+	")InitializeLocalAgentInsideLocalVMResponse\"\xad\x01\n" +
+	"\x1cInitializeRemoteAgentRequest\x12#\n" +
+	"\anode_ip\x18\x01 \x01(\tB\n" +
+	"\xbaH\a\xc8\x01\x01r\x02x\x01R\x06nodeIp\x12!\n" +
 	"\fssh_username\x18\x02 \x01(\tR\vsshUsername\x12!\n" +
 	"\fssh_password\x18\x03 \x01(\tR\vsshPassword\x12\x12\n" +
 	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x0e\n" +
 	"\x02os\x18\x05 \x01(\tR\x02os\"\x1f\n" +
-	"\x1dInitializeRemoteAgentResponse\"}\n" +
+	"\x1dInitializeRemoteAgentResponse\"r\n" +
 	"\x1aIdentifyRemoteAgentRequest\x12/\n" +
-	"\bagent_id\x18\x01 \x01(\tB\x14\xbaH\x11\xc8\x01\x01r\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12.\n" +
-	"\fhost_address\x18\x02 \x01(\tB\v\xbaH\b\xc8\x01\x01r\x03\x88\x01\x01R\vhostAddress\"\x1d\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x14\xbaH\x11\xc8\x01\x01r\f\U000b3bb1\x02\x06೮\xb1\x02\x01R\aagentId\x12#\n" +
+	"\anode_ip\x18\x02 \x01(\tB\n" +
+	"\xbaH\a\xc8\x01\x01r\x02x\x01R\x06nodeIp\"\x1d\n" +
 	"\x1bIdentifyRemoteAgentResponse2\x8a\x03\n" +
 	"\x11ManagementService\x12k\n" +
 	"\x13IdentifyRemoteAgent\x12&.ec1.v1poc1.IdentifyRemoteAgentRequest\x1a'.ec1.v1poc1.IdentifyRemoteAgentResponse\"\x03\x90\x02\x01\x12\x95\x01\n" +
@@ -475,33 +588,35 @@ func file_ec1_v1poc1_management_proto_rawDescGZIP() []byte {
 	return file_ec1_v1poc1_management_proto_rawDescData
 }
 
-var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_ec1_v1poc1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_ec1_v1poc1_management_proto_goTypes = []any{
-	(*VMInfo)(nil), // 0: ec1.v1poc1.VMInfo
-	(*InitializeLocalAgentInsideLocalVMRequest)(nil),  // 1: ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
-	(*InitializeLocalAgentInsideLocalVMResponse)(nil), // 2: ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
-	(*InitializeRemoteAgentRequest)(nil),              // 3: ec1.v1poc1.InitializeRemoteAgentRequest
-	(*InitializeRemoteAgentResponse)(nil),             // 4: ec1.v1poc1.InitializeRemoteAgentResponse
-	(*IdentifyRemoteAgentRequest)(nil),                // 5: ec1.v1poc1.IdentifyRemoteAgentRequest
-	(*IdentifyRemoteAgentResponse)(nil),               // 6: ec1.v1poc1.IdentifyRemoteAgentResponse
-	(VMStatus)(0),                                     // 7: ec1.v1poc1.VMStatus
-	(*Resources)(nil),                                 // 8: ec1.v1poc1.Resources
+	(*AgentStartupRequest)(nil),                       // 0: ec1.v1poc1.AgentStartupRequest
+	(*AgentStartupResponse)(nil),                      // 1: ec1.v1poc1.AgentStartupResponse
+	(*VMInfo)(nil),                                    // 2: ec1.v1poc1.VMInfo
+	(*InitializeLocalAgentInsideLocalVMRequest)(nil),  // 3: ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
+	(*InitializeLocalAgentInsideLocalVMResponse)(nil), // 4: ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
+	(*InitializeRemoteAgentRequest)(nil),              // 5: ec1.v1poc1.InitializeRemoteAgentRequest
+	(*InitializeRemoteAgentResponse)(nil),             // 6: ec1.v1poc1.InitializeRemoteAgentResponse
+	(*IdentifyRemoteAgentRequest)(nil),                // 7: ec1.v1poc1.IdentifyRemoteAgentRequest
+	(*IdentifyRemoteAgentResponse)(nil),               // 8: ec1.v1poc1.IdentifyRemoteAgentResponse
+	(VMStatus)(0),                                     // 9: ec1.v1poc1.VMStatus
+	(*Resources)(nil),                                 // 10: ec1.v1poc1.Resources
 }
 var file_ec1_v1poc1_management_proto_depIdxs = []int32{
-	7, // 0: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
-	8, // 1: ec1.v1poc1.VMInfo.resources_max:type_name -> ec1.v1poc1.Resources
-	8, // 2: ec1.v1poc1.VMInfo.resources_live:type_name -> ec1.v1poc1.Resources
-	5, // 3: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:input_type -> ec1.v1poc1.IdentifyRemoteAgentRequest
-	1, // 4: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:input_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
-	3, // 5: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:input_type -> ec1.v1poc1.InitializeRemoteAgentRequest
-	6, // 6: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:output_type -> ec1.v1poc1.IdentifyRemoteAgentResponse
-	2, // 7: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:output_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
-	4, // 8: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:output_type -> ec1.v1poc1.InitializeRemoteAgentResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	9,  // 0: ec1.v1poc1.VMInfo.status:type_name -> ec1.v1poc1.VMStatus
+	10, // 1: ec1.v1poc1.VMInfo.resources_max:type_name -> ec1.v1poc1.Resources
+	10, // 2: ec1.v1poc1.VMInfo.resources_live:type_name -> ec1.v1poc1.Resources
+	7,  // 3: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:input_type -> ec1.v1poc1.IdentifyRemoteAgentRequest
+	3,  // 4: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:input_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMRequest
+	5,  // 5: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:input_type -> ec1.v1poc1.InitializeRemoteAgentRequest
+	8,  // 6: ec1.v1poc1.ManagementService.IdentifyRemoteAgent:output_type -> ec1.v1poc1.IdentifyRemoteAgentResponse
+	4,  // 7: ec1.v1poc1.ManagementService.InitializeLocalAgentInsideLocalVM:output_type -> ec1.v1poc1.InitializeLocalAgentInsideLocalVMResponse
+	6,  // 8: ec1.v1poc1.ManagementService.InitilizeRemoteAgent:output_type -> ec1.v1poc1.InitializeRemoteAgentResponse
+	6,  // [6:9] is the sub-list for method output_type
+	3,  // [3:6] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_ec1_v1poc1_management_proto_init() }
@@ -517,7 +632,7 @@ func file_ec1_v1poc1_management_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ec1_v1poc1_management_proto_rawDesc), len(file_ec1_v1poc1_management_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -8,8 +8,8 @@ import "ec1/validate/validate.proto";
 
 // ManagementService provides functions for agents to register and report status
 service ManagementService {
-	// // RegisterAgent registers an agent with the management server
-	// rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse) {
+	// RegisterAgent registers an agent with the management server
+	// rpc AgentStartup(AgentStartupRequest) returns (AgentStartupResponse) {
 	//  option idempotency_level = NO_SIDE_EFFECTS;
 	// }
 
@@ -32,6 +32,23 @@ service ManagementService {
 		option idempotency_level = NO_SIDE_EFFECTS;
 	}
 }
+
+message AgentStartupRequest {
+	string agent_id = 1 [
+		(validate.field).string.(id).agent = true,
+		(validate.field).required          = true
+	];
+
+	string node_ip = 2 [
+		(validate.field).string.ipv4 = true,
+		(validate.field).required    = true
+	];
+
+	string arch = 3;
+	string os   = 4;
+}
+
+message AgentStartupResponse {}
 
 // VMInfo provides information about a running VM
 message VMInfo {
@@ -68,9 +85,9 @@ message InitializeLocalAgentInsideLocalVMRequest {
 message InitializeLocalAgentInsideLocalVMResponse {}
 
 message InitializeRemoteAgentRequest {
-	string host_address = 1 [
-		(validate.field).string.uri = true,
-		(validate.field).required   = true
+	string node_ip = 1 [
+		(validate.field).string.ipv4 = true,
+		(validate.field).required    = true
 	];
 
 	string ssh_username = 2;
@@ -83,14 +100,18 @@ message InitializeRemoteAgentRequest {
 message InitializeRemoteAgentResponse {}
 
 message IdentifyRemoteAgentRequest {
-	string agent_id     = 1 [
+	string agent_id = 1 [
 		(validate.field).string.(id).agent = true,
 		(validate.field).required          = true
 	];
-	string host_address = 2 [
-		(validate.field).string.uri = true,
-		(validate.field).required   = true
+	string node_ip  = 2 [
+		(validate.field).string.ipv4 = true,
+		(validate.field).required    = true
 	];
+	// string agent_connect_uri = 3 [
+	//  (validate.field).string.uri = true,
+	//  (validate.field).required   = true
+	// ];
 }
 
 message IdentifyRemoteAgentResponse {}

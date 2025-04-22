@@ -28,7 +28,7 @@ plugins:
     opt:
       - paths=source_relative
   - out: gen/proto/golang
-    local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate/cmd/protoc-gen-protovalidate"]
+    local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate"]
     include_imports: true
     opt:
       - paths=source_relative

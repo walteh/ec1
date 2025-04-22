@@ -113,11 +113,14 @@ message StartVMResponse {
 		(validate.field).string.ipv4 = true
 	];
 
+	string ssh_username = 3;
+	string ssh_password = 4;
+
 	// Status of the VM
-	VMStatus status = 3;
+	VMStatus status = 5;
 
 	// Error message, if any
-	string error = 4;
+	string error = 6;
 }
 
 // StopVMRequest is the request message for stopping a VM

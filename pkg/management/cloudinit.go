@@ -77,6 +77,14 @@ func CreateCloudInitISO(ctx context.Context, meta, user string, extraFiles map[s
 		return "", nil, err
 	}
 
+	if parsedMeta == nil {
+		parsedMeta = map[string]interface{}{}
+	}
+
+	if parsedUser == nil {
+		parsedUser = map[string]interface{}{}
+	}
+
 	wci := workingCloudInit{
 		meta: parsedMeta,
 		user: parsedUser,

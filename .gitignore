@@ -65,8 +65,10 @@ kvmrun
 kubernetes-the-harder-way
 .archive
 
+wrk
 target
 
 cloudstack-api-json-schemas
 .plan
 cloudstack-api-metadata
+build

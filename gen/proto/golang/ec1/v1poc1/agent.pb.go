@@ -428,11 +428,13 @@ type StartVMResponse struct {
 	// ID of the started VM
 	VmId *string `protobuf:"bytes,1,opt,name=vm_id,json=vmId" json:"vm_id,omitempty"`
 	// IP address of the VM (if available)
-	IpAddress *string `protobuf:"bytes,2,opt,name=ip_address,json=ipAddress" json:"ip_address,omitempty"`
+	IpAddress   *string `protobuf:"bytes,2,opt,name=ip_address,json=ipAddress" json:"ip_address,omitempty"`
+	SshUsername *string `protobuf:"bytes,3,opt,name=ssh_username,json=sshUsername" json:"ssh_username,omitempty"`
+	SshPassword *string `protobuf:"bytes,4,opt,name=ssh_password,json=sshPassword" json:"ssh_password,omitempty"`
 	// Status of the VM
-	Status *VMStatus `protobuf:"varint,3,opt,name=status,enum=ec1.v1poc1.VMStatus" json:"status,omitempty"`
+	Status *VMStatus `protobuf:"varint,5,opt,name=status,enum=ec1.v1poc1.VMStatus" json:"status,omitempty"`
 	// Error message, if any
-	Error         *string `protobuf:"bytes,4,opt,name=error" json:"error,omitempty"`
+	Error         *string `protobuf:"bytes,6,opt,name=error" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -477,6 +479,20 @@ func (x *StartVMResponse) GetVmId() string {
 func (x *StartVMResponse) GetIpAddress() string {
 	if x != nil && x.IpAddress != nil {
 		return *x.IpAddress
+	}
+	return ""
+}
+
+func (x *StartVMResponse) GetSshUsername() string {
+	if x != nil && x.SshUsername != nil {
+		return *x.SshUsername
+	}
+	return ""
+}
+
+func (x *StartVMResponse) GetSshPassword() string {
+	if x != nil && x.SshPassword != nil {
+		return *x.SshPassword
 	}
 	return ""
 }
@@ -1085,13 +1101,15 @@ const file_ec1_v1poc1_agent_proto_rawDesc = "" +
 	"disk_image\x18\x05 \x01(\v2\x15.ec1.v1poc1.DiskImageR\tdiskImage\x12:\n" +
 	"\n" +
 	"cloud_init\x18\x06 \x01(\v2\x1b.ec1.v1poc1.CloudInitConfigR\tcloudInit\x12B\n" +
-	"\x0enetwork_config\x18\a \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\xa5\x01\n" +
+	"\x0enetwork_config\x18\a \x01(\v2\x1b.ec1.v1poc1.VMNetworkConfigR\rnetworkConfig\"\xeb\x01\n" +
 	"\x0fStartVMResponse\x12&\n" +
 	"\x05vm_id\x18\x01 \x01(\tB\x11\xbaH\x0er\f\U000b3bb1\x02\x06賮\xb1\x02\x01R\x04vmId\x12&\n" +
 	"\n" +
-	"ip_address\x18\x02 \x01(\tB\a\xbaH\x04r\x02x\x01R\tipAddress\x12,\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x14.ec1.v1poc1.VMStatusR\x06status\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\":\n" +
+	"ip_address\x18\x02 \x01(\tB\a\xbaH\x04r\x02x\x01R\tipAddress\x12!\n" +
+	"\fssh_username\x18\x03 \x01(\tR\vsshUsername\x12!\n" +
+	"\fssh_password\x18\x04 \x01(\tR\vsshPassword\x12,\n" +
+	"\x06status\x18\x05 \x01(\x0e2\x14.ec1.v1poc1.VMStatusR\x06status\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\":\n" +
 	"\rStopVMRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"@\n" +
