@@ -81,6 +81,11 @@ func New(ctx context.Context, config ServerConfig) (*Server, error) {
 	}
 	srv.db = db
 
+	srv.clients = make(map[string]v1poc1connect.AgentServiceClient)
+	srv.clientClosers = make(map[string]func())
+	srv.clientsMutex = sync.RWMutex{}
+	srv.clientsIndividualMutex = sync.RWMutex{}
+
 	return srv, nil
 }
 
@@ -90,11 +95,15 @@ func (s *Server) startProbeLoop(ctx context.Context, registeredAgent RegisteredA
 	id := s.clients[registeredAgent.ID]
 	s.clientsMutex.Unlock()
 
+	slogctx.Info(ctx, "Starting probe loop", "agent_id", registeredAgent.ID, "node_ip", registeredAgent.NodeIP)
+
 	if id != nil {
+		slogctx.Error(ctx, "Agent already registered", "agent_id", registeredAgent.ID, "node_ip", registeredAgent.NodeIP)
 		return errors.New("agent already registered: " + registeredAgent.ID)
 	}
 
 	var client v1poc1connect.AgentServiceClient
+	var agentClientCleanup func()
 	if registeredAgent.IsInMemory {
 		c, err := agent.New(ctx, agent.AgentConfig{
 			HostAddr:                 ":memory:",
@@ -106,11 +115,14 @@ func (s *Server) startProbeLoop(ctx context.Context, registeredAgent RegisteredA
 			return errors.Errorf("failed to create agent: %w", err)
 		}
 		i, cleanup := agent.NewInMemoryAgentClient(ctx, c)
-		defer cleanup()
+		// defer cleanup()
 		client = i
+		agentClientCleanup = cleanup
 	} else {
 		client = v1poc1connect.NewAgentServiceClient(http.DefaultClient, fmt.Sprintf("%s:9091/ec1-agent", registeredAgent.NodeIP))
 	}
+
+	slogctx.Info(ctx, "Probing agent", "agent_id", registeredAgent.ID, "node_ip", registeredAgent.NodeIP)
 
 	// make the probe request
 	probeStream := client.AgentProbe(ctx)
@@ -165,6 +177,9 @@ func (s *Server) startProbeLoop(ctx context.Context, registeredAgent RegisteredA
 			s.clients[registeredAgent.ID] = nil
 			s.clientClosers[registeredAgent.ID] = nil
 			s.clientsMutex.Unlock()
+			if agentClientCleanup != nil {
+				agentClientCleanup()
+			}
 		}()
 		for {
 			select {
@@ -184,6 +199,8 @@ func (s *Server) startProbeLoop(ctx context.Context, registeredAgent RegisteredA
 		}
 	}()
 
+	slogctx.Info(ctx, "Probe loop started", "agent_id", registeredAgent.ID, "node_ip", registeredAgent.NodeIP)
+
 	return nil
 }
 
@@ -192,7 +209,6 @@ func ptr[T any](v T) *T {
 }
 
 func (s *Server) OnAgentProbe(ctx context.Context, agent RegisteredAgent, resp *ec1v1.AgentProbeResponse) (RegisteredAgent, error) {
-	fmt.Printf("Probe response: %v\n", resp)
 	// save in the database
 	agent.LastProbeTime = time.Now()
 	agent.LastProbeLiveness = resp.GetLive()
@@ -201,6 +217,8 @@ func (s *Server) OnAgentProbe(ctx context.Context, agent RegisteredAgent, resp *
 	if err != nil {
 		return agent, errors.Errorf("failed to save agent: %w", err)
 	}
+
+	slogctx.Info(ctx, "OnAgentProbe saved", "agent_id", agent.ID, "node_ip", agent.NodeIP, "live", resp.GetLive(), "ready", resp.GetReady())
 	return agent, nil
 }
 
@@ -225,12 +243,14 @@ func (s *Server) StartVM(ctx context.Context, agent RegisteredAgent, cloudInitPa
 	}
 	defer cleanup()
 
+	slogctx.Info(ctx, "Starting VM", "agent_id", agent.ID, "node_ip", agent.NodeIP, "qcow2_path", qcow2Path, "cloud_init_path", cloudInitPath)
+
 	// Prepare the request
 	req := connect.NewRequest(&ec1v1.StartVMRequest{
 		ResourcesMax:  resourcesMax,
 		ResourcesBoot: resourcesMax, // Just use the same resources for boot
 		DiskImage: &ec1v1.DiskImage{
-			Path: strPtr(qcow2Path),
+			Path: ptr("file://" + qcow2Path),
 			Type: ptr(ec1v1.DiskImageType_DISK_IMAGE_TYPE_QCOW2),
 		},
 		NetworkConfig: networkConfig,
@@ -269,18 +289,9 @@ func (s *Server) StartVM(ctx context.Context, agent RegisteredAgent, cloudInitPa
 	return resp.Msg, nil
 }
 
-// Helper function to convert string to string pointer
-func strPtr(s string) *string {
-	return &s
-}
-
-// Helper function to convert bool to bool pointer
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 // Start starts the management server
 func (s *Server) Start(ctx context.Context, hostAddr string) (func() error, error) {
+	slogctx.Info(ctx, "Starting management server", "host_addr", hostAddr)
 	// Create Connect-based service
 	path, handler := v1poc1connect.NewManagementServiceHandler(s)
 
@@ -299,11 +310,14 @@ func (s *Server) Start(ctx context.Context, hostAddr string) (func() error, erro
 		return nil, errors.Errorf("starting listener: %w", err)
 	}
 
+	slogctx.Info(ctx, "Management server listening", "host_addr", hostAddr)
+
 	// Start serving
 	fmt.Printf("EC1 Management Server listening on %s\n", hostAddr)
 	go func() {
 		<-ctx.Done()
 		server.Shutdown(ctx)
+		slogctx.Info(ctx, "Management server shutdown", "host_addr", hostAddr)
 	}()
 
 	err = s.startProbeLoop(ctx, RegisteredAgent{
@@ -311,7 +325,9 @@ func (s *Server) Start(ctx context.Context, hostAddr string) (func() error, erro
 		NodeIP:     ":memory:",
 		IsInMemory: true,
 	})
+	slogctx.Error(ctx, "failed to start probe loop", "error", err)
 	if err != nil {
+		slogctx.Error(ctx, "failed to start probe loop", "error", err)
 		return nil, errors.Errorf("failed to start probe loop: %w", err)
 	}
 
@@ -321,7 +337,12 @@ func (s *Server) Start(ctx context.Context, hostAddr string) (func() error, erro
 		return nil, errors.Errorf("failed to get all agents: %w", err)
 	}
 
+	fmt.Printf("Found %d registered agents\n", len(registeredAgents))
+
 	for _, agent := range registeredAgents {
+		if agent.IsInMemory {
+			continue
+		}
 		err := s.startProbeLoop(ctx, agent)
 		if err != nil {
 			return nil, errors.Errorf("starting probe loop for agent %s: %w", agent.ID, err)
@@ -352,6 +373,10 @@ func (s *Server) useAgentClient(ctx context.Context, agent RegisteredAgent) (v1p
 }
 
 func (s *Server) uploadViaAgent(ctx context.Context, agent RegisteredAgent, path string) error {
+
+	if agent.IsInMemory {
+		return nil
+	}
 
 	// get the size of the disk image
 	diskImageStats, err := os.Stat(path)
@@ -392,7 +417,7 @@ func (s *Server) uploadViaAgent(ctx context.Context, agent RegisteredAgent, path
 		bytesToSend := buffer[:bytesRead]
 
 		err = agentClientFileUploadReq.Send(&ec1v1.FileTransferRequest{
-			Name:            strPtr(filepath.Base(path)),
+			Name:            ptr(filepath.Base(path)),
 			ChunkBytes:      bytesToSend,
 			ChunkByteSize:   ptr(uint32(len(bytesToSend))),
 			ChunkOfTotal:    ptr(uint32(totalBytesRead / chunkSize)),
@@ -491,19 +516,29 @@ func (s *Server) InitializeLocalAgentInsideLocalVM(ctx context.Context, req *con
 		"agent": agentBinary,
 	}
 
-	cloudInitISO, cleanup, err := CreateCloudInitISO(ctx, req.Msg.GetCloudinitMetadata(), req.Msg.GetCloudinitUserdata(), extraFiles, addAgentBinaryToSystemd)
+	cloudInitISO, cleanup, err := CreateCloudInitISO(ctx, req.Msg.GetCloudinitMetadata(), req.Msg.GetCloudinitUserdata(), extraFiles, addAgentBinaryToSystemd, addNetworkInitRunCmd)
 	if err != nil {
 		return nil, errors.Errorf("failed to create cloud init ISO: %w", err)
 	}
 	defer cleanup()
+
+	absCloudInitISO, err := filepath.Abs(cloudInitISO)
+	if err != nil {
+		return nil, errors.Errorf("failed to get absolute path: %w", err)
+	}
 
 	ownRegisteredAgent, found, err := s.db.GetAgent(OWN_AGENT_ID)
 	if err != nil || !found {
 		return nil, errors.Errorf("failed to get own agent: %w", err)
 	}
 
+	absQcow2Path, err := filepath.Abs(req.Msg.GetQcow2ImagePath())
+	if err != nil {
+		return nil, errors.Errorf("failed to get absolute path: %w", err)
+	}
+
 	// use the local agent to start a new VM
-	vm, err := s.StartVM(ctx, ownRegisteredAgent, req.Msg.GetQcow2ImagePath(), cloudInitISO, ptr(ec1v1.Resources{Cpu: ptr("1"), Memory: ptr("1024")}), nil)
+	vm, err := s.StartVM(ctx, ownRegisteredAgent, absCloudInitISO, absQcow2Path, ptr(ec1v1.Resources{Cpu: ptr("1"), Memory: ptr("1024")}), nil)
 	if err != nil {
 		return nil, errors.Errorf("failed to start VM: %w", err)
 	}
@@ -650,7 +685,7 @@ func (s *Server) InitilizeRemoteAgent(ctx context.Context, req *connect.Request[
 // 		s.agentMutex.Unlock()
 // 		return connect.NewResponse(&ec1v1.ReportAgentStatusResponse{
 // 			Success: boolPtr(false),
-// 			Error:   strPtr(fmt.Sprintf("Agent with ID %s not found", agentID)),
+// 			Error:   ptr(fmt.Sprintf("Agent with ID %s not found", agentID)),
 // 		}), nil
 // 	}
 

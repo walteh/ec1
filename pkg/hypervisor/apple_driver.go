@@ -4,15 +4,22 @@
 package hypervisor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Code-Hex/vz/v3"
+	slogctx "github.com/veqryn/slog-context"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
+	"github.com/walteh/ec1/pkg/id"
 )
 
 func NewDriver(ctx context.Context) (Driver, error) {
@@ -119,8 +126,10 @@ func parseCPU(cpuStr string) (uint64, error) {
 
 // StartVM implements the Driver interface
 func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*ec1v1.StartVMResponse, error) {
+
+	id := id.NewID("vm")
 	// Generate a simple VM ID
-	vmID := fmt.Sprintf("mac-vm-%s", req.GetName())
+	vmID := id.String()
 
 	// Parse memory and CPU requirements
 	memoryBytes, err := parseMemory(req.ResourcesMax.GetMemory())
@@ -133,27 +142,72 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 		return nil, fmt.Errorf("invalid CPU specification: %w", err)
 	}
 
+	// Create the bin directory if it doesn't exist
+	if err := os.MkdirAll("./bin", 0755); err != nil {
+		slogctx.Error(ctx, "failed to create bin directory for EFI variable store", "error", err)
+		return nil, fmt.Errorf("creating bin directory: %w", err)
+	}
+
 	variableStore, err := vz.NewEFIVariableStore("./bin/vz-vs.fd", vz.WithCreatingEFIVariableStore())
 	if err != nil {
+		// Check if EFI directory exists
+		if _, statErr := os.Stat("./bin"); statErr != nil {
+			slogctx.Error(ctx, "bin directory for EFI variable store doesn't exist", "error", statErr)
+		}
+		// Check if fd file exists or failed to be created
+		if _, statErr := os.Stat("./bin/vz-vs.fd"); statErr != nil {
+			slogctx.Error(ctx, "EFI variable store file not accessible", "error", statErr)
+		}
 		return nil, fmt.Errorf("creating variable store: %w", err)
 	}
+	slogctx.Info(ctx, "created EFI variable store", "path", "./bin/vz-vs.fd")
 
 	loader, err := vz.NewEFIBootLoader(vz.WithEFIVariableStore(variableStore))
 	if err != nil {
+		slogctx.Error(ctx, "failed to create EFI boot loader", "error", err)
 		return nil, fmt.Errorf("creating EFI boot loader: %w", err)
 	}
 
 	// Create a configuration for the virtual machine
 	config, err := vz.NewVirtualMachineConfiguration(loader, uint(cpuCount), memoryBytes)
+	if err != nil {
+		slogctx.Error(ctx, "failed to create VM configuration", "error", err)
+		return nil, fmt.Errorf("creating virtual machine configuration: %w", err)
+	}
 
 	// Set up storage
-	diskImagePath := req.GetDiskImage().GetPath()
+	diskImagePath := strings.TrimPrefix(req.GetDiskImage().GetPath(), "file://")
 	diskExists := false
 	if _, err := os.Stat(diskImagePath); err == nil {
 		diskExists = true
+		// Check for readable permissions
+		file, openErr := os.Open(diskImagePath)
+		if openErr != nil {
+			slogctx.Error(ctx, "disk image not readable", "path", diskImagePath, "error", openErr)
+		} else {
+			// Check QCOW2 file format
+			header := make([]byte, 4)
+			if _, err := file.Read(header); err != nil {
+				slogctx.Error(ctx, "cannot read disk image header", "path", diskImagePath, "error", err)
+			} else {
+				// QCOW2 files start with 'QFI\xfb'
+				slogctx.Info(ctx, "disk image header", "header_bytes", fmt.Sprintf("%x", header))
+
+				if !bytes.Equal(header, []byte{'Q', 'F', 'I', 0xfb}) {
+					slogctx.Error(ctx, "disk image does not appear to be a valid QCOW2 file",
+						"path", diskImagePath,
+						"header_bytes", fmt.Sprintf("%x", header))
+				} else {
+					slogctx.Info(ctx, "disk image appears to be a valid QCOW2 file", "path", diskImagePath)
+				}
+			}
+			file.Close()
+			slogctx.Info(ctx, "disk image exists and is readable", "path", diskImagePath)
+		}
 	}
 
 	if !diskExists {
+		slogctx.Error(ctx, "disk image not found at path", "path", diskImagePath)
 		return nil, fmt.Errorf("disk image not found at path: %s", diskImagePath)
 	}
 
@@ -191,38 +245,63 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 	// To fix the crash, we need to provide both read and write file handles
 	readPipe, writePipe, err := os.Pipe()
 	if err != nil {
+		slogctx.Error(ctx, "failed to create pipes for serial console", "error", err)
 		return nil, fmt.Errorf("creating pipes for serial console: %w", err)
 	}
+	slogctx.Info(ctx, "created pipes for VM serial console")
 
 	// Use the pipes for the serial port attachment
+	slogctx.Info(ctx, "creating serial port attachment")
 	spAttachment, err := vz.NewFileHandleSerialPortAttachment(writePipe, readPipe)
 	if err != nil {
 		readPipe.Close()
 		writePipe.Close()
+		slogctx.Error(ctx, "failed to create serial port attachment", "error", err)
 		return nil, fmt.Errorf("creating serial port attachment: %w", err)
 	}
+	slogctx.Info(ctx, "serial port attachment created successfully")
 
 	// Start a goroutine to forward console output to stdout
 	go func() {
 		defer readPipe.Close()
 		defer writePipe.Close()
+		slogctx.Info(ctx, "started VM console reader")
 
 		// Buffer for reading console output
 		buf := make([]byte, 1024)
+		bytesRead := 0
+		outputCollection := ""
+		lastLogTime := time.Now()
 
 		for {
 			n, err := readPipe.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					fmt.Printf("Error reading from VM console: %v\n", err)
+					slogctx.Error(ctx, "error reading from VM console", "error", err)
 				}
+				slogctx.Info(ctx, "VM console reader stopped", "total_bytes_read", bytesRead, "last_output", outputCollection)
 				break
 			}
 
-			// Write console output to stdout
-			fmt.Print(string(buf[:n]))
+			bytesRead += n
+			// Log console output through structured logger
+			output := string(buf[:n])
+			outputCollection += output
+
+			// Log collected output every second or when we have a reasonable amount
+			if len(outputCollection) > 100 || time.Since(lastLogTime) > time.Second {
+				slogctx.Info(ctx, "VM console output", "output", outputCollection, "bytes", len(outputCollection))
+				outputCollection = ""
+				lastLogTime = time.Now()
+			}
 		}
 	}()
+
+	macAddr, err := vz.NewRandomLocallyAdministeredMACAddress()
+	if err != nil {
+		return nil, fmt.Errorf("making MAC address: %w", err)
+	}
+	networkDevice.SetMACAddress(macAddr)
 
 	// Create serial port configuration with the attachment
 	serialPort, err := vz.NewVirtioConsolePortConfiguration(vz.WithVirtioConsolePortConfigurationAttachment(spAttachment))
@@ -239,25 +318,12 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 
 	config.SetConsoleDevicesVirtualMachineConfiguration(arr[vz.ConsoleDeviceConfiguration](consoleDevice))
 
-	// // Set a boot loader for EFI boot
-	// bootLoader, err := vz.NewEFIBootLoader()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("creating EFI boot loader: %w", err)
-	// }
-	// config.SetBootLoader(bootLoader)
-
-	// // add a variable store
-	// variableStore, err := vz.NewEFIVariableStore("",
-	// 	vz.WithEFIVariableStorePath("/Volumes/EFI/EFI/CLOUDSTACK/CLOUDSTACK.fd"),
-	// )
-	// if err != nil {
-	// 	return nil, fmt.Errorf("creating variable store: %w", err)
-	// }
-	// config.SetVariableStore(variableStore)
-
 	// Validate the configuration
-	if _, err := config.Validate(); err != nil {
+	if valid, err := config.Validate(); err != nil {
+		slogctx.Error(ctx, "invalid VM configuration", "error", err, "valid", valid)
 		return nil, fmt.Errorf("invalid VM configuration: %w", err)
+	} else {
+		slogctx.Info(ctx, "VM configuration validated successfully")
 	}
 
 	// Create the virtual machine
@@ -277,7 +343,88 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 		vm:         vm,
 	}
 
-	vm.State()
+	// Log important VM configuration parameters
+	slogctx.Info(ctx, "vm configuration details",
+		"vm", appleVm.id,
+		"disk_path", req.GetDiskImage().GetPath(),
+		"memory_size", memoryBytes,
+		"cpu_count", cpuCount)
+
+	// Watch VM state change notifications in a goroutine
+	go func() {
+		stateCh := appleVm.vm.StateChangedNotify()
+		var lastState vz.VirtualMachineState
+		for {
+			select {
+			case <-ctx.Done():
+				slogctx.Info(ctx, "stopping vm state watcher", "vm", appleVm.id)
+				return
+			case state, ok := <-stateCh:
+				if !ok {
+					slogctx.Warn(ctx, "vm state channel closed", "vm", appleVm.id)
+					return
+				}
+				// Track specific state transitions for debugging
+				slogctx.Info(ctx, "vm state changed",
+					"vm", appleVm.id,
+					"state", state,
+					"previous_state", lastState)
+
+				// Watch specifically for the quick RUNNING to STOPPED transition
+				if lastState == vz.VirtualMachineStateRunning && state == vz.VirtualMachineStateStopped {
+					slogctx.Error(ctx, "vm stopped immediately after running - likely boot failure",
+						"vm", appleVm.id,
+						"disk_path", appleVm.diskPath)
+
+					// Try to identify specific causes for VM shutdown
+					fileInfo, err := os.Stat(diskImagePath)
+					if err != nil {
+						slogctx.Error(ctx, "vm disk image not accessible", "vm", appleVm.id, "path", diskImagePath, "error", err)
+					} else {
+						slogctx.Info(ctx, "vm disk image details",
+							"vm", appleVm.id,
+							"path", diskImagePath,
+							"size_bytes", fileInfo.Size(),
+							"size_mb", fileInfo.Size()/(1024*1024),
+							"permissions", fileInfo.Mode().String())
+
+						// Check if disk image is suspiciously small (possible corruption)
+						if fileInfo.Size() < 5*1024*1024 { // Less than 5MB
+							slogctx.Error(ctx, "vm disk image suspiciously small - likely corrupted",
+								"vm", appleVm.id,
+								"path", diskImagePath,
+								"size_bytes", fileInfo.Size())
+						}
+					}
+
+					// Check for specific VM error if possible
+					if appleVm.vm != nil {
+						slogctx.Error(ctx, "vm error state details",
+							"vm", appleVm.id,
+							"can_request_stop", appleVm.vm.CanRequestStop(),
+							"can_start", appleVm.vm.CanStart())
+					}
+
+					// Look for EFI variable store and validate its size/permissions
+					if fileInfo, err := os.Stat("./bin/vz-vs.fd"); err != nil {
+						slogctx.Error(ctx, "efi variable store not accessible", "vm", appleVm.id, "path", "./bin/vz-vs.fd", "error", err)
+					} else {
+						slogctx.Info(ctx, "efi variable store details",
+							"vm", appleVm.id,
+							"path", "./bin/vz-vs.fd",
+							"size_bytes", fileInfo.Size(),
+							"permissions", fileInfo.Mode().String())
+					}
+				}
+
+				lastState = state
+				if state == vz.VirtualMachineStateError || state == vz.VirtualMachineStateStopped {
+					slogctx.Info(ctx, "vm reached terminal state, stopping watcher", "vm", appleVm.id, "state", state)
+					return
+				}
+			}
+		}
+	}()
 
 	// Store the VM in our map
 	d.vmMutex.Lock()
@@ -290,22 +437,85 @@ func (d *AppleDriver) StartVM(ctx context.Context, req *ec1v1.StartVMRequest) (*
 		d.vmMutex.Lock()
 		// appleVm.status = ec1v1.VMStatus_VM_STATUS_ERROR
 		d.vmMutex.Unlock()
+		slogctx.Error(ctx, "failed to start vm", "vm", appleVm.id, "error", err)
 		return nil, fmt.Errorf("starting virtual machine: %w", err)
 	}
+
+	// Get the VM configuration (display all settings for debugging)
+	slogctx.Info(ctx, "vm start successful, configuration details",
+		"vm", appleVm.id,
+		"efi_store", "./bin/vz-vs.fd",
+		"disk_path", diskImagePath)
+
+	slogctx.Info(ctx, "vm started - logs should start soon", "vm", appleVm.id)
 
 	// In a real implementation, we would need to wait until the VM is up
 	// and obtain its IP address. For the POC, we'll simulate a successful
 	// start and assign a fake IP with a brief wait
 	time.Sleep(1 * time.Second)
 
-	// For the POC, we'll assign a static IP
-	appleVm.ipAddress = "192.168.64.10" // Simulated IP for the POC
+	ip, err := waitForCallback(ctx, 12345)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for callback: %w", err)
+		// handle error
+	}
+	// now you have the guest's IP
+	fmt.Printf("VM is up at %s\n", ip)
+
+	// HERE: need the ip address of the vm
 
 	return &ec1v1.StartVMResponse{
 		VmId:      ptr(vmID),
-		IpAddress: ptr(appleVm.ipAddress),
+		IpAddress: ptr(ip),
 		Status:    ptr(appleVm.State()),
 	}, nil
+}
+
+// waitForCallback blocks until the VM calls back with its IP, or times out.
+func waitForCallback(ctx context.Context, port int) (string, error) {
+	srv := &http.Server{Addr: fmt.Sprintf(":%d", port)}
+	ipCh := make(chan string, 1)
+
+	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		// e.g. guest does: curl http://$GATEWAY:12345/ready?ip=$(hostname -I)
+		ip := r.URL.Query().Get("ip")
+		if ip != "" {
+			ipCh <- ip
+		}
+	})
+	go srv.ListenAndServe() // ignore err for brevity
+
+	select {
+	case ip := <-ipCh:
+		srv.Shutdown(ctx)
+		return ip, nil
+	case <-time.After(30 * time.Second):
+		srv.Shutdown(ctx)
+		return "", fmt.Errorf("timed out waiting for VM callback")
+	case <-ctx.Done():
+		srv.Shutdown(ctx)
+		return "", ctx.Err()
+	}
+}
+
+// getIPFromARP looks through the host's ARP table for the given MAC and returns its IP.
+func getIPFromARP(mac string) (string, error) {
+	// run `arp -an`
+	out, err := exec.Command("arp", "-an").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to exec arp: %w", err)
+	}
+
+	// lines look like:
+	// ? (172.16.2.2) at de:ad:be:ef:ca:fe on vmnet1 ifscope [ethernet]
+	re := regexp.MustCompile(`$begin:math:text$(?P<ip>[\\d\\.]+)$end:math:text$\s+at\s+(?P<mac>[0-9a-f:]+)`)
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		m := re.FindSubmatch(line)
+		if len(m) == 3 && strings.EqualFold(string(m[2]), mac) {
+			return string(m[1]), nil
+		}
+	}
+	return "", fmt.Errorf("no ARP entry for MAC %s", mac)
 }
 
 // StopVM implements the Driver interface

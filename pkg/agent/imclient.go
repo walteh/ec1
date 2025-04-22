@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 
@@ -17,6 +19,7 @@ func NewInMemoryAgentClient(
 	client v1poc1connect.AgentServiceClient,
 	cleanup func(),
 ) {
+
 	// 1) Build the handler and mount under its generated path
 	path, handler := v1poc1connect.NewAgentServiceHandler(srvImpl)
 	mux := http.NewServeMux()
@@ -24,6 +27,9 @@ func NewInMemoryAgentClient(
 
 	// 2) Create an unstarted test server so we can enable HTTP/2
 	ts := httptest.NewUnstartedServer(mux)
+	ts.Config.BaseContext = func(listener net.Listener) context.Context {
+		return ctx
+	}
 	ts.EnableHTTP2 = true
 	ts.StartTLS() // now serves HTTP/2 over TLS with a test cert
 
@@ -32,6 +38,7 @@ func NewInMemoryAgentClient(
 
 	// 4) Provide cleanup to shut down the server
 	cleanup = func() {
+		fmt.Printf("Closing in-memory agent client\n")
 		ts.Close()
 	}
 	return client, cleanup

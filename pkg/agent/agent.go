@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
+	slogctx "github.com/veqryn/slog-context"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/pkg/hypervisor"
@@ -72,7 +73,7 @@ func (a *Agent) AgentProbe(ctx context.Context, stream *connect.BidiStream[v1poc
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.NewTicker(1 * time.Second).C:
+		case <-time.NewTicker(1 * time.Second * 5).C:
 			stream.Send(&ec1v1.AgentProbeResponse{
 				Live:  ptr(true),
 				Ready: ptr(true),
@@ -144,37 +145,31 @@ func (a *Agent) StartVM(ctx context.Context, req *connect.Request[ec1v1.StartVMR
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("disk_image is required"))
 	}
 
-	diskPath := diskImage.GetPath()
-	if diskPath == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("disk_image.path is required"))
-	}
+	slogctx.Info(ctx, "Starting VM", "disk_image", strings.TrimPrefix(diskImage.GetPath(), "file://"))
 
-	// Check if the disk image exists
-	if _, err := os.Stat(diskPath); os.IsNotExist(err) {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("disk image %s not found", diskPath))
-	}
+	// // Check if the disk image exists
+	// if _, err := os.Stat(strings.TrimPrefix(diskImage.GetPath(), "file://")); os.IsNotExist(err) {
+	// 	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("disk image %s not found", diskImage.GetPath()))
+	// }
 
 	// For cloud-init, check if provided
 	var ciPath string
 	if cloudInit := vmReq.GetCloudInit(); cloudInit != nil {
 		ciPath = cloudInit.GetIsoPath()
 		// Check if the cloud-init ISO exists
-		if ciPath != "" {
-			if _, err := os.Stat(ciPath); os.IsNotExist(err) {
-				return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("cloud-init ISO %s not found", ciPath))
-			}
-		}
+		// if ciPath != "" {
+		// 	if _, err := os.Stat(strings.TrimPrefix(ciPath, "file://")); os.IsNotExist(err) {
+		// 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("cloud-init ISO %s not found", ciPath))
+		// 	}
+		// }
 	}
 
 	// Prepare VM creation request for the hypervisor driver
 	// Here we adapt our internal representation to match what the hypervisor driver expects
 	driverReq := &ec1v1.StartVMRequest{
-		VmId: ptr(vmID),
-		Name: ptr(vmReq.GetName()),
-		DiskImage: &ec1v1.DiskImage{
-			Path: ptr(diskPath),
-			Type: ptr(diskImage.GetType()),
-		},
+		VmId:      ptr(vmID),
+		Name:      ptr(vmReq.GetName()),
+		DiskImage: diskImage,
 	}
 
 	// Set resources if provided
@@ -306,7 +301,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	fmt.Printf("EC1 Agent listening on %s\n", a.config.HostAddr)
 	go func() {
 		<-ctx.Done()
-		server.Shutdown(context.Background())
+		server.Shutdown(ctx)
 	}()
 
 	return server.Serve(listener)

@@ -15,6 +15,28 @@ type workingCloudInit struct {
 	user map[string]interface{}
 }
 
+func addNetworkInitRunCmd(wci *workingCloudInit) {
+	// Ensure runcmd section exists to enable and start the service
+	runcmd, ok := wci.user["runcmd"].([]interface{})
+	if !ok {
+		runcmd = []interface{}{}
+	}
+
+	dat := `  - |
+    # find the NAT gateway (first hop)
+    GW=$(ip route | awk '/default/ {print $3}')
+    # try up to 10 times
+    for i in $(seq 1 10); do
+      # report your IP back to host
+      curl --retry 3 --retry-delay 2 \
+        "http://${GW}:12345/ready?ip=$(hostname -I)"
+      sleep 1
+    done`
+
+	runcmd = append([]any{dat}, runcmd...)
+	wci.user["runcmd"] = runcmd
+}
+
 func addAgentBinaryToSystemd(wci *workingCloudInit) {
 	// Ensure write_files section exists in user data
 	writeFiles, ok := wci.user["write_files"].([]interface{})

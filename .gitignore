@@ -72,3 +72,5 @@ cloudstack-api-json-schemas
 .plan
 cloudstack-api-metadata
 build
+
+__debug*

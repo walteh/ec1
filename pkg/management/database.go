@@ -3,118 +3,109 @@ package management
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
-	"github.com/tidwall/buntdb"
 	"gitlab.com/tozd/go/errors"
 )
 
 type Database struct {
-	db   *buntdb.DB
-	lock map[string]*sync.RWMutex
+	filePath string
+	agents   map[string]RegisteredAgent
+	lock     sync.RWMutex
 }
 
-func NewDatabase(file string) (*Database, error) {
-	db, err := buntdb.Open(file)
-	if err != nil {
-		return nil, err
+func NewDatabase(filePath string) (*Database, error) {
+	db := &Database{
+		filePath: filePath,
+		agents:   make(map[string]RegisteredAgent),
+		lock:     sync.RWMutex{},
 	}
 
-	dbd := &Database{
-		db:   db,
-		lock: make(map[string]*sync.RWMutex),
+	// If file exists, load the data
+	if _, err := os.Stat(filePath); err == nil {
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, errors.Errorf("reading database file: %w", err)
+		}
+
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &db.agents); err != nil {
+				return nil, errors.Errorf("unmarshalling database: %w", err)
+			}
+		}
+	} else {
+		fmt.Printf("Database file does not exist, creating new database\n")
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return nil, errors.Errorf("creating database directory: %w", err)
+		}
+		if err := os.WriteFile(filePath, []byte("{}"), 0644); err != nil {
+			return nil, errors.Errorf("writing database file: %w", err)
+		}
 	}
 
-	// make sure the agent index exists
-	err = dbd.db.CreateIndex("agent_id", "agent-*", buntdb.IndexString)
-	if err != nil && err != buntdb.ErrIndexExists {
-		return nil, err
-	}
-
-	return dbd, nil
+	return db, nil
 }
 
 func (d *Database) Close() error {
-	return d.db.Close()
+	// Ensure data is saved before closing
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	data, err := json.MarshalIndent(d.agents, "", "  ")
+	if err != nil {
+		return errors.Errorf("marshalling database: %w", err)
+	}
+
+	if err := os.WriteFile(d.filePath, data, 0644); err != nil {
+		return errors.Errorf("writing database file: %w", err)
+	}
+
+	return nil
 }
 
 func (d *Database) SaveAgent(agent RegisteredAgent) error {
-	d.lock[agent.ID].Lock()
-	defer d.lock[agent.ID].Unlock()
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
-	byt, err := json.Marshal(agent)
+	// Check if we're updating an existing agent
+	_, exists := d.agents[agent.ID]
+
+	// Update in memory
+	d.agents[agent.ID] = agent
+
+	// Persist to file
+	data, err := json.MarshalIndent(d.agents, "", "  ")
 	if err != nil {
-		return errors.Errorf("marshalling agent: %w", err)
+		return errors.Errorf("marshalling database: %w", err)
 	}
 
-	return d.db.Update(func(tx *buntdb.Tx) error {
-		_, replaced, err := tx.Set(agent.ID, string(byt), nil)
-		if err != nil {
-			return errors.Errorf("setting agent: %w", err)
-		}
-		if replaced {
-			fmt.Printf("Agent %s updated\n", agent.ID)
-		}
-		return nil
-	})
+	if err := os.WriteFile(d.filePath, data, 0644); err != nil {
+		return errors.Errorf("writing database file: %w", err)
+	}
+
+	// We could log this information if needed
+	_ = exists // Using exists to avoid linter error, would be useful for logging
+
+	return nil
 }
 
 func (d *Database) GetAgent(id string) (RegisteredAgent, bool, error) {
-	if _, ok := d.lock[id]; !ok {
-		d.lock[id] = &sync.RWMutex{}
-		// d.lock[id].Lock()
-	}
-	d.lock[id].RLock()
-	defer d.lock[id].RUnlock()
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 
-	var agent *RegisteredAgent
-	err := d.db.View(func(tx *buntdb.Tx) error {
-		byt, err := tx.Get(id)
-		if err != nil {
-			if err == buntdb.ErrNotFound {
-				return nil
-			}
-			return errors.Errorf("getting agent: %w", err)
-		}
-		return json.Unmarshal([]byte(byt), &agent)
-	})
-	if err != nil {
-		return RegisteredAgent{}, false, errors.Errorf("viewing agent: %w", err)
-	}
-	if agent == nil {
-		return RegisteredAgent{}, false, nil
-	}
-	return *agent, true, nil
+	agent, exists := d.agents[id]
+	return agent, exists, nil
 }
 
 func (d *Database) GetAllAgents() ([]RegisteredAgent, error) {
-	for _, lock := range d.lock {
-		lock.RLock()
-	}
-	defer func() {
-		for _, lock := range d.lock {
-			lock.RUnlock()
-		}
-	}()
-	var agents []RegisteredAgent
-	err := d.db.View(func(tx *buntdb.Tx) error {
-		return tx.Ascend("agent_id", func(key, value string) bool {
-			var agent RegisteredAgent
-			err := json.Unmarshal([]byte(value), &agent)
-			if err != nil {
-				return false
-			}
-			agents = append(agents, agent)
-			if _, ok := d.lock[agent.ID]; !ok {
-				d.lock[agent.ID] = &sync.RWMutex{}
-				d.lock[agent.ID].Lock()
-			}
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 
-			return true
-		})
-	})
-	if err != nil {
-		return nil, errors.Errorf("viewing agents: %w", err)
+	agents := make([]RegisteredAgent, 0, len(d.agents))
+	for _, agent := range d.agents {
+		agents = append(agents, agent)
 	}
 
 	return agents, nil

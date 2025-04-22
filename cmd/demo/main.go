@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"connectrpc.com/connect"
+	"github.com/lmittmann/tint"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/pkg/clog"
@@ -48,24 +47,37 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: true}).WithGroup("agent")
+	w := os.Stdout
 
-	_, ctx = clog.NewLoggerFromHandler(ctx, handler)
+	// create a new logger
+	logger := tint.NewHandler(w, &tint.Options{
+		Level:      slog.LevelDebug,
+		TimeFormat: "2006-01-02 15:04 05.0000",
+		AddSource:  true,
+	}).WithGroup("demo")
 
-	// Set up signal handling
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Println("\nReceived termination signal, shutting down...")
-		cancel()
-	}()
+	_, ctx = clog.NewLoggerFromHandler(ctx, logger)
+
+	// // Set up signal handling
+	// sigCh := make(chan os.Signal, 1)
+	// signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	// go func() {
+	// 	<-sigCh
+	// 	fmt.Println("\nReceived termination signal, shutting down...")
+	// 	cancel()
+	// }()
 
 	// Check if we need to clean up first
 	if *clean {
 		fmt.Println("Cleaning up previous run...")
 		cleanupPreviousRun()
 	}
+
+	// go multipane.Run(ctx, os.Stdin, os.Stdout)
+
+	// time.Sleep(1 * time.Second)
+
+	// multipane.AddPane("mgt", buf)
 
 	// Handle different actions
 	if err := runEC1Demo(ctx); err != nil {
