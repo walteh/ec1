@@ -2,8 +2,6 @@ module github.com/walteh/ec1
 
 go 1.24.2
 
-replace log/slog => github.com/veqryn/slog-context v0.8.0
-
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Code-Hex/vz/v3 v3.6.0

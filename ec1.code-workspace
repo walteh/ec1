@@ -19,6 +19,12 @@
 		]
 	},
 	"settings": {
+		"go.alternateTools": {
+			"go": "${workspaceFolder}/go"
+		},
+		"go.testExplorer.packageDisplayMode": "nested",
+		"go.testExplorer.showOutput": true,
+		"go.testFlags": ["-ide", "-codesign", "-v"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,
 		"files.associations": {

@@ -3,22 +3,108 @@ package applevftest
 import (
 	"compress/gzip"
 	"context"
-	"errors"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"testing"
 
 	"github.com/crc-org/vfkit/pkg/config"
 	"github.com/xi2/xz"
 
 	"github.com/cavaliergopher/grab/v3"
 	"github.com/crc-org/crc/v2/pkg/extract"
-	log "github.com/sirupsen/logrus"
+	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 )
+
+const fedoraVersion = "40"
+const fedoraRelease = "1.14"
+const puipuiVersion = "0.0.1"
+
+type OsProvider interface {
+	URL() string
+	Uncompress(ctx context.Context, cacheFile string, destDir string) error
+	Initialize(ctx context.Context, cacheDir string) error
+	// Fetch(ctx context.Context, cacheFile string, destDir string) error
+	ToVirtualMachine() (*config.VirtualMachine, error)
+	SSHConfig() *ssh.ClientConfig
+	SSHAccessMethods() []SSHAccessMethod
+}
+
+func cacheDir(urld string) (string, error) {
+	hrlHasher := sha256.New()
+	hrlHasher.Write([]byte(urld))
+	hrlHash := hex.EncodeToString(hrlHasher.Sum(nil))
+
+	// parse the url and get the filename
+	parsedURL, err := url.Parse(urld)
+	if err != nil {
+		return "", err
+	}
+	filename := filepath.Base(parsedURL.Path)
+	hostname := parsedURL.Host
+
+	filename = fmt.Sprintf("%s_%s_%s", hostname, hrlHash, filename)
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(userCacheDir, "vfkit-testing", "cache", filename), nil
+}
+
+func SetupOS(t *testing.T, prov OsProvider) error {
+	ctx := t.Context()
+	tmpDir := t.TempDir()
+	url := prov.URL()
+
+	cacheDir, err := cacheDir(url)
+	if err != nil {
+		return err
+	}
+
+	cacheFile := filepath.Join(cacheDir, filepath.Base(url))
+
+	if _, err := os.Stat(cacheFile); err != nil {
+		grab.DefaultClient.UserAgent = "vfkit"
+		resp, err := grab.Get(tmpDir, url)
+		if err != nil {
+			return err
+		}
+		// move the file to the cache
+		err = os.MkdirAll(cacheDir, 0755)
+		if err != nil {
+			return err
+		}
+		err = os.Rename(resp.Filename, cacheFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	extractedDir := filepath.Join(tmpDir, "extracted")
+	err = os.MkdirAll(extractedDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	err = prov.Uncompress(ctx, cacheFile, extractedDir)
+	if err != nil {
+		return err
+	}
+
+	err = prov.Initialize(ctx, extractedDir)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func kernelArch() string {
 	switch runtime.GOARCH {
@@ -31,68 +117,78 @@ func kernelArch() string {
 	}
 }
 
-func downloadPuipui(ctx context.Context, destDir string) ([]string, error) {
-	const puipuiVersion = "0.0.1"
-	var puipuiURL = fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/v%s/puipui_linux_v%s_%s.tar.gz", puipuiVersion, puipuiVersion, kernelArch())
-
-	// https://github.com/cavaliergopher/grab/issues/104
-	grab.DefaultClient.UserAgent = "vfkit"
-	resp, err := grab.Get(destDir, puipuiURL)
-	if err != nil {
-		return nil, err
-	}
-	return extract.Uncompress(ctx, resp.Filename, destDir)
+func (prov *PuiPuiProvider) URL() string {
+	return fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/v%s/puipui_linux_v%s_%s.tar.gz", puipuiVersion, puipuiVersion, kernelArch())
 }
 
-func downloadFedora(destDir string) (string, error) {
-	const fedoraVersion = "40"
+func (prov *FedoraProvider) URL() string {
 	arch := kernelArch()
-	release := "1.14"
-	buildString := fmt.Sprintf("%s-%s-%s", arch, fedoraVersion, release)
-
-	var fedoraURL = fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2.%s.raw.xz", fedoraVersion, arch, buildString)
-
-	// https://github.com/cavaliergopher/grab/issues/104
-	grab.DefaultClient.UserAgent = "vfkit"
-	resp, err := grab.Get(destDir, fedoraURL)
-	if err != nil {
-		return "", err
-	}
-	return uncompressFedora(resp.Filename, destDir)
+	buildString := fmt.Sprintf("%s-%s-%s", arch, fedoraVersion, fedoraRelease)
+	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2.%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
-func uncompressFedora(fileName string, targetDir string) (string, error) {
-	file, err := os.Open(filepath.Clean(fileName))
+func (prov *PuiPuiProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
+	_, err := extract.Uncompress(ctx, cacheFile, destDir)
 	if err != nil {
-		return "", err
+		return errors.Errorf("uncompressing pui pui: %w", err)
+	}
+	return nil
+}
+
+func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) error {
+	filez, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return err
+	}
+	files := []string{}
+	for _, file := range filez {
+		files = append(files, filepath.Join(cacheDir, file.Name()))
+	}
+	prov.vmlinuz, err = findKernel(files)
+	if err != nil {
+		return err
+	}
+	prov.initramfs, err = findFile(files, "initramfs.cpio.gz")
+	if err != nil {
+		return err
+	}
+	prov.kernelArgs = "quiet"
+	return nil
+}
+
+func (prov *FedoraProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
+	file, err := os.Open(filepath.Clean(cacheFile))
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 
 	reader, err := xz.NewReader(file, 0)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	xzCutName, _ := strings.CutSuffix(filepath.Base(file.Name()), ".xz")
-	outPath := filepath.Join(targetDir, xzCutName)
+	xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), ".xz")
+	outPath := filepath.Join(destDir, xzCutName)
 	out, err := os.Create(outPath)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	_, err = io.Copy(out, reader)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return outPath, nil
+	return err
 }
 
-type OsProvider interface {
-	Fetch(ctx context.Context, destDir string) error
-	ToVirtualMachine() (*config.VirtualMachine, error)
-	SSHConfig() *ssh.ClientConfig
-	SSHAccessMethods() []SSHAccessMethod
+func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
+	xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), ".xz")
+	prov.diskImage = filepath.Join(cacheDir, xzCutName)
+	// prov.efiVariableStorePath = filepath.Join(cacheDir, "efivars.img")
+	// prov.createVariableStore = true
+	return nil
 }
 
 var _ OsProvider = &PuiPuiProvider{}
@@ -133,7 +229,7 @@ func findFile(files []string, filename string) (string, error) {
 	return "", fmt.Errorf("could not find %s", filename)
 }
 
-func ungz(gzFile string) (string, error) {
+func uncompressPuiPuiKernel(gzFile string) (string, error) {
 	reader, err := os.Open(gzFile)
 	if err != nil {
 		return "", err
@@ -173,45 +269,10 @@ func findKernel(files []string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return ungz(compressed)
+		return uncompressPuiPuiKernel(compressed)
 	default:
 		return "", fmt.Errorf("unsupported architecture '%s'", runtime.GOARCH)
 	}
-}
-
-func (puipui *PuiPuiProvider) Fetch(ctx context.Context, destDir string) error {
-	log.Infof("downloading puipui to %s", destDir)
-	files, err := downloadPuipui(ctx, destDir)
-	if err != nil {
-		return err
-	}
-
-	puipui.vmlinuz, err = findKernel(files)
-	if err != nil {
-		return err
-	}
-	log.Infof("puipui kernel: %s", puipui.vmlinuz)
-	puipui.initramfs, err = findFile(files, "initramfs.cpio.gz")
-	if err != nil {
-		return err
-	}
-	log.Infof("puipui initramfs: %s", puipui.initramfs)
-	puipui.kernelArgs = "quiet"
-	log.Infof("puipui kernel command line: %s", puipui.kernelArgs)
-
-	return nil
-}
-
-func (fedora *FedoraProvider) Fetch(ctx context.Context, destDir string) error {
-	log.Infof("downloading fedora to %s", destDir)
-	file, err := downloadFedora(destDir)
-	if err != nil {
-		return err
-	}
-
-	fedora.diskImage = file
-
-	return nil
 }
 
 const puipuiMemoryMiB = 1 * 1024

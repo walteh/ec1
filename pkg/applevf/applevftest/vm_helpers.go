@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/crc-org/vfkit/pkg/cmdline"
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/crc-org/vfkit/pkg/rest"
+	"github.com/walteh/ec1/pkg/applevf"
+	"gitlab.com/tozd/go/errors"
 
 	vfkithelpers "github.com/crc-org/crc/v2/pkg/drivers/vfkit"
 	"github.com/stretchr/testify/require"
@@ -26,17 +25,27 @@ func retryIPFromMAC(t *testing.T, errCh chan error, macAddress string) (string, 
 		ip  string
 	)
 
+	tenSeconds := time.After(10 * time.Second)
+
 	for {
 		select {
 		case err := <-errCh:
+			slog.ErrorContext(t.Context(), "retryIPFromMAC returned", "error", err)
 			return "", err
 		case <-time.After(1 * time.Second):
+			slog.DebugContext(t.Context(), "getting IP address by MAC address", "mac", macAddress)
 			ip, err = vfkithelpers.GetIPAddressByMACAddress(macAddress)
-			if err == nil {
-				slog.InfoContext(t.Context(), "found IP address", "ip", ip, "mac", macAddress)
-				return ip, nil
+			if err != nil {
+				if errors.Is(err, vfkithelpers.RetriableError{}) {
+					continue
+				}
+				return "", err
 			}
-		case <-time.After(10 * time.Second):
+			// if err == nil {
+			slog.InfoContext(t.Context(), "found IP address", "ip", ip, "mac", macAddress)
+			return ip, nil
+			// }
+		case <-tenSeconds:
 			return "", fmt.Errorf("timeout getting IP from MAC: %w", err)
 		}
 	}
@@ -47,9 +56,12 @@ func retrySSHDial(t *testing.T, errCh chan error, scheme string, address string,
 		sshClient *ssh.Client
 		err       error
 	)
+
+	tenSeconds := time.After(10 * time.Second)
 	for {
 		select {
 		case err := <-errCh:
+			slog.ErrorContext(t.Context(), "ssh dial returned", "error", err)
 			return nil, err
 		case <-time.After(1 * time.Second):
 			slog.DebugContext(t.Context(), "trying ssh dial")
@@ -59,58 +71,73 @@ func retrySSHDial(t *testing.T, errCh chan error, scheme string, address string,
 				return sshClient, nil
 			}
 			slog.DebugContext(t.Context(), "ssh failed", "error", err)
-		case <-time.After(10 * time.Second):
+		case <-tenSeconds:
 			return nil, fmt.Errorf("timeout waiting for SSH: %w", err)
 		}
 	}
 }
 
 type vfkitRunner struct {
-	*exec.Cmd
+	// *exec.Cmd
 	errCh              chan error
 	gracefullyShutdown bool
 	restSocketPath     string
 }
 
 func startVfkit(t *testing.T, vm *config.VirtualMachine) *vfkitRunner {
-	const vfkitRelativePath = "../out/vfkit"
 
-	logFilePath := filepath.Join(t.TempDir(), fmt.Sprintf("%s.log", strings.ReplaceAll(t.Name(), "/", "")))
-	logFile, err := os.Create(logFilePath)
-	require.NoError(t, err)
-	slog.InfoContext(t.Context(), "vfkit log file", "file", logFilePath)
+	opts := &cmdline.Options{}
 
-	binaryPath, err := exec.LookPath(vfkitRelativePath)
-	require.NoError(t, err)
+	// logFilePath := filepath.Join(t.TempDir(), fmt.Sprintf("%s.log", strings.ReplaceAll(t.Name(), "/", "")))
+	// logFile, err := os.Create(logFilePath)
+	// require.NoError(t, err)
+	// slog.InfoContext(t.Context(), "vfkit log file", "file", logFilePath)
+
+	// binaryPath, err := exec.LookPath(vfkitRelativePath)
+	// require.NoError(t, err)
+
+	// restSocketPath := filepath.Join(t.TempDir(), "rest.sock")
+	// restEndpoint, err := rest.NewEndpoint(fmt.Sprintf("unix://%s", restSocketPath))
+	// require.NoError(t, err)
+
+	// restArgs, err := restEndpoint.ToCmdLine()
+	// require.NoError(t, err)
 
 	restSocketPath := filepath.Join(t.TempDir(), "rest.sock")
-	restEndpoint, err := rest.NewEndpoint(fmt.Sprintf("unix://%s", restSocketPath))
 
-	require.NoError(t, err)
-	restArgs, err := restEndpoint.ToCmdLine()
-	require.NoError(t, err)
+	opts.RestfulURI = fmt.Sprintf("unix://%s", restSocketPath)
+	opts.Bootloader.Append("efi")
 
-	slog.InfoContext(t.Context(), "starting vfkit", "binary", binaryPath)
-	vfkitCmd, err := vm.Cmd(binaryPath)
-	require.NoError(t, err)
-	vfkitCmd.Stdout = logFile
-	vfkitCmd.Stderr = logFile
-	vfkitCmd.Args = append(vfkitCmd.Args, restArgs...)
+	// slog.InfoContext(t.Context(), "starting vfkit", "binary", binaryPath)
 
-	err = vfkitCmd.Start()
-	require.NoError(t, err)
+	// configd, err := applevf.NewVMConfiguration(t.Context(), opts)
+	// require.NoError(t, err)
+
+	// err = applevf.RunVFKit(t.Context(), configd, opts)
+	// require.NoError(t, err)
+
+	// vfkitCmd, err := vm.Cmd(binaryPath)
+	// require.NoError(t, err)
+	// vfkitCmd.Stdout = logFile
+	// vfkitCmd.Stderr = logFile
+	// vfkitCmd.Args = append(vfkitCmd.Args, restArgs...)
+
+	// err = vfkitCmd.Start()
+	// require.NoError(t, err)
 	errCh := make(chan error)
 	go func() {
-		err := vfkitCmd.Wait()
+		err := applevf.RunVFKit(t.Context(), vm, opts)
 		if err != nil {
-			slog.ErrorContext(t.Context(), "vfkitCmd.Wait() returned", "error", err)
+			slog.ErrorContext(t.Context(), "applevf.RunVFKit returned", "error", err)
 		}
+		slog.InfoContext(t.Context(), "applevf.RunVFKit returned", "error", err, "errChlen", len(errCh))
 		errCh <- err
+		slog.InfoContext(t.Context(), "applevf.RunVFKit closed errCh")
 		close(errCh)
 	}()
 
 	return &vfkitRunner{
-		vfkitCmd,
+		// vfkitCmd,
 		errCh,
 		false,
 		restSocketPath,
@@ -118,7 +145,9 @@ func startVfkit(t *testing.T, vm *config.VirtualMachine) *vfkitRunner {
 }
 
 func (cmd *vfkitRunner) Wait(t *testing.T) {
+	slog.InfoContext(t.Context(), "waiting for vfkit to return")
 	err := <-cmd.errCh
+	slog.InfoContext(t.Context(), "vfkit returned", "error", err)
 	require.NoError(t, err)
 	cmd.gracefullyShutdown = true
 }
@@ -126,10 +155,10 @@ func (cmd *vfkitRunner) Wait(t *testing.T) {
 func (cmd *vfkitRunner) Close(t *testing.T) {
 	if cmd != nil && !cmd.gracefullyShutdown {
 		slog.InfoContext(t.Context(), "killing left-over vfkit process")
-		err := cmd.Cmd.Process.Kill()
-		if err != nil {
-			slog.WarnContext(t.Context(), "failed to kill vfkit process", "error", err)
-		}
+		// err := cmd.Cmd.Process.Kill()
+		// if err != nil {
+		// 	slog.WarnContext(t.Context(), "failed to kill vfkit process", "error", err)
+		// }
 	}
 }
 
@@ -217,9 +246,17 @@ func (vm *testVM) Start(t *testing.T) {
 func (vm *testVM) Stop(t *testing.T) {
 	switch vm.provider.(type) {
 	case *FedoraProvider:
-		vm.SSHRun(t, "sudo shutdown now")
+		if vm.sshNetwork == "vsock" {
+			go vm.SSHRun(t, "sudo shutdown now")
+		} else {
+			go vm.SSHRun(t, "sudo shutdown now")
+		}
 	default:
-		vm.SSHRun(t, "poweroff")
+		if vm.sshNetwork == "vsock" {
+			go vm.SSHRun(t, "poweroff")
+		} else {
+			go vm.SSHRun(t, "poweroff")
+		}
 	}
 	vm.vfkitCmd.Wait(t)
 }
@@ -253,10 +290,19 @@ func (vm *testVM) WaitForSSH(t *testing.T) {
 }
 
 func (vm *testVM) SSHRun(t *testing.T, command string) {
+	slog.InfoContext(t.Context(), "running command", "command", command)
 	sshSession, err := vm.sshClient.NewSession()
 	require.NoError(t, err)
 	defer sshSession.Close()
-	_ = sshSession.Run(command)
+	err = sshSession.Run(command)
+	slog.InfoContext(t.Context(), "command returned", "error", err)
+}
+
+func (vm *testVM) SSHSignal(t *testing.T, signal ssh.Signal) {
+	sshSession, err := vm.sshClient.NewSession()
+	require.NoError(t, err)
+	defer sshSession.Close()
+	sshSession.Signal(signal)
 }
 
 func (vm *testVM) SSHCombinedOutput(t *testing.T, command string) ([]byte, error) {

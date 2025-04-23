@@ -1,7 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Running go: $*"
+# # https://stackoverflow.com/a/78585264
+# export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
+
+function truncate_logs() {
+	# Default to 1000 lines if not specified
+	MAX_LINES=${1:-1000}
+	shift # Remove max_lines argument
+
+	# Check for -- separator
+	if [ "$1" != "--" ]; then
+		echo "Error: Missing -- separator after max_lines"
+		exit 1
+	fi
+	shift # Remove -- separator
+
+	# Run the command and pipe through head
+	"$@" | {
+		# Use head to limit output, but always show test summary at the end
+		head -n "$MAX_LINES"
+
+		# If there was more output, show a message
+		if [ -n "$(cat)" ]; then
+			echo "... [Output truncated after $MAX_LINES lines. Set MAX_LINES=all to see full output] ..."
+		fi
+	}
+
+	# Preserve the exit code of the original command
+	exit "${PIPESTATUS[0]}"
+}
 
 # if mod tidy, run the task mod-tidy
 if [ "${1:-}" == "mod" ] && [ "${2:-}" == "tidy" ]; then
@@ -15,27 +43,63 @@ if [ "${1:-}" == "mod" ] && [ "${2:-}" == "upgrade" ]; then
 	exit $?
 fi
 
+test_runtime_keys=("-run")
+
 # if first argument is "test", use gotestsum
 if [ "${1:-}" == "test" ]; then
 	shift
 
 	cc=0
 	ff=0
+	codesign=0
 	real_args=()
+	runtime_args=()
+	ide=0
 	extra_args=""
 	max_lines=1000 # Default to 1000 lines
+	target_dir=""
+	next_is_runtime_arg_key=""
 
 	# Handle each argument
 	for arg in "$@"; do
-		if [ "$arg" = "-function-coverage" ]; then
+		if [ -n "$next_is_runtime_arg_key" ]; then
+			runtime_args+=("${next_is_runtime_arg_key}='${arg}'")
+			next_is_runtime_arg_key=""
+		elif [ "$arg" = "-function-coverage" ]; then
 			cc=1
 		elif [ "$arg" = "-force" ]; then
 			ff=1
+		elif [ "$arg" = "-codesign" ]; then
+			codesign=1
+		elif [ "$arg" = "-ide" ]; then
+			ide=1
 		elif [[ "$arg" =~ ^-max-lines=(.*)$ ]]; then
 			max_lines="${BASH_REMATCH[1]}"
+		elif [[ "$arg" =~ ^./ || "$arg" =~ ^github\.com ]]; then
+			target_dir="$arg"
 		else
-			real_args+=("$arg")
+			ok=0
+			for key in "${test_runtime_keys[@]}"; do
+				if [[ "$arg" =~ ^$key=(.*)$ ]]; then
+					runtime_args+=("$arg")
+					ok=1
+					break
+				elif [[ "$arg" =~ ^$key$ ]]; then
+					next_is_runtime_arg_key="$key"
+					ok=1
+					break
+				fi
+			done
+			if [ "$ok" -eq 0 ]; then
+				real_args+=("$arg")
+			fi
 		fi
+	done
+
+	adjusted_runtime_args=()
+	for arg in "${runtime_args[@]}"; do
+		# replace -xxx with -test.xxx
+		adjusted_runtime_args+=("${arg//-/-test.}")
 	done
 
 	if [[ "$cc" == "1" ]]; then
@@ -56,13 +120,49 @@ if [ "${1:-}" == "test" ]; then
 		extra_args="$extra_args -count=1 "
 	fi
 
-	# Use our truncation wrapper - go run ./cmd/test-deco
-	./scripts/truncate-test-logs.sh "$max_lines" -- go tool gotest.tools/gotestsum \
-		--format pkgname \
-		--format-icons hivis \
-		--hide-summary=skipped \
-		\
-		--raw-command -- go test -v -vet=all -json -cover "$extra_args" "${real_args[@]}" # --jsonfile=test.json \
+	# grab the packages in the target directory
+
+	raw_args=""
+
+	fmt="pkgname"
+	fmt_icon="hivis"
+
+	# build the test binary
+	if [[ "$codesign" == "1" ]]; then
+		items=$(go list -f '{{.ImportPath}}' "$target_dir")
+		project_root_dir="$(dirname -- "${BASH_SOURCE[0]}")"
+
+		entitlements_file="$project_root_dir/entitlements.plist"
+		if [[ ! -f "$entitlements_file" ]]; then
+			echo "Error: entitlements.plist file not found in project root - it is required for codesigning"
+			exit 1
+		fi
+
+		tmpdir=$(mktemp -d)
+		remove_tmpdir() {
+			rm -rf "$tmpdir"
+		}
+		trap remove_tmpdir EXIT
+		for item in $items; do
+			module=$item
+			file_name=$(basename "$module")
+			raw_args+="go test -c -o $tmpdir -v -vet=all -json -cover $extra_args ${real_args[*]} $module"
+			raw_args+=" && [ -f \"$tmpdir/$file_name.test\" ] "
+			raw_args+=" && codesign --entitlements $entitlements_file --verbose=0 -s - $tmpdir/$file_name.test "
+			raw_args+=" && go tool test2json -t -p $module -- $tmpdir/$file_name.test -test.v ${adjusted_runtime_args[*]} || true; "
+		done
+		# raw_args=
+	else
+		raw_args="go test -v -vet=all -json -cover $extra_args ${real_args[*]} $target_dir"
+	fi
+	if [[ "$ide" == "1" ]]; then
+		bash -c "$raw_args"
+	else
+		truncate_logs "$max_lines" -- go tool gotest.tools/gotestsum \
+			--format "$fmt" \
+			--format-icons "$fmt_icon" \
+			--raw-command -- bash -c "$raw_args"
+	fi
 
 	exit $?
 fi

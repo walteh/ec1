@@ -112,11 +112,16 @@ func waitForVMState(ctx context.Context, vm *vf.VirtualMachine, state vz.Virtual
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGPIPE)
 
+	slog.DebugContext(ctx, "waiting for VM state", "state", state, "current state", vm.State())
+
 	for {
 		select {
 		case s := <-signalCh:
 			slog.DebugContext(ctx, "ignoring signal", "signal", s)
 		case newState := <-vm.StateChangedNotify():
+
+			slog.DebugContext(ctx, "VM state changed", "state", newState)
+
 			if newState == state {
 				return nil
 			}
@@ -224,6 +229,12 @@ func runVirtualMachine(ctx context.Context, vmConfig *config.VirtualMachine, vm 
 		}
 	}()
 
+	if len(vmConfig.VirtioGPUDevices()) == 0 {
+		slog.DebugContext(ctx, "no GPU devices found in vmConfig")
+		// close(errCh)
+		// return errors.New("no GPU devices found in vmConfig")
+	}
+
 	for _, gpuDev := range vmConfig.VirtioGPUDevices() {
 		if gpuDev.UsesGUI {
 			runtime.LockOSThread()
@@ -233,6 +244,8 @@ func runVirtualMachine(ctx context.Context, vmConfig *config.VirtualMachine, vm 
 				return err
 			}
 			break
+		} else {
+			slog.DebugContext(ctx, "not starting GUI")
 		}
 	}
 

@@ -1,6 +1,7 @@
 package applevftest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,10 @@ import (
 	"time"
 
 	"github.com/crc-org/vfkit/pkg/config"
+	"github.com/lmittmann/tint"
+	slogctx "github.com/veqryn/slog-context"
+	"github.com/walteh/ec1/pkg/applevf/applevftest/testdata"
+	"github.com/walteh/ec1/pkg/embedtd"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +27,7 @@ import (
 func TestFailedVfkitStart(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	err := puipuiProvider.Fetch(t.Context(), t.TempDir())
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	vm := NewTestVM(t, puipuiProvider)
@@ -54,10 +59,24 @@ func testSSHAccess(t *testing.T, vm *testVM, network string) {
 	vm.Stop(t)
 }
 
+func setupSlog(t *testing.T) context.Context {
+	logger := tint.NewHandler(os.Stdout, &tint.Options{
+		Level:      slog.LevelDebug,
+		TimeFormat: "2006-01-02 15:04 05.0000",
+		AddSource:  true,
+	})
+
+	mylogger := slog.New(slogctx.NewHandler(logger, nil))
+	slog.SetDefault(mylogger)
+	ctx := slogctx.NewCtx(t.Context(), mylogger)
+	return ctx
+}
+
 func TestSSHAccess(t *testing.T) {
+	setupSlog(t)
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	err := puipuiProvider.Fetch(t.Context(), t.TempDir())
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	for _, accessMethod := range puipuiProvider.SSHAccessMethods() {
@@ -65,6 +84,7 @@ func TestSSHAccess(t *testing.T) {
 			vm := NewTestVM(t, puipuiProvider)
 			defer vm.Close(t)
 			require.NotNil(t, vm)
+			slog.InfoContext(t.Context(), "starting VM")
 			testSSHAccess(t, vm, accessMethod.network)
 		})
 	}
@@ -74,7 +94,7 @@ func TestSSHAccess(t *testing.T) {
 func TestVsockConnect(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	err := puipuiProvider.Fetch(t.Context(), t.TempDir())
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	vm := NewTestVM(t, puipuiProvider)
@@ -118,7 +138,7 @@ func TestVsockConnect(t *testing.T) {
 func TestVsockListen(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	err := puipuiProvider.Fetch(t.Context(), t.TempDir())
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	vm := NewTestVM(t, puipuiProvider)
@@ -156,8 +176,7 @@ func TestVsockListen(t *testing.T) {
 func TestFileSharing(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	tempDir := t.TempDir()
-	err := puipuiProvider.Fetch(t.Context(), tempDir)
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	vm := NewTestVM(t, puipuiProvider)
@@ -321,8 +340,7 @@ func testPCIId(t *testing.T, test pciidTest, provider OsProvider) {
 func TestPCIIds(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	tempDir := t.TempDir()
-	err := puipuiProvider.Fetch(t.Context(), tempDir)
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	for name, test := range pciidTests {
@@ -347,8 +365,7 @@ func TestPCIIds(t *testing.T) {
 func TestVirtioSerialPTY(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	tempDir := t.TempDir()
-	err := puipuiProvider.Fetch(t.Context(), tempDir)
+	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
 	vm := NewTestVM(t, puipuiProvider)
@@ -392,12 +409,11 @@ func TestCloudInit(t *testing.T) {
 	}
 	fedoraProvider := NewFedoraProvider()
 	slog.InfoContext(t.Context(), "fetching os image")
-	tempDir := t.TempDir()
-	err := fedoraProvider.Fetch(t.Context(), tempDir)
+	err := SetupOS(t, fedoraProvider)
 	require.NoError(t, err)
 
 	// set efi bootloader
-	fedoraProvider.efiVariableStorePath = "efi-variable-store"
+	fedoraProvider.efiVariableStorePath = filepath.Join(t.TempDir(), "efi-variable-store")
 	fedoraProvider.createVariableStore = true
 
 	vm := NewTestVM(t, fedoraProvider)
@@ -428,7 +444,7 @@ func TestCloudInit(t *testing.T) {
 		ssh_pwauth: true
 		chpasswd: { expire: false }
 	*/
-	dev, err := config.VirtioBlkNew("assets/seed.img")
+	dev, err := config.VirtioBlkNew(embedtd.MustCreateTmpFileFor(t, testdata.FS(), "seed.img"))
 	require.NoError(t, err)
 	vm.AddDevice(t, dev)
 	slog.InfoContext(t.Context(), "shared disk", "name", dev.DevName)

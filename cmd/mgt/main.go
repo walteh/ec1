@@ -33,13 +33,17 @@ func main() {
 
 	// Create and start the management server
 	config := management.ServerConfig{
-		HostAddr: *hostAddr,
+		// Host: *hostAddr,
 	}
 
-	server := management.New(config)
+	server, err := management.New(ctx, config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating server: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("Starting EC1 Management Server on %s\n", *hostAddr)
-	if err := server.Start(ctx); err != nil {
+	if _, err := server.Start(ctx, *hostAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting server: %v\n", err)
 		os.Exit(1)
 	}
