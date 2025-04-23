@@ -23,9 +23,9 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const fedoraVersion = "40"
-const fedoraRelease = "1.14"
-const puipuiVersion = "0.0.1"
+const fedoraVersion = "42"
+const fedoraRelease = "1.1"
+const puipuiVersion = "v1.0.3"
 
 type OsProvider interface {
 	URL() string
@@ -118,13 +118,13 @@ func kernelArch() string {
 }
 
 func (prov *PuiPuiProvider) URL() string {
-	return fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/v%s/puipui_linux_v%s_%s.tar.gz", puipuiVersion, puipuiVersion, kernelArch())
+	return fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/%s/puipui_linux_%s_%s.tar.gz", puipuiVersion, puipuiVersion, kernelArch())
 }
 
 func (prov *FedoraProvider) URL() string {
 	arch := kernelArch()
-	buildString := fmt.Sprintf("%s-%s-%s", arch, fedoraVersion, fedoraRelease)
-	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2.%s.raw.xz", fedoraVersion, arch, buildString)
+	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
+	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
 func (prov *PuiPuiProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
