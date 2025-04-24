@@ -19,6 +19,18 @@
 		]
 	},
 	"settings": {
+		"workbench.colorCustomizations": {
+			"editorOverviewRuler.errorForeground": "#FF0000",
+			"editorError.background": "#FF000033",
+			"editorError.border": "#FF0000",
+			// "editorError.foreground": "#FF0000",,
+			"editorWarning.background": "#FFCC0033",
+			"editorWarning.border": "#FFCC00",
+			// "editorWarning.foreground": "#FFCC00",
+			"editorInfo.background": "#00AAFF33",
+			"editorInfo.border": "#00AAFF"
+			// "editorInfo.foreground": "#00AAFF",
+		},
 		"go.alternateTools": {
 			"go": "${workspaceFolder}/go"
 		},

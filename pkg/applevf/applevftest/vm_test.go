@@ -1,7 +1,6 @@
 package applevftest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,9 +23,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	setupSlog()
+	os.Exit(m.Run())
+}
+
+func setupSlog() {
+	logger := tint.NewHandler(os.Stdout, &tint.Options{
+		Level:      slog.LevelDebug,
+		TimeFormat: "2006-01-02 15:04 05.0000",
+		AddSource:  true,
+	})
+
+	mylogger := slog.New(slogctx.NewHandler(logger, nil))
+	slog.SetDefault(mylogger)
+}
+
 func TestFailedVfkitStart(t *testing.T) {
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -42,40 +58,28 @@ func TestFailedVfkitStart(t *testing.T) {
 
 	vm.Start(t)
 
-	slog.InfoContext(t.Context(), "waiting for SSH")
+	slog.InfoContext(ctx, "waiting for SSH")
 	_, err = retrySSHDial(t, vm.vfkitCmd.errCh, "unix", vm.vsockPath, vm.provider.SSHConfig())
 	require.Error(t, err)
 }
 
 func testSSHAccess(t *testing.T, vm *testVM, network string) {
-	slog.InfoContext(t.Context(), "testing SSH access over", "network", network)
+	ctx := t.Context()
+	slog.InfoContext(ctx, "testing SSH access over", "network", network)
 	vm.AddSSH(t, network)
 	vm.Start(t)
 
-	slog.InfoContext(t.Context(), "waiting for SSH")
+	slog.InfoContext(ctx, "waiting for SSH")
 	vm.WaitForSSH(t)
 
-	slog.InfoContext(t.Context(), "shutting down VM")
+	slog.InfoContext(ctx, "shutting down VM")
 	vm.Stop(t)
 }
 
-func setupSlog(t *testing.T) context.Context {
-	logger := tint.NewHandler(os.Stdout, &tint.Options{
-		Level:      slog.LevelDebug,
-		TimeFormat: "2006-01-02 15:04 05.0000",
-		AddSource:  true,
-	})
-
-	mylogger := slog.New(slogctx.NewHandler(logger, nil))
-	slog.SetDefault(mylogger)
-	ctx := slogctx.NewCtx(t.Context(), mylogger)
-	return ctx
-}
-
 func TestSSHAccess(t *testing.T) {
-	setupSlog(t)
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -84,7 +88,7 @@ func TestSSHAccess(t *testing.T) {
 			vm := NewTestVM(t, puipuiProvider)
 			defer vm.Close(t)
 			require.NotNil(t, vm)
-			slog.InfoContext(t.Context(), "starting VM")
+			slog.InfoContext(ctx, "starting VM")
 			testSSHAccess(t, vm, accessMethod.network)
 		})
 	}
@@ -93,7 +97,9 @@ func TestSSHAccess(t *testing.T) {
 // guest listens over vsock, host connects to the guest
 func TestVsockConnect(t *testing.T) {
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	ctx := t.Context()
+
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -112,7 +118,7 @@ func TestVsockConnect(t *testing.T) {
 	vm.Start(t)
 	vm.WaitForSSH(t)
 
-	slog.InfoContext(t.Context(), "path to vsock socket", "path", vsockConnectPath)
+	slog.InfoContext(ctx, "path to vsock socket", "path", vsockConnectPath)
 	go func() {
 		for i := 0; i < 5; i++ {
 			conn, err := net.DialTimeout("unix", vsockConnectPath, time.Second)
@@ -121,23 +127,24 @@ func TestVsockConnect(t *testing.T) {
 			data, err := io.ReadAll(conn)
 			require.NoError(t, err)
 			if len(data) != 0 {
-				slog.InfoContext(t.Context(), "read data from guest", "data", string(data))
+				slog.InfoContext(ctx, "read data from guest", "data", string(data))
 				require.Equal(t, []byte("hello host"), data)
 				break
 			}
 		}
 	}()
-	slog.InfoContext(t.Context(), "running socat")
+	slog.InfoContext(ctx, "running socat")
 	vm.SSHRun(t, "echo -n 'hello host' | socat - VSOCK-LISTEN:1234")
 
-	slog.InfoContext(t.Context(), "stopping VM")
+	slog.InfoContext(ctx, "stopping VM")
 	vm.Stop(t)
 }
 
 // host listens over vsock, guest connects to the host
 func TestVsockListen(t *testing.T) {
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -157,10 +164,10 @@ func TestVsockListen(t *testing.T) {
 		require.NoError(t, err)
 		data, err := io.ReadAll(conn)
 		require.NoError(t, err)
-		slog.InfoContext(t.Context(), "read", "data", string(data))
+		slog.InfoContext(ctx, "read", "data", string(data))
 		require.Equal(t, []byte("hello host"), data)
 	}()
-	slog.InfoContext(t.Context(), "path to vsock socket", "path", vsockListenPath)
+	slog.InfoContext(ctx, "path to vsock socket", "path", vsockListenPath)
 	dev, err := config.VirtioVsockNew(1235, vsockListenPath, true)
 	require.NoError(t, err)
 	vm.AddDevice(t, dev)
@@ -174,8 +181,9 @@ func TestVsockListen(t *testing.T) {
 }
 
 func TestFileSharing(t *testing.T) {
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -189,7 +197,7 @@ func TestFileSharing(t *testing.T) {
 	share, err := config.VirtioFsNew(sharedDir, "vfkit-test-share")
 	require.NoError(t, err)
 	vm.AddDevice(t, share)
-	slog.InfoContext(t.Context(), "shared directory", "path", sharedDir)
+	slog.InfoContext(ctx, "shared directory", "path", sharedDir)
 
 	vm.Start(t)
 	vm.WaitForSSH(t)
@@ -338,8 +346,9 @@ func testPCIId(t *testing.T, test pciidTest, provider OsProvider) {
 }
 
 func TestPCIIds(t *testing.T) {
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -363,8 +372,9 @@ func TestPCIIds(t *testing.T) {
 }
 
 func TestVirtioSerialPTY(t *testing.T) {
+	ctx := t.Context()
 	puipuiProvider := NewPuipuiProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
 
@@ -395,20 +405,22 @@ func TestVirtioSerialPTY(t *testing.T) {
 }
 
 func checkPCIDevice(t *testing.T, vm *testVM, vendorID, deviceID int) {
+	ctx := t.Context()
 	re := regexp.MustCompile(fmt.Sprintf("(?m)[[:blank:]]%04x:%04x\n", vendorID, deviceID))
 	lspci, err := vm.SSHCombinedOutput(t, "lspci")
-	slog.InfoContext(t.Context(), "lspci", "output", string(lspci))
+	slog.InfoContext(ctx, "lspci", "output", string(lspci))
 	require.NoError(t, err)
 	require.Regexp(t, re, string(lspci))
 }
 
 func TestCloudInit(t *testing.T) {
+	ctx := t.Context()
 	if err := macOSAvailable(13); err != nil {
 		t.Log("Skipping TestCloudInit test")
 		return
 	}
 	fedoraProvider := NewFedoraProvider()
-	slog.InfoContext(t.Context(), "fetching os image")
+	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, fedoraProvider)
 	require.NoError(t, err)
 
@@ -426,7 +438,7 @@ func TestCloudInit(t *testing.T) {
 	dev1, err := config.VirtioBlkNew(fedoraProvider.diskImage)
 	require.NoError(t, err)
 	vm.AddDevice(t, dev1)
-	slog.InfoContext(t.Context(), "shared disk", "name", dev1.DevName)
+	slog.InfoContext(ctx, "shared disk", "name", dev1.DevName)
 
 	/* 	add cloud init config by using a premade ISO image
 	   	seed.img is an ISO image containing the user-data and meta-data file needed to configure the VM by cloud-init.
@@ -447,16 +459,16 @@ func TestCloudInit(t *testing.T) {
 	dev, err := config.VirtioBlkNew(embedtd.MustCreateTmpFileFor(t, testdata.FS(), "seed.img"))
 	require.NoError(t, err)
 	vm.AddDevice(t, dev)
-	slog.InfoContext(t.Context(), "shared disk", "name", dev.DevName)
+	slog.InfoContext(ctx, "shared disk", "name", dev.DevName)
 
 	vm.Start(t)
 	vm.WaitForSSH(t)
 
 	data, err := vm.SSHCombinedOutput(t, "whoami")
 	require.NoError(t, err)
-	slog.InfoContext(t.Context(), "executed whoami - output", "output", string(data))
+	slog.InfoContext(ctx, "executed whoami - output", "output", string(data))
 	require.Equal(t, "vfkituser\n", string(data))
 
-	slog.InfoContext(t.Context(), "stopping vm")
+	slog.InfoContext(ctx, "stopping vm")
 	vm.Stop(t)
 }

@@ -7,17 +7,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"testing"
 
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/xi2/xz"
+	"github.com/mholt/archives"
 
-	"github.com/cavaliergopher/grab/v3"
 	"github.com/crc-org/crc/v2/pkg/extract"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
@@ -35,6 +34,7 @@ type OsProvider interface {
 	ToVirtualMachine() (*config.VirtualMachine, error)
 	SSHConfig() *ssh.ClientConfig
 	SSHAccessMethods() []SSHAccessMethod
+	ShutdownCommand() string
 }
 
 func cacheDir(urld string) (string, error) {
@@ -47,63 +47,35 @@ func cacheDir(urld string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	filename := filepath.Base(parsedURL.Path)
+	// filename := filepath.Base(parsedURL.Path)
 	hostname := parsedURL.Host
 
-	filename = fmt.Sprintf("%s_%s_%s", hostname, hrlHash, filename)
+	dirname := fmt.Sprintf("%s_%s", hostname, hrlHash)
+	userCacheDir, err := cacheDirPrefix()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(userCacheDir, dirname), nil
+}
+
+func cacheDirPrefix() (string, error) {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(userCacheDir, "vfkit-testing", "cache", filename), nil
+	return filepath.Join(userCacheDir, "vfkit-testing", "cache"), nil
 }
 
-func SetupOS(t *testing.T, prov OsProvider) error {
-	ctx := t.Context()
-	tmpDir := t.TempDir()
-	url := prov.URL()
-
-	cacheDir, err := cacheDir(url)
-	if err != nil {
-		return err
-	}
-
-	cacheFile := filepath.Join(cacheDir, filepath.Base(url))
-
-	if _, err := os.Stat(cacheFile); err != nil {
-		grab.DefaultClient.UserAgent = "vfkit"
-		resp, err := grab.Get(tmpDir, url)
+func init() {
+	const clearCache = false
+	if clearCache {
+		prefix, err := cacheDirPrefix()
 		if err != nil {
-			return err
+			slog.Error("failed to get cache dir prefix", "error", err)
+			return
 		}
-		// move the file to the cache
-		err = os.MkdirAll(cacheDir, 0755)
-		if err != nil {
-			return err
-		}
-		err = os.Rename(resp.Filename, cacheFile)
-		if err != nil {
-			return err
-		}
+		os.RemoveAll(prefix)
 	}
-
-	extractedDir := filepath.Join(tmpDir, "extracted")
-	err = os.MkdirAll(extractedDir, 0755)
-	if err != nil {
-		return err
-	}
-
-	err = prov.Uncompress(ctx, cacheFile, extractedDir)
-	if err != nil {
-		return err
-	}
-
-	err = prov.Initialize(ctx, extractedDir)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func kernelArch() string {
@@ -123,6 +95,7 @@ func (prov *PuiPuiProvider) URL() string {
 
 func (prov *FedoraProvider) URL() string {
 	arch := kernelArch()
+	// https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
 	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
 	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
@@ -132,6 +105,39 @@ func (prov *PuiPuiProvider) Uncompress(ctx context.Context, cacheFile string, de
 	if err != nil {
 		return errors.Errorf("uncompressing pui pui: %w", err)
 	}
+	return nil
+}
+
+func (prov *FedoraProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
+
+	err := os.MkdirAll(destDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	outFile, err := os.Create(filepath.Join(destDir, "disk.raw"))
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	compressedFile, err := os.Open(cacheFile)
+	if err != nil {
+		return err
+	}
+	defer compressedFile.Close()
+
+	xzReader, err := (archives.Xz{}).OpenReader(compressedFile)
+	if err != nil {
+		return err
+	}
+	defer xzReader.Close()
+
+	_, err = io.Copy(outFile, xzReader)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -156,36 +162,13 @@ func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) err
 	return nil
 }
 
-func (prov *FedoraProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
-	file, err := os.Open(filepath.Clean(cacheFile))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	reader, err := xz.NewReader(file, 0)
-	if err != nil {
-		return err
-	}
-
-	xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), ".xz")
-	outPath := filepath.Join(destDir, xzCutName)
-	out, err := os.Create(outPath)
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(out, reader)
-	if err != nil {
-		return err
-	}
-
-	return err
-}
-
 func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
-	xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), ".xz")
-	prov.diskImage = filepath.Join(cacheDir, xzCutName)
+	diskImage := filepath.Join(cacheDir, "disk.raw")
+	if _, err := os.Stat(diskImage); err != nil {
+		return errors.Errorf("disk image not found: %w", err)
+	}
+	prov.diskImage = diskImage
+	// xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), "tar.gz")
 	// prov.efiVariableStorePath = filepath.Join(cacheDir, "efivars.img")
 	// prov.createVariableStore = true
 	return nil
@@ -289,7 +272,21 @@ func (fedora *FedoraProvider) ToVirtualMachine() (*config.VirtualMachine, error)
 	bootloader := config.NewEFIBootloader(fedora.efiVariableStorePath, fedora.createVariableStore)
 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
 
+	// gpu, err := config.VirtioGPUNew()
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// vm.AddDevices(gpu)
+
 	return vm, nil
+}
+
+func (fedora *FedoraProvider) ShutdownCommand() string {
+	return "sudo shutdown -h now"
+}
+
+func (puipui *PuiPuiProvider) ShutdownCommand() string {
+	return "poweroff"
 }
 
 func (puipui *PuiPuiProvider) SSHConfig() *ssh.ClientConfig {
