@@ -1,6 +1,7 @@
 package applevftest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,24 +25,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	setupSlog()
-	os.Exit(m.Run())
-}
+func setupSlog(t *testing.T, ctx context.Context) context.Context {
 
-func setupSlog() {
-	logger := tint.NewHandler(os.Stdout, &tint.Options{
+	cached, err := cacheDirPrefix()
+	require.NoError(t, err)
+
+	tmpdir := filepath.Dir(t.TempDir())
+
+	fmt.Println("tmpdir", tmpdir)
+
+	tintHandler := tint.NewHandler(os.Stdout, &tint.Options{
 		Level:      slog.LevelDebug,
 		TimeFormat: "2006-01-02 15:04 05.0000",
 		AddSource:  true,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// if the value has the name of the test tmp dir, replace it with [tmpdir]
+			if strings.Contains(a.Value.String(), tmpdir) {
+				a = slog.Attr{Key: a.Key, Value: slog.StringValue(strings.Replace(a.Value.String(), tmpdir, "[test-tmp-dir]", 1))}
+			}
+			if strings.Contains(a.Value.String(), cached) {
+				a = slog.Attr{Key: a.Key, Value: slog.StringValue(strings.Replace(a.Value.String(), cached, "[cache-dir]", 1))}
+			}
+			return a
+		},
 	})
 
-	mylogger := slog.New(slogctx.NewHandler(logger, nil))
+	ctxHandler := slogctx.NewHandler(tintHandler, nil)
+
+	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)
+
+	return slogctx.NewCtx(ctx, mylogger)
 }
 
 func TestFailedVfkitStart(t *testing.T) {
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -63,8 +84,8 @@ func TestFailedVfkitStart(t *testing.T) {
 	require.Error(t, err)
 }
 
-func testSSHAccess(t *testing.T, vm *testVM, network string) {
-	ctx := t.Context()
+func testSSHAccess(t *testing.T, ctx context.Context, vm *testVM, network string) {
+
 	slog.InfoContext(ctx, "testing SSH access over", "network", network)
 	vm.AddSSH(t, network)
 	vm.Start(t)
@@ -77,7 +98,10 @@ func testSSHAccess(t *testing.T, vm *testVM, network string) {
 }
 
 func TestSSHAccess(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -89,16 +113,18 @@ func TestSSHAccess(t *testing.T) {
 			defer vm.Close(t)
 			require.NotNil(t, vm)
 			slog.InfoContext(ctx, "starting VM")
-			testSSHAccess(t, vm, accessMethod.network)
+			testSSHAccess(t, ctx, vm, accessMethod.network)
 		})
 	}
 }
 
 // guest listens over vsock, host connects to the guest
 func TestVsockConnect(t *testing.T) {
-	puipuiProvider := NewPuipuiProvider()
-	ctx := t.Context()
 
+	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
+	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
 	require.NoError(t, err)
@@ -142,7 +168,10 @@ func TestVsockConnect(t *testing.T) {
 
 // host listens over vsock, guest connects to the host
 func TestVsockListen(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -181,7 +210,10 @@ func TestVsockListen(t *testing.T) {
 }
 
 func TestFileSharing(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -346,7 +378,10 @@ func testPCIId(t *testing.T, test pciidTest, provider OsProvider) {
 }
 
 func TestPCIIds(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -372,7 +407,10 @@ func TestPCIIds(t *testing.T) {
 }
 
 func TestVirtioSerialPTY(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
 	err := SetupOS(t, puipuiProvider)
@@ -405,7 +443,10 @@ func TestVirtioSerialPTY(t *testing.T) {
 }
 
 func checkPCIDevice(t *testing.T, vm *testVM, vendorID, deviceID int) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	re := regexp.MustCompile(fmt.Sprintf("(?m)[[:blank:]]%04x:%04x\n", vendorID, deviceID))
 	lspci, err := vm.SSHCombinedOutput(t, "lspci")
 	slog.InfoContext(ctx, "lspci", "output", string(lspci))
@@ -414,7 +455,10 @@ func checkPCIDevice(t *testing.T, vm *testVM, vendorID, deviceID int) {
 }
 
 func TestCloudInit(t *testing.T) {
+
 	ctx := t.Context()
+	ctx = setupSlog(t, ctx)
+
 	if err := macOSAvailable(13); err != nil {
 		t.Log("Skipping TestCloudInit test")
 		return

@@ -15,9 +15,7 @@ import (
 	"strings"
 
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/mholt/archives"
 
-	"github.com/crc-org/crc/v2/pkg/extract"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 )
@@ -28,8 +26,8 @@ const puipuiVersion = "v1.0.3"
 
 type OsProvider interface {
 	URL() string
-	Uncompress(ctx context.Context, cacheFile string, destDir string) error
-	Initialize(ctx context.Context, cacheDir string) error
+	// Uncompress(ctx context.Context, cacheFile string, destDir string) error
+	Initialize(ctx context.Context, extractedURL string) error
 	// Fetch(ctx context.Context, cacheFile string, destDir string) error
 	ToVirtualMachine() (*config.VirtualMachine, error)
 	SSHConfig() *ssh.ClientConfig
@@ -50,7 +48,7 @@ func cacheDir(urld string) (string, error) {
 	// filename := filepath.Base(parsedURL.Path)
 	hostname := parsedURL.Host
 
-	dirname := fmt.Sprintf("%s_%s", hostname, hrlHash)
+	dirname := fmt.Sprintf("%s_%s", hostname, hrlHash[:16])
 	userCacheDir, err := cacheDirPrefix()
 	if err != nil {
 		return "", err
@@ -100,46 +98,47 @@ func (prov *FedoraProvider) URL() string {
 	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
-func (prov *PuiPuiProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
-	_, err := extract.Uncompress(ctx, cacheFile, destDir)
-	if err != nil {
-		return errors.Errorf("uncompressing pui pui: %w", err)
-	}
-	return nil
-}
+// func (prov *PuiPuiProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
 
-func (prov *FedoraProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
+// 	_, err := extract.Uncompress(ctx, cacheFile, destDir)
+// 	if err != nil {
+// 		return errors.Errorf("uncompressing pui pui: %w", err)
+// 	}
+// 	return nil
+// }
 
-	err := os.MkdirAll(destDir, 0755)
-	if err != nil {
-		return err
-	}
+// func (prov *FedoraProvider) Uncompress(ctx context.Context, cacheFile string, destDir string) error {
 
-	outFile, err := os.Create(filepath.Join(destDir, "disk.raw"))
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
+// 	err := os.MkdirAll(destDir, 0755)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	compressedFile, err := os.Open(cacheFile)
-	if err != nil {
-		return err
-	}
-	defer compressedFile.Close()
+// 	outFile, err := os.Create(filepath.Join(destDir, "disk.raw"))
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer outFile.Close()
 
-	xzReader, err := (archives.Xz{}).OpenReader(compressedFile)
-	if err != nil {
-		return err
-	}
-	defer xzReader.Close()
+// 	compressedFile, err := os.Open(cacheFile)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer compressedFile.Close()
 
-	_, err = io.Copy(outFile, xzReader)
-	if err != nil {
-		return err
-	}
+// 	xzReader, err := (archives.Xz{}).OpenReader(compressedFile)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer xzReader.Close()
 
-	return nil
-}
+// 	_, err = io.Copy(outFile, xzReader)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
 
 func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) error {
 	filez, err := os.ReadDir(cacheDir)
@@ -150,7 +149,7 @@ func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) err
 	for _, file := range filez {
 		files = append(files, filepath.Join(cacheDir, file.Name()))
 	}
-	prov.vmlinuz, err = findKernel(files)
+	prov.vmlinuz, err = findKernel(ctx, files)
 	if err != nil {
 		return err
 	}
@@ -163,9 +162,9 @@ func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) err
 }
 
 func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
-	diskImage := filepath.Join(cacheDir, "disk.raw")
-	if _, err := os.Stat(diskImage); err != nil {
-		return errors.Errorf("disk image not found: %w", err)
+	diskImage, err := findFirstFileWithExtension(cacheDir, ".raw")
+	if err != nil {
+		return errors.Errorf("could not find disk image: %w", err)
 	}
 	prov.diskImage = diskImage
 	// xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), "tar.gz")
@@ -200,6 +199,23 @@ type FedoraProvider struct {
 
 func NewFedoraProvider() *FedoraProvider {
 	return &FedoraProvider{}
+}
+
+func findFirstFileWithExtension(cacheDir string, extension string) (string, error) {
+	filez, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return "", err
+	}
+	files := []string{}
+	for _, file := range filez {
+		files = append(files, filepath.Join(cacheDir, file.Name()))
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, extension) {
+			return f, nil
+		}
+	}
+	return "", fmt.Errorf("could not find %s", extension)
 }
 
 func findFile(files []string, filename string) (string, error) {
@@ -240,10 +256,11 @@ func uncompressPuiPuiKernel(gzFile string) (string, error) {
 			return "", err
 		}
 	}
+
 	return destFile, nil
 }
 
-func findKernel(files []string) (string, error) {
+func findKernel(ctx context.Context, files []string) (string, error) {
 	switch runtime.GOARCH {
 	case "amd64":
 		return findFile(files, "bzImage")
@@ -252,7 +269,22 @@ func findKernel(files []string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return uncompressPuiPuiKernel(compressed)
+
+		dir := filepath.Dir(compressed)
+
+		err = extractIntoDir(ctx, compressed, dir)
+		if err != nil {
+			return "", err
+		}
+
+		expectedOutFile := filepath.Join(dir, "Image")
+
+		// make sure the file is in the dir
+		if _, err := os.Stat(expectedOutFile); err != nil {
+			return "", errors.Errorf("expected file %s not found", expectedOutFile)
+		}
+
+		return expectedOutFile, nil
 	default:
 		return "", fmt.Errorf("unsupported architecture '%s'", runtime.GOARCH)
 	}
