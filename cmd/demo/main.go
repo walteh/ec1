@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -10,11 +11,14 @@ import (
 	"syscall"
 
 	"connectrpc.com/connect"
+	"github.com/apex/log"
+	"github.com/containers/winquit/pkg/winquit"
 	"github.com/lmittmann/tint"
 	slogctx "github.com/veqryn/slog-context"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
 	"github.com/walteh/ec1/pkg/management"
+	"golang.org/x/sync/errgroup"
 )
 
 // step 1: start up the management server (mac, native)
@@ -34,6 +38,27 @@ import (
 // step 8: instruct the agent to run a web server that returns "hello world"
 
 // via a raw http request on the host from the maangement server running program, access the web server on the nested vm and print the response
+
+// // If the user provides a log-file, we re-direct log messages
+// // from logrus to the file
+// if cfg.logFile != "" {
+// 	lf, err := os.Create(cfg.logFile)
+// 	if err != nil {
+// 		return errors.Errorf("opening log file %s: %w", cfg.logFile, err)
+// 	}
+// 	defer func() {
+// 		if err := lf.Close(); err != nil {
+// 			slog.WarnContext(ctx, "closing log file", "error", err)
+// 		}
+// 	}()
+// 	log.SetOutput(lf)
+
+// 	// If debug is set, lets seed the log file with some basic information
+// 	// about the environment and how it was called
+// 	log.Debugf("gvproxy version: %q", version.String())
+// 	log.Debugf("os: %q arch: %q", runtime.GOOS, runtime.GOARCH)
+// 	log.Debugf("command line: %q", os.Args)
+// }
 
 func main() {
 	// Parse command line flags
@@ -63,13 +88,29 @@ func main() {
 	ctx = slogctx.NewCtx(ctx, mylogger)
 
 	// Set up signal handling
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Println("\nReceived termination signal, shutting down...")
-		cancel()
-	}()
+	// Setup signal channel for catching user signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+	// if debug {
+	// 	log.SetLevel(log.DebugLevel)
+	// }
+
+	// Intercept WM_QUIT/WM_CLOSE events if on Windows as SIGTERM (noop on other OSs)
+	winquit.SimulateSigTermOnQuit(sigChan)
+
+	groupErrs := errgroup.Group{}
+
+	groupErrs.Go(func() error {
+		select {
+		case <-sigChan:
+			fmt.Println("\nReceived termination signal, shutting down...")
+			cancel()
+			return errors.New("signal caught")
+		case <-ctx.Done():
+			return nil
+		}
+	})
 
 	// Check if we need to clean up first
 	if *clean {
@@ -77,9 +118,25 @@ func main() {
 		cleanupPreviousRun()
 	}
 
-	// Handle different actions
-	if err := runEC1Demo(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error running demo: %v\n", err)
+	groupErrs.Go(func() error {
+		select {
+		// Catch signals so exits are graceful and defers can run
+		case <-sigChan:
+			cancel()
+			return errors.New("signal caught")
+		case <-ctx.Done():
+			return nil
+		}
+	})
+
+	groupErrs.Go(func() error {
+		return runEC1Demo(ctx)
+	})
+
+	// Wait for all of the go funcs to finish up
+	if err := groupErrs.Wait(); err != nil {
+		log.Errorf("gvproxy exiting: %v", err)
+		// exitCode = 1
 		os.Exit(1)
 	}
 
