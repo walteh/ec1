@@ -5,43 +5,48 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"strings"
+
+	"github.com/walteh/ec1/pkg/socketproxy/config"
 )
 
 // handleHTTPRequest checks if the request is allowed and sends it to the proxy.
 // Otherwise, it returns a "405 Method Not Allowed" or a "403 Forbidden" error.
 // In case of an error, it returns a 500 Internal Server Error.
-func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
-	if cfg.ProxySocketEndpoint == "" { // do not perform this check if we proxy to a unix socket
-		allowedIP, err := isAllowedClient(r.RemoteAddr)
-		if err != nil {
-			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+func handleHTTPRequest(cfg *config.Config, socketProxy *httputil.ReverseProxy) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.ProxySocketEndpoint == "" { // do not perform this check if we proxy to a unix socket
+			allowedIP, err := isAllowedClient(cfg, r.RemoteAddr)
+			if err != nil {
+				slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+			}
+			if !allowedIP {
+				communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
+				return
+			}
 		}
-		if !allowedIP {
-			communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
+
+		// check if the request is allowed
+		allowed, exists := cfg.AllowedRequests[r.Method]
+		if !exists { // method not in map -> not allowed
+			communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-	}
+		if !allowed.MatchString(r.URL.Path) { // path does not match regex -> not allowed
+			communicateBlockedRequest(w, r, "path not allowed", http.StatusForbidden)
+			return
+		}
 
-	// check if the request is allowed
-	allowed, exists := cfg.AllowedRequests[r.Method]
-	if !exists { // method not in map -> not allowed
-		communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
-		return
+		// finally log and proxy the request
+		slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		socketProxy.ServeHTTP(w, r) // proxy the request
 	}
-	if !allowed.MatchString(r.URL.Path) { // path does not match regex -> not allowed
-		communicateBlockedRequest(w, r, "path not allowed", http.StatusForbidden)
-		return
-	}
-
-	// finally log and proxy the request
-	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-	socketProxy.ServeHTTP(w, r) // proxy the request
 }
 
 // isAllowedClient checks if the given remote address is allowed to connect to the proxy.
 // The IP address is extracted from a RemoteAddr string (the part before the colon).
-func isAllowedClient(remoteAddr string) (bool, error) {
+func isAllowedClient(cfg *config.Config, remoteAddr string) (bool, error) {
 	// Get the client IP address from the remote address string
 	clientIPStr, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {

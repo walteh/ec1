@@ -83,6 +83,24 @@ func main() {
 		AddSource:  true,
 	}).WithGroup("main")
 
+	// 	// Create a PID file if requested
+	// if len(cfg.pidFile) > 0 {
+	// 	f, err := os.Create(cfg.pidFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("creating pid file %s: %w", cfg.pidFile, err)
+	// 	}
+	// 	// Remove the pid-file when exiting
+	// 	defer func() {
+	// 		if err := os.Remove(cfg.pidFile); err != nil {
+	// 			slog.ErrorContext(ctx, "removing pid file", "error", err)
+	// 		}
+	// 	}()
+	// 	pid := os.Getpid()
+	// 	if _, err := f.WriteString(strconv.Itoa(pid)); err != nil {
+	// 		return errors.Errorf("writing pid file %s: %w", cfg.pidFile, err)
+	// 	}
+	// }
+
 	mylogger := slog.New(slogctx.NewHandler(logger, nil))
 	slog.SetDefault(mylogger)
 	ctx = slogctx.NewCtx(ctx, mylogger)

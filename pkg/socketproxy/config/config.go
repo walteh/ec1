@@ -36,6 +36,8 @@ type Config struct {
 	SocketPath                  string
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
+	AllowedSSHChannelTypes      []string
+	AllowedSSHUsers             map[string][]string
 }
 
 // used for list of allowed requests

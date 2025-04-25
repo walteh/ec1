@@ -1,1 +1,155 @@
 package gvproxy
+
+import (
+	"context"
+	"log/slog"
+	"net"
+	"net/url"
+	"os"
+
+	"github.com/containers/gvisor-tap-vsock/pkg/transport"
+	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
+	"gitlab.com/tozd/go/errors"
+	"golang.org/x/sync/errgroup"
+)
+
+type VMSocket interface {
+	Protocol() types.Protocol
+	Validate() error
+	Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error
+}
+
+func NewVFKitVMSocket(path string) *VFKitSocket {
+	return &VFKitSocket{Path: path}
+}
+
+func NewQEMUVMSocket(path string) *QEMUSocket {
+	return &QEMUSocket{Path: path}
+}
+
+func NewBessVMSocket(path string) *BessSocket {
+	return &BessSocket{Path: path}
+}
+
+type VFKitSocket struct {
+	Path string
+}
+
+func (s *VFKitSocket) Protocol() types.Protocol {
+	return types.VfkitProtocol
+}
+
+func (s *VFKitSocket) Validate() error {
+	uri, err := url.Parse(s.Path)
+	if err != nil || uri == nil {
+		return errors.Errorf("invalid value for listen-vfkit %w", err)
+	}
+	if uri.Scheme != "unixgram" {
+		return errors.New("listen-vfkit must be unixgram:// address")
+	}
+	if _, err := os.Stat(uri.Path); err == nil {
+		return errors.Errorf("%q already exists", uri.Path)
+	}
+	return nil
+}
+
+func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
+	conn, err := transport.ListenUnixgram(s.Path)
+	if err != nil {
+		return errors.Errorf("vfkit listen error %w", err)
+	}
+
+	g.Go(func() error {
+		<-ctx.Done()
+		if err := conn.Close(); err != nil {
+			slog.WarnContext(ctx, "error closing vfkit socket", "socket", s.Path, "error", err)
+		}
+		vfkitSocketURI, _ := url.Parse(s.Path)
+		return os.Remove(vfkitSocketURI.Path)
+	})
+
+	g.Go(func() error {
+		vfkitConn, err := transport.AcceptVfkit(conn)
+		if err != nil {
+			return errors.Errorf("vfkit accept error %w", err)
+		}
+		return vn.AcceptVfkit(ctx, vfkitConn)
+	})
+
+	return nil
+}
+
+type QEMUSocket struct {
+	Path string
+}
+
+func (s *QEMUSocket) Protocol() types.Protocol {
+	return types.QemuProtocol
+}
+
+func (s *QEMUSocket) Validate() error {
+	uri, err := url.Parse(s.Path)
+	if err != nil || uri == nil {
+		return errors.Errorf("invalid value for listen-qemu %w", err)
+	}
+	if _, err := os.Stat(uri.Path); err == nil && uri.Scheme == "unix" {
+		return errors.Errorf("%q already exists", uri.Path)
+	}
+	return nil
+}
+
+func (s *QEMUSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
+	return commonListen(ctx, g, "qemu", s.Path, vn.AcceptQemu)
+}
+
+type BessSocket struct {
+	Path string
+}
+
+func (s *BessSocket) Protocol() types.Protocol {
+	return types.BessProtocol
+}
+
+func (s *BessSocket) Validate() error {
+	uri, err := url.Parse(s.Path)
+	if err != nil || uri == nil {
+		return errors.Errorf("invalid value for listen-bess %w", err)
+	}
+	if uri.Scheme != "unixpacket" {
+		return errors.New("listen-bess must be unixpacket:// address")
+	}
+	if _, err := os.Stat(uri.Path); err == nil {
+		return errors.Errorf("%q already exists", uri.Path)
+	}
+	return nil
+}
+
+func (s *BessSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
+	return commonListen(ctx, g, "bess", s.Path, vn.AcceptBess)
+}
+
+func commonListen(ctx context.Context, g *errgroup.Group, name, path string, accept func(ctx context.Context, conn net.Conn) error) error {
+	listener, err := transport.Listen(path)
+	if err != nil {
+		return errors.Wrap(err, "listen error")
+	}
+
+	g.Go(func() error {
+		<-ctx.Done()
+		if err := listener.Close(); err != nil {
+			slog.ErrorContext(ctx, "error closing "+name, "socket", path, "error", err)
+		}
+		return os.Remove(path)
+	})
+
+	g.Go(func() error {
+		conn, err := listener.Accept()
+		if err != nil {
+			return errors.Wrap(err, "accept error")
+		}
+		return accept(ctx, conn)
+	})
+
+	return nil
+}

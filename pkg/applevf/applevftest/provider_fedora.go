@@ -21,6 +21,7 @@ type FedoraProvider struct {
 	diskImage            string
 	efiVariableStorePath string
 	createVariableStore  bool
+	socketPath           string
 }
 
 func NewFedoraProvider() *FedoraProvider {
@@ -42,6 +43,7 @@ func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) err
 	prov.diskImage = diskImage
 	prov.efiVariableStorePath = filepath.Join(cacheDir, "efi-variable-store")
 	prov.createVariableStore = true
+	prov.socketPath = filepath.Join(cacheDir, "vf.sock")
 	return nil
 }
 

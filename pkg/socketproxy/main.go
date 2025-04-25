@@ -23,9 +23,7 @@ const (
 )
 
 var (
-	version     = "dev" // will be overwritten by build system
-	socketProxy *httputil.ReverseProxy
-	cfg         *config.Config
+	version = "dev" // will be overwritten by build system
 )
 
 func Run(ctx context.Context, cfg *config.Config) error {
@@ -67,7 +65,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	// define the reverse proxy
 	socketURLDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
-	socketProxy = httputil.NewSingleHostReverseProxy(socketURLDummy)
+	socketProxy := httputil.NewSingleHostReverseProxy(socketURLDummy)
 	socketProxy.Transport = &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 			return net.Dial("unix", cfg.SocketPath)
@@ -97,7 +95,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	srv := &http.Server{ // #nosec G112 -- intentionally do not time out the client
-		Handler: http.HandlerFunc(handleHTTPRequest), // #nosec G112
+		Handler: http.HandlerFunc(handleHTTPRequest(cfg, socketProxy)), // #nosec G112
 	} // #nosec G112
 
 	grp, ctx := errgroup.WithContext(ctx)

@@ -10,8 +10,8 @@ import (
 	"net/http/pprof"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,30 +21,12 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/dustin/go-humanize"
+	"github.com/soheilhy/cmux"
 	slogctx "github.com/veqryn/slog-context"
+	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sync/errgroup"
 )
-
-// var (
-// 	debug            bool
-// 	mtu              int
-// 	endpoints        arrayFlags
-// 	vpnkitSocket     string
-// 	qemuSocket       string
-// 	bessSocket       string
-// 	stdioSocket      string
-// 	vfkitSocket      string
-// 	forwardSocket    arrayFlags
-// 	forwardDest      arrayFlags
-// 	forwardUser      arrayFlags
-// 	forwardIdentify  arrayFlags
-// 	sshPort          int
-// 	pidFile          string
-// 	exitCode         int
-// 	logFile          string
-// 	servicesEndpoint string
-// )
 
 const (
 	gatewayIP   = "192.168.127.1"
@@ -54,56 +36,65 @@ const (
 	gateway     = "gateway"
 )
 
-// flag.Var(&endpoints, "listen", "control endpoint")
-// flag.BoolVar(&debug, "debug", false, "Print debug info")
-// flag.IntVar(&mtu, "mtu", 1500, "Set the MTU")
-// flag.IntVar(&sshPort, "ssh-port", 2222, "Port to access the guest virtual machine. Must be between 1024 and 65535")
-// flag.StringVar(&vpnkitSocket, "listen-vpnkit", "", "VPNKit socket to be used by Hyperkit")
-// flag.StringVar(&qemuSocket, "listen-qemu", "", "Socket to be used by Qemu")
-// flag.StringVar(&bessSocket, "listen-bess", "", "unixpacket socket to be used by Bess-compatible applications")
-// flag.StringVar(&stdioSocket, "listen-stdio", "", "accept stdio pipe")
-// flag.StringVar(&vfkitSocket, "listen-vfkit", "", "unixgram socket to be used by vfkit-compatible applications")
-// flag.Var(&forwardSocket, "forward-sock", "Forwards a unix socket to the guest virtual machine over SSH")
-// flag.Var(&forwardDest, "forward-dest", "Forwards a unix socket to the guest virtual machine over SSH")
-// flag.Var(&forwardUser, "forward-user", "SSH user to use for unix socket forward")
-// flag.Var(&forwardIdentify, "forward-identity", "Path to SSH identity key for forwarding")
-// flag.StringVar(&pidFile, "pid-file", "", "Generate a file with the PID in it")
-// flag.StringVar(&logFile, "log-file", "", "Output log messages (logrus) to a given file path")
-// flag.StringVar(&servicesEndpoint, "services", "", "t")
-// flag.Parse()
-
 type Forward struct {
-	Socket   string
-	Dest     string
-	User     string
-	Identify string
+	Socket    string
+	URIPath   string
+	User      string
+	Password  string
+	PublicKey string
+}
+
+func (f *Forward) Validate() error {
+	if f.User == "" {
+		return errors.New("user is required")
+	}
+	if f.Password == "" && f.PublicKey == "" {
+		return errors.New("password or public key is required")
+	}
+	if f.Socket == "" {
+		return errors.New("socket is required")
+	}
+	if f.URIPath == "" {
+		return errors.New("dest is required")
+	}
+
+	return nil
 }
 
 type GvproxyConfig struct {
-	debug            bool      // if true, print debug info
-	mtu              int       // set the MTU
-	endpoints        []string  // control endpoint
-	vpnkitSocket     string    // VPNKit socket to be used by Hyperkit
-	qemuSocket       string    // Socket to be used by Qemu
-	bessSocket       string    // unixpacket socket to be used by Bess-compatible applications
-	stdioSocket      string    // accept stdio pipe
-	vfkitSocket      string    // unixgram socket to be used by vfkit-compatible applications
-	forwardSocket    []Forward // unix socket to be forwarded to the guest virtual machine over SSH
-	sshPort          int       // port to access the guest virtual machine, must be between 1024 and 65535
-	sshHostPort      string    // host port to access the guest virtual machine
-	pidFile          string    // path to pid file
-	exitCode         int       // exit code
-	logFile          string    // path to log file
-	servicesEndpoint string    // Exposes the same HTTP API as the --listen flag, without the /connect endpoint
+	EnableDebug        bool // if true, print debug info
+	EnableStdioSocket  bool // accept stdio pipe
+	EnableNoConnectAPI bool // enable raw no connect API
+
+	// restEndpoint               string // control endpoint
+	// restEndpointWithoutConnect string // Exposes the same HTTP API as the --listen flag, without the /connect endpoint
+
+	MTU      int // set the MTU, default is 1500
+	VMSocket VMSocket
+
+	GuestSSHPort int    // port to access the guest virtual machine, must be between 1024 and 65535
+	VMHostPort   string // host port to access the guest virtual machine, must be between 1024 and 65535
+	// guestSSHPortOnHost string // host port to access the guest virtual machine
+	// pidFile    string // path to pid file
+	// workingDir string // working directory
+
+	WorkingDir string // working directory
+	ReadyChan  chan struct{}
+
+	sshConnections []Forward // unix socket to be forwarded to the guest virtual machine over SSH
 }
 
 func GvproxyVersion() string {
 	return types.NewVersion("gvproxy").String()
 }
 
-func Main(ctx context.Context, cfg *GvproxyConfig) error {
+func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
 	ctx = slogctx.WithGroup(ctx, "gvproxy")
+
+	if cfg.GuestSSHPort == 0 {
+		cfg.GuestSSHPort = 2222
+	}
 
 	// log.Info(version.String())
 	ctx, cancel := context.WithCancel(ctx)
@@ -113,90 +104,27 @@ func Main(ctx context.Context, cfg *GvproxyConfig) error {
 
 	groupErrs, ctx := errgroup.WithContext(ctx)
 
-	// Make sure the qemu socket provided is valid syntax
-	if len(cfg.qemuSocket) > 0 {
-		uri, err := url.Parse(cfg.qemuSocket)
-		if err != nil || uri == nil {
-			return errors.Errorf("invalid value for listen-qemu %w", err)
-		}
-		if _, err := os.Stat(uri.Path); err == nil && uri.Scheme == "unix" {
-			return errors.Errorf("%q already exists", uri.Path)
-		}
-	}
-	if len(cfg.bessSocket) > 0 {
-		uri, err := url.Parse(cfg.bessSocket)
-		if err != nil || uri == nil {
-			return errors.Errorf("invalid value for listen-bess %w", err)
-		}
-		if uri.Scheme != "unixpacket" {
-			return errors.New("listen-bess must be unixpacket:// address")
-		}
-		if _, err := os.Stat(uri.Path); err == nil {
-			return errors.Errorf("%q already exists", uri.Path)
-		}
-	}
-	if len(cfg.vfkitSocket) > 0 {
-		uri, err := url.Parse(cfg.vfkitSocket)
-		if err != nil || uri == nil {
-			return errors.Errorf("invalid value for listen-vfkit %w", err)
-		}
-		if uri.Scheme != "unixgram" {
-			return errors.New("listen-vfkit must be unixgram:// address")
-		}
-		if _, err := os.Stat(uri.Path); err == nil {
-			return errors.Errorf("%q already exists", uri.Path)
+	for _, socket := range cfg.sshConnections {
+		if err := socket.Validate(); err != nil {
+			return errors.Errorf("ssh connection validation: %w", err)
 		}
 	}
 
-	if cfg.vpnkitSocket != "" && cfg.qemuSocket != "" {
-		return errors.New("cannot use qemu and vpnkit protocol at the same time")
-	}
-	if cfg.vpnkitSocket != "" && cfg.bessSocket != "" {
-		return errors.New("cannot use bess and vpnkit protocol at the same time")
-	}
-	if cfg.qemuSocket != "" && cfg.bessSocket != "" {
-		return errors.New("cannot use qemu and bess protocol at the same time")
+	if cfg.VMSocket == nil {
+		return errors.New("vmFileSocket is required")
 	}
 
-	// If the given port is not between the privileged ports
-	// and the oft considered maximum port, return an error.
-	if cfg.sshPort != -1 && cfg.sshPort < 1024 || cfg.sshPort > 65535 {
-		return errors.New("ssh-port value must be between 1024 and 65535")
-	}
-	protocol := types.HyperKitProtocol
-	if cfg.qemuSocket != "" {
-		protocol = types.QemuProtocol
-	}
-	if cfg.bessSocket != "" {
-		protocol = types.BessProtocol
-	}
-	if cfg.vfkitSocket != "" {
-		protocol = types.VfkitProtocol
+	// validate the vmFileSocket
+	if err := cfg.VMSocket.Validate(); err != nil {
+		return errors.Errorf("vmFileSocket validation: %w", err)
 	}
 
-	for _, socket := range cfg.forwardSocket {
-		_, err := os.Stat(socket.Identify)
-		if err != nil {
-			return errors.Errorf("Identity file %s can't be loaded: %w", socket.Identify, err)
-		}
+	if cfg.MTU == 0 {
+		cfg.MTU = 1500
 	}
 
-	// Create a PID file if requested
-	if len(cfg.pidFile) > 0 {
-		f, err := os.Create(cfg.pidFile)
-		if err != nil {
-			return errors.Errorf("creating pid file %s: %w", cfg.pidFile, err)
-		}
-		// Remove the pid-file when exiting
-		defer func() {
-			if err := os.Remove(cfg.pidFile); err != nil {
-				slog.ErrorContext(ctx, "removing pid file", "error", err)
-			}
-		}()
-		pid := os.Getpid()
-		if _, err := f.WriteString(strconv.Itoa(pid)); err != nil {
-			return errors.Errorf("writing pid file %s: %w", cfg.pidFile, err)
-		}
+	if cfg.VMHostPort == "" {
+		return errors.New("vmHostPort is required")
 	}
 
 	dnss, err := searchDomains(ctx)
@@ -204,10 +132,19 @@ func Main(ctx context.Context, cfg *GvproxyConfig) error {
 		return errors.Errorf("searching domains: %w", err)
 	}
 
+	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[uint16]cmux.Matcher{
+		uint16(cfg.GuestSSHPort): cmux.PrefixMatcher("SSH-"),
+	})
+	if err != nil {
+		return errors.Errorf("building forwards: %w", err)
+	}
+
+	slog.InfoContext(ctx, "forwarders", slog.Any("virtualPortMap", virtualPortMap))
+
 	config := types.Configuration{
-		Debug:             cfg.debug,
+		Debug:             cfg.EnableDebug,
 		CaptureFile:       captureFile(cfg),
-		MTU:               cfg.mtu,
+		MTU:               cfg.MTU,
 		Subnet:            "192.168.127.0/24",
 		GatewayIP:         gatewayIP,
 		GatewayMacAddress: "5a:94:ef:e4:0c:dd",
@@ -243,7 +180,7 @@ func Main(ctx context.Context, cfg *GvproxyConfig) error {
 			},
 		},
 		DNSSearchDomains: dnss,
-		Forwards:         getForwardsMap(cfg.sshPort, cfg.sshHostPort),
+		Forwards:         virtualPortMap,
 		NAT: map[string]string{
 			hostIP: "127.0.0.1",
 		},
@@ -251,38 +188,67 @@ func Main(ctx context.Context, cfg *GvproxyConfig) error {
 		VpnKitUUIDMacAddresses: map[string]string{
 			"c3d68012-0208-11ea-9fd7-f2189899ab08": "5a:94:ef:e4:0c:ee",
 		},
-		Protocol: protocol,
+		Protocol: cfg.VMSocket.Protocol(),
 	}
 
 	groupErrs.Go(func() error {
-		return run(ctx, groupErrs, &config, cfg)
+		defer func() {
+			if cfg.ReadyChan != nil {
+				go func() {
+					cfg.ReadyChan <- struct{}{}
+				}()
+			}
+		}()
+		return run(ctx, groupErrs, &config, cfg, m, virtualPortMap)
 	})
 
-	// // Wait for something to happen
-	// groupErrs.Go(func() error {
-	// 	select {
-	// 	// Catch signals so exits are graceful and defers can run
-	// 	case <-sigChan:
-	// 		cancel()
-	// 		return errors.New("signal caught")
-	// 	case <-ctx.Done():
-	// 		return nil
-	// 	}
-	// })
-	// Wait for all of the go funcs to finish up
 	if err := groupErrs.Wait(); err != nil {
 		return errors.Errorf("gvproxy exiting: %v", err)
 	}
 	return nil
 }
 
-func getForwardsMap(sshPort int, sshHostPort string) map[string]string {
-	if sshPort == -1 {
-		return map[string]string{}
+func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgroup.Group, forwards map[uint16]cmux.Matcher) (cmux.CMux, map[string]string, error) {
+	l, err := transport.Listen(globalHostPort)
+	if err != nil {
+		return nil, nil, errors.Errorf("listen: %w", err)
+	}
+
+	virtualPortMap := make(map[string]string)
+
+	m := cmux.New(l)
+
+	for guestPortTarget, matcher := range forwards {
+
+		if guestPortTarget < 1024 || guestPortTarget > 65535 {
+			return nil, nil, errors.New("ssh-port value must be between 1024 and 65535")
+		}
+
+		listener := m.Match(matcher)
+
+		hostProxyPort, err := port.ReservePort(ctx)
+		if err != nil {
+			return nil, nil, errors.Errorf("reserving ssh port: %w", err)
+		}
+
+		groupErrs.Go(func() error {
+			return ForwardListenerToPort(ctx, listener, hostProxyPort, groupErrs)
+		})
+
+		virtualPortMap[fmt.Sprintf("127.0.0.1:%d", guestPortTarget)] = fmt.Sprintf("127.0.0.1:%d", hostProxyPort)
+
+	}
+
+	return m, virtualPortMap, nil
+}
+
+func getSSHForwarders(guestSSHPort int, guestSSHPortOnHost string) (map[string]string, error) {
+	if guestSSHPort < 1024 || guestSSHPort > 65535 {
+		return nil, errors.New("ssh-port value must be between 1024 and 65535")
 	}
 	return map[string]string{
-		fmt.Sprintf("127.0.0.1:%d", sshPort): sshHostPort,
-	}
+		fmt.Sprintf("127.0.0.1:%d", guestSSHPort): sshHostPort,
+	}, nil
 }
 
 type arrayFlags []string
@@ -297,55 +263,62 @@ func (i *arrayFlags) Set(value string) error {
 }
 
 func captureFile(cfg *GvproxyConfig) string {
-	if !cfg.debug {
+	if !cfg.EnableDebug {
 		return ""
 	}
-	return "capture.pcap"
+	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func run(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig) error {
+func run(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string) error {
 	vn, err := virtualnetwork.New(configuration)
 	if err != nil {
 		return err
 	}
 
-	slog.InfoContext(ctx, "waiting for clients...")
+	slog.InfoContext(ctx, "waiting for clients... listening...", "endpoint", cfg.VMHostPort)
 
-	for _, endpoint := range cfg.endpoints {
-		slog.InfoContext(ctx, "listening", "endpoint", endpoint)
-		ln, err := transport.Listen(endpoint)
-		if err != nil {
-			return errors.Wrap(err, "cannot listen")
-		}
-		httpServe(ctx, g, ln, withProfiler(vn, cfg))
+	mux := vn.Mux()
+	if cfg.EnableDebug {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	}
+	httpServe(ctx, g, cmuxl.Match(cmux.Any()), mux)
+
+	if cfg.EnableNoConnectAPI {
+		slog.InfoContext(ctx, "enabling raw no connect API at /no-connect")
+		mux := http.NewServeMux()
+		mux.Handle("/no-connect", vn.Mux())
+		httpServe(ctx, g, cmuxl.Match(cmux.Any()), mux)
 	}
 
-	if cfg.servicesEndpoint != "" {
-		slog.InfoContext(ctx, "enabling services API", "endpoint", cfg.servicesEndpoint)
-		ln, err := transport.Listen(cfg.servicesEndpoint)
-		if err != nil {
-			return errors.Wrap(err, "cannot listen")
-		}
-		httpServe(ctx, g, ln, vn.ServicesMux())
-	}
-
-	ln, err := vn.Listen("tcp", fmt.Sprintf("%s:80", gatewayIP))
+	// setup the gateway cmuxl
+	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", gatewayIP))
 	if err != nil {
 		return err
 	}
-	mux := http.NewServeMux()
+
+	mux = http.NewServeMux()
 	mux.Handle("/services/forwarder/all", vn.Mux())
 	mux.Handle("/services/forwarder/expose", vn.Mux())
 	mux.Handle("/services/forwarder/unexpose", vn.Mux())
-	httpServe(ctx, g, ln, mux)
+	httpServe(ctx, g, vml, mux)
 
-	if cfg.debug {
+	g.Go(func() error {
+		if err := cmuxl.Serve(); err != nil {
+			return errors.Errorf("serving cmux: %w", err)
+		}
+		return nil
+	})
+
+	if cfg.EnableDebug {
 		g.Go(func() error {
 		debugLog:
 			for {
 				select {
 				case <-time.After(5 * time.Second):
-					slog.DebugContext(ctx, "%v sent to the VM, %v received from the VM", humanize.Bytes(vn.BytesSent()), humanize.Bytes(vn.BytesReceived()))
+					slog.DebugContext(ctx, "virtual network transfers", "sent", humanize.Bytes(vn.BytesSent()), "received", humanize.Bytes(vn.BytesReceived()))
 				case <-ctx.Done():
 					break debugLog
 				}
@@ -354,112 +327,24 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		})
 	}
 
-	if cfg.vpnkitSocket != "" {
-		vpnkitListener, err := transport.Listen(cfg.vpnkitSocket)
-		if err != nil {
-			return errors.Wrap(err, "vpnkit listen error")
-		}
-		g.Go(func() error {
-		vpnloop:
-			for {
-				select {
-				case <-ctx.Done():
-					break vpnloop
-				default:
-					// pass through
-				}
-				conn, err := vpnkitListener.Accept()
-				if err != nil {
-					slog.ErrorContext(ctx, "vpnkit accept error", "error", err)
-					continue
-				}
-				g.Go(func() error {
-					return vn.AcceptVpnKit(conn)
-				})
-			}
-			return nil
-		})
+	// start the vmFileSocket
+	if err := cfg.VMSocket.Listen(ctx, g, vn); err != nil {
+		return errors.Errorf("vmFileSocket listen: %w", err)
 	}
 
-	if cfg.qemuSocket != "" {
-		qemuListener, err := transport.Listen(cfg.qemuSocket)
-		if err != nil {
-			return errors.Wrap(err, "qemu listen error")
-		}
-
-		g.Go(func() error {
-			<-ctx.Done()
-			if err := qemuListener.Close(); err != nil {
-				slog.ErrorContext(ctx, "error closing", "socket", cfg.qemuSocket, "error", err)
-			}
-			return os.Remove(cfg.qemuSocket)
-		})
-
-		g.Go(func() error {
-			conn, err := qemuListener.Accept()
-			if err != nil {
-				return errors.Wrap(err, "qemu accept error")
-			}
-			return vn.AcceptQemu(ctx, conn)
-		})
-	}
-
-	if cfg.bessSocket != "" {
-		bessListener, err := transport.Listen(cfg.bessSocket)
-		if err != nil {
-			return errors.Wrap(err, "bess listen error")
-		}
-
-		g.Go(func() error {
-			<-ctx.Done()
-			if err := bessListener.Close(); err != nil {
-				slog.ErrorContext(ctx, "error closing", "socket", cfg.bessSocket, "error", err)
-			}
-			return os.Remove(cfg.bessSocket)
-		})
-
-		g.Go(func() error {
-			conn, err := bessListener.Accept()
-			if err != nil {
-				return errors.Wrap(err, "bess accept error")
-
-			}
-			return vn.AcceptBess(ctx, conn)
-		})
-	}
-
-	if cfg.vfkitSocket != "" {
-		conn, err := transport.ListenUnixgram(cfg.vfkitSocket)
-		if err != nil {
-			return errors.Wrap(err, "vfkit listen error")
-		}
-
-		g.Go(func() error {
-			<-ctx.Done()
-			if err := conn.Close(); err != nil {
-				slog.ErrorContext(ctx, "error closing", "socket", cfg.vfkitSocket, "error", err)
-			}
-			vfkitSocketURI, _ := url.Parse(cfg.vfkitSocket)
-			return os.Remove(vfkitSocketURI.Path)
-		})
-
-		g.Go(func() error {
-			vfkitConn, err := transport.AcceptVfkit(conn)
-			if err != nil {
-				return errors.Wrap(err, "vfkit accept error")
-			}
-			return vn.AcceptVfkit(ctx, vfkitConn)
-		})
-	}
-
-	if cfg.stdioSocket != "" {
+	if cfg.EnableStdioSocket {
 		g.Go(func() error {
 			conn := stdio.GetStdioConn()
 			return vn.AcceptStdio(ctx, conn)
 		})
 	}
 
-	for _, socket := range cfg.forwardSocket {
+	if len(cfg.sshConnections) > 0 {
+		// i am still not quite sure if we will need this funcitonality, leaving just in case for now
+		return errors.New("ssh connections are not supported yet")
+	}
+
+	for _, socket := range cfg.sshConnections {
 		var (
 			src *url.URL
 			err error
@@ -479,19 +364,33 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		dest := &url.URL{
 			Scheme: "ssh",
 			User:   url.User(socket.User),
-			Host:   cfg.sshHostPort,
-			Path:   socket.Dest,
+			Host:   virtualPortMap[fmt.Sprintf("127.0.0.1:%d", cfg.GuestSSHPort)],
+			Path:   socket.URIPath,
 		}
 		g.Go(func() error {
 			defer os.Remove(socket.Socket)
-			forward, err := sshclient.CreateSSHForward(ctx, src, dest, socket.Identify, vn)
+			publicKey, err := makeTmpFileForPublicKey(ctx, socket.PublicKey, g)
 			if err != nil {
 				return err
 			}
+			var forward *sshclient.SSHForward
+			if socket.Password == "" {
+				forward, err = sshclient.CreateSSHForward(ctx, src, dest, publicKey, vn)
+				if err != nil {
+					return err
+				}
+			} else {
+				forward, err = sshclient.CreateSSHForwardPassphrase(ctx, src, dest, publicKey, socket.Password, vn)
+				if err != nil {
+					return err
+				}
+			}
 			go func() {
 				<-ctx.Done()
+
 				// Abort pending accepts
 				forward.Close()
+
 			}()
 		loop:
 			for {
@@ -513,10 +412,35 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 	return nil
 }
 
+func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.Group) (string, error) {
+	if publicKey == "" {
+		return "", nil
+	}
+
+	tempFile, err := os.CreateTemp("", "tmp.pub")
+	if err != nil {
+		return "", errors.Errorf("creating temp file: %w", err)
+	}
+
+	g.Go(func() error {
+		<-ctx.Done()
+		if err := os.Remove(publicKey); err != nil {
+			slog.WarnContext(ctx, "removing public key", "error", err)
+		}
+		return nil
+	})
+
+	if _, err := tempFile.WriteString(publicKey); err != nil {
+		return "", errors.Errorf("writing temp file: %w", err)
+	}
+
+	return tempFile.Name(), nil
+}
+
 func httpServe(ctx context.Context, g *errgroup.Group, ln net.Listener, mux http.Handler) {
 	g.Go(func() error {
 		<-ctx.Done()
-		return ln.Close()
+		return errors.Errorf("http serve: %w", ln.Close())
 	})
 	g.Go(func() error {
 		s := &http.Server{
@@ -526,24 +450,13 @@ func httpServe(ctx context.Context, g *errgroup.Group, ln net.Listener, mux http
 		}
 		err := s.Serve(ln)
 		if err != nil {
-			if err != http.ErrServerClosed {
-				return err
-			}
-			return err
+			// if err != http.ErrServerClosed {
+			// 	return errors.Errorf("http serve: %w", err)
+			// }
+			return errors.Errorf("http serve: %w", err)
 		}
 		return nil
 	})
-}
-
-func withProfiler(vn *virtualnetwork.VirtualNetwork, cfg *GvproxyConfig) http.Handler {
-	mux := vn.Mux()
-	if cfg.debug {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	}
-	return mux
 }
 
 func searchDomains(ctx context.Context) ([]string, error) {

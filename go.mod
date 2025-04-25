@@ -5,6 +5,7 @@ go 1.24.2
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Code-Hex/vz/v3 v3.6.0
+	github.com/apex/log v1.9.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.4
@@ -19,16 +20,17 @@ require (
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.1.0
 	github.com/google/cel-go v0.24.1
+	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/kdomanski/iso9660 v0.4.0
 	github.com/lmittmann/tint v1.0.7
 	github.com/mholt/archives v0.1.1
 	github.com/ogen-go/ogen v1.12.0
-	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.9
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
+	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
 	github.com/veqryn/slog-context v0.8.0
 	gitlab.com/tozd/go/errors v0.10.0
@@ -42,6 +44,7 @@ require (
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
+	gvisor.dev/gvisor v0.0.0-20240916094835-a174eb65023f
 )
 
 require (
@@ -120,6 +123,7 @@ require (
 	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pkg/xattr v0.4.9 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -155,6 +159,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gvisor.dev/gvisor v0.0.0-20240916094835-a174eb65023f // indirect
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9 // indirect
 )
