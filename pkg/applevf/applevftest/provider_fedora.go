@@ -3,8 +3,11 @@ package applevftest
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"path/filepath"
 
 	"github.com/crc-org/vfkit/pkg/config"
+	"github.com/walteh/ec1/pkg/applevf"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 )
@@ -37,15 +40,51 @@ func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) err
 		return errors.Errorf("could not find disk image: %w", err)
 	}
 	prov.diskImage = diskImage
-	// xzCutName, _ := strings.CutSuffix(filepath.Base(prov.URL()), "tar.gz")
-	// prov.efiVariableStorePath = filepath.Join(cacheDir, "efivars.img")
-	// prov.createVariableStore = true
+	prov.efiVariableStorePath = filepath.Join(cacheDir, "efi-variable-store")
+	prov.createVariableStore = true
 	return nil
 }
 
-func (fedora *FedoraProvider) ToVirtualMachine() (*config.VirtualMachine, error) {
+func (fedora *FedoraProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
 	bootloader := config.NewEFIBootloader(fedora.efiVariableStorePath, fedora.createVariableStore)
+
 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
+
+	cloudInitFiles := applevf.CloudInitFiles{
+		UserData: `#cloud-config
+users:
+  - name: vfkituser
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: users
+    plain_text_passwd: vfkittest
+    lock_passwd: false
+ssh_pwauth: true
+chpasswd: { expire: false }`,
+		MetaData: "",
+	}
+
+	cloudInitISO, err := cloudInitFiles.GenerateISO(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	virtioBlkDevices := []string{
+		fedora.diskImage,
+		cloudInitISO,
+	}
+
+	for _, diskImage := range virtioBlkDevices {
+		dev, err := config.VirtioBlkNew(diskImage)
+		if err != nil {
+			return nil, errors.Errorf("creating virtio-blk device %s: %w", filepath.Base(diskImage), err)
+		}
+		err = vm.AddDevice(dev)
+		if err != nil {
+			return nil, errors.Errorf("adding virtio-blk device %s: %w", filepath.Base(diskImage), err)
+		}
+		slog.InfoContext(ctx, "shared disk", "name", dev.DevName)
+	}
 
 	return vm, nil
 }

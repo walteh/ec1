@@ -20,7 +20,7 @@ import (
 type OsProvider interface {
 	URL() string
 	Initialize(ctx context.Context, cacheDir string) error
-	ToVirtualMachine() (*config.VirtualMachine, error)
+	ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error)
 	SSHConfig() *ssh.ClientConfig
 	SSHAccessMethods() []SSHAccessMethod
 	ShutdownCommand() string

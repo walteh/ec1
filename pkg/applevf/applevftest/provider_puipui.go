@@ -54,7 +54,7 @@ func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) err
 	return nil
 }
 
-func (puipui *PuiPuiProvider) ToVirtualMachine() (*config.VirtualMachine, error) {
+func (puipui *PuiPuiProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
 	bootloader := config.NewLinuxBootloader(puipui.vmlinuz, puipui.kernelArgs, puipui.initramfs)
 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
 

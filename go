@@ -3,6 +3,7 @@ set -euo pipefail
 
 # # https://stackoverflow.com/a/78585264
 # export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
+# export CGO_ENABLED=0
 
 function truncate_logs() {
 	# Default to 1000 lines if not specified

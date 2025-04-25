@@ -31,6 +31,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -41,6 +42,7 @@ import (
 	restvf "github.com/crc-org/vfkit/pkg/rest/vf"
 	"github.com/crc-org/vfkit/pkg/vf"
 	"github.com/kdomanski/iso9660"
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/crc-org/vfkit/pkg/util"
 )
@@ -147,7 +149,8 @@ func RunVFKit(ctx context.Context, vmConfig *config.VirtualMachine, opts *cmdlin
 
 	vfVM, err := vf.NewVirtualMachine(*vmConfig)
 	if err != nil {
-		return err
+		slog.ErrorContext(ctx, "creating virtual machine", "error", err, slog.Any("config", vmConfig))
+		return errors.Errorf("creating virtual machine: %w", err)
 	}
 
 	// Do not enable the rests server if user sets scheme to None
@@ -155,7 +158,7 @@ func RunVFKit(ctx context.Context, vmConfig *config.VirtualMachine, opts *cmdlin
 		restVM := restvf.NewVzVirtualMachine(vfVM)
 		srv, err := rest.NewServer(restVM, restVM, opts.RestfulURI)
 		if err != nil {
-			return err
+			return errors.WithStack(errors.Errorf("creating rest server: %w", err))
 		}
 		srv.Start()
 	}
@@ -164,26 +167,24 @@ func RunVFKit(ctx context.Context, vmConfig *config.VirtualMachine, opts *cmdlin
 
 func runVirtualMachine(ctx context.Context, vmConfig *config.VirtualMachine, vm *vf.VirtualMachine) error {
 	if vm.Config().Ignition != nil {
+		file, err := os.Open(vmConfig.Ignition.ConfigPath)
+		if err != nil {
+			return errors.Errorf("opening ignition file: %w", err)
+		}
 		go func() {
-			file, err := os.Open(vmConfig.Ignition.ConfigPath)
-			if err != nil {
-				slog.ErrorContext(ctx, "failed to open ignition file", "error", err)
-			}
 			defer file.Close()
 			reader := file
-			if err := StartIgnitionProvisionerServer(ctx, reader, vmConfig.Ignition.SocketPath); err != nil {
-				slog.ErrorContext(ctx, "ignition vsock server exited", "error", err)
-			}
-			slog.DebugContext(ctx, "ignition vsock server exited")
+			err = StartIgnitionProvisionerServer(ctx, reader, vmConfig.Ignition.SocketPath)
+			slog.ErrorContext(ctx, "ignition vsock server exited", "error", err)
 		}()
 	}
 
 	if err := vm.Start(); err != nil {
-		return err
+		return errors.Errorf("starting virtual machine: %w", err)
 	}
 
 	if err := waitForVMState(ctx, vm, vz.VirtualMachineStateRunning, time.After(5*time.Second)); err != nil {
-		return err
+		return errors.Errorf("waiting for virtual machine to start: %w", err)
 	}
 	slog.InfoContext(ctx, "virtual machine is running")
 
@@ -209,12 +210,13 @@ func runVirtualMachine(ctx context.Context, vmConfig *config.VirtualMachine, vm 
 	}
 
 	if err := vf.ListenNetworkBlockDevices(vm); err != nil {
-		slog.DebugContext(ctx, "error listening network block devices", "error", err)
-		return err
+		// slog.DebugContext(ctx, "error listening network block devices", "error", err)
+		return errors.Errorf("listening network block devices: %w", err)
 	}
 
 	if err := setupGuestTimeSync(ctx, vm, vmConfig.TimeSync()); err != nil {
 		slog.WarnContext(ctx, "Error configuring guest time synchronization", "error", err)
+		// return errors.Errorf("configuring guest time synchronization: %w", err)
 	}
 
 	slog.InfoContext(ctx, "waiting for VM to stop")
@@ -241,7 +243,7 @@ func runVirtualMachine(ctx context.Context, vmConfig *config.VirtualMachine, vm 
 			err := vm.StartGraphicApplication(float64(gpuDev.Width), float64(gpuDev.Height))
 			runtime.UnlockOSThread()
 			if err != nil {
-				return err
+				return errors.Errorf("starting graphic application: %w", err)
 			}
 			break
 		} else {
@@ -263,7 +265,7 @@ func StartIgnitionProvisionerServer(ctx context.Context, ignitionReader io.Reade
 
 	listener, err := net.Listen("unix", ignitionSocketPath)
 	if err != nil {
-		return err
+		return errors.Errorf("listening on ignition socket: %w", err)
 	}
 
 	util.RegisterExitHandler(func() {
@@ -287,11 +289,26 @@ func StartIgnitionProvisionerServer(ctx context.Context, ignitionReader io.Reade
 	return srv.Serve(listener)
 }
 
+type CloudInitFiles struct {
+	UserData string
+	MetaData string
+}
+
 // it generates a cloud init image by taking the files passed by the user
 // as cloud-init expects files with a specific name (e.g user-data, meta-data) we check the filenames to retrieve the correct info
 // if some file is not passed by the user, an empty file will be copied to the cloud-init ISO to
 // guarantee it to work (user-data and meta-data files are mandatory and both must exists, even if they are empty)
 // if both files are missing it returns an error
+func (me *CloudInitFiles) GenerateISO(ctx context.Context) (string, error) {
+
+	configFiles := map[string]io.Reader{
+		"user-data": strings.NewReader(me.UserData),
+		"meta-data": strings.NewReader(me.MetaData),
+	}
+
+	return createCloudInitISO(ctx, configFiles)
+}
+
 func GenerateCloudInitImage(ctx context.Context, files []string) (string, error) {
 	if len(files) == 0 {
 		return "", nil
@@ -301,7 +318,6 @@ func GenerateCloudInitImage(ctx context.Context, files []string) (string, error)
 		"user-data": nil,
 		"meta-data": nil,
 	}
-
 	hasConfigFile := false
 	for _, path := range files {
 		if path == "" {
@@ -309,7 +325,7 @@ func GenerateCloudInitImage(ctx context.Context, files []string) (string, error)
 		}
 		file, err := os.Open(path)
 		if err != nil {
-			return "", err
+			return "", errors.Errorf("opening file: %w", err)
 		}
 		defer file.Close()
 
