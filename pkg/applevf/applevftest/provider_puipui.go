@@ -10,6 +10,7 @@ import (
 	"github.com/crc-org/vfkit/pkg/config"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/mod/semver"
 )
 
 const puipuiMemoryMiB = 1 * 1024
@@ -27,6 +28,14 @@ type PuiPuiProvider struct {
 
 func NewPuipuiProvider() *PuiPuiProvider {
 	return &PuiPuiProvider{}
+}
+
+func (prov *PuiPuiProvider) Name() string {
+	return "puipui"
+}
+
+func (prov *PuiPuiProvider) Version() string {
+	return semver.Canonical(puipuiVersion)
 }
 
 func (prov *PuiPuiProvider) URL() string {

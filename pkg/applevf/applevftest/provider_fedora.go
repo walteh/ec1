@@ -10,6 +10,7 @@ import (
 	"github.com/walteh/ec1/pkg/applevf"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/mod/semver"
 )
 
 const fedoraVersion = "42"
@@ -26,6 +27,14 @@ type FedoraProvider struct {
 
 func NewFedoraProvider() *FedoraProvider {
 	return &FedoraProvider{}
+}
+
+func (prov *FedoraProvider) Name() string {
+	return "fedora-ec2"
+}
+
+func (prov *FedoraProvider) Version() string {
+	return semver.Canonical(fmt.Sprintf("v%s.%s", fedoraVersion, fedoraRelease))
 }
 
 func (prov *FedoraProvider) URL() string {

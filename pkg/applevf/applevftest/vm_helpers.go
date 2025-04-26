@@ -12,58 +12,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/lmittmann/tint"
-	"github.com/sirupsen/logrus"
-	slogctx "github.com/veqryn/slog-context"
 	"github.com/walteh/ec1/pkg/applevf"
 	"github.com/walteh/ec1/pkg/gvproxy"
+	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 
 	vfkithelpers "github.com/crc-org/crc/v2/pkg/drivers/vfkit"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
-
-func setupSlog(t *testing.T, ctx context.Context) context.Context {
-
-	cached, err := cacheDirPrefix()
-	require.NoError(t, err)
-
-	tmpdir := filepath.Dir(t.TempDir())
-
-	slog.DebugContext(ctx, "redacting as [test-tmp-dir]", "string", strings.TrimPrefix(tmpdir, "/"))
-	slog.DebugContext(ctx, "redacting as [cache-dir]", "string", strings.TrimPrefix(cached, "/"))
-
-	tintHandler := tint.NewHandler(os.Stdout, &tint.Options{
-		Level:      slog.LevelDebug,
-		TimeFormat: "2006-01-02 15:04 05.0000",
-		AddSource:  true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// if the value has the name of the test tmp dir, replace it with [tmpdir]
-			if strings.Contains(a.Value.String(), tmpdir) {
-				a = slog.Attr{Key: a.Key, Value: slog.StringValue(strings.Replace(a.Value.String(), tmpdir, "[test-tmp-dir]", 1))}
-			}
-			if strings.Contains(a.Value.String(), cached) {
-				a = slog.Attr{Key: a.Key, Value: slog.StringValue(strings.Replace(a.Value.String(), cached, "[cache-dir]", 1))}
-			}
-			return a
-		},
-	})
-
-	ctxHandler := slogctx.NewHandler(tintHandler, nil)
-
-	mylogger := slog.New(ctxHandler)
-	slog.SetDefault(mylogger)
-
-	// point logrus at our slog
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
-	})
-
-	return slogctx.NewCtx(ctx, mylogger)
-}
 
 func retryIPFromMAC(t *testing.T, ctx context.Context, errCh chan error, macAddress string) (string, error) {
 	t.Helper()
@@ -181,18 +141,18 @@ type testVM struct {
 	config   *config.VirtualMachine
 
 	sshNetwork     string
-	macAddress     string // for SSH over TCP
-	port           uint
-	vsockPath      string // for SSH over vsock
+	sshAddress     string // mac for tcp, vsock for vsock, localhost:port for unixgram
+	gvproxyPort    uint
 	sshClient      *ssh.Client
 	restSocketPath string
 
+	tmpDir   string
 	vfkitCmd *vfkitRunner
 
 	sshRetry func(t *testing.T, ctx context.Context) (*ssh.Client, error)
 }
 
-func NewTestVM(t *testing.T, provider OsProvider) *testVM { //nolint:revive
+func NewTestVM(t *testing.T, provider OsProvider, tmpDir string) *testVM { //nolint:revive
 	ctx := t.Context()
 	ctx = setupSlog(t, ctx)
 
@@ -203,98 +163,112 @@ func NewTestVM(t *testing.T, provider OsProvider) *testVM { //nolint:revive
 	require.NoError(t, err)
 	vm.config = vmConfig
 
+	vm.tmpDir = tmpDir
+
+	// reserve port
+
+	myport, err := port.ReservePort(t.Context())
+	require.NoError(t, err)
+	vm.gvproxyPort = uint(myport)
+
 	return vm
 }
 
-func (vm *testVM) findSSHAccessMethod(t *testing.T, network string) *SSHAccessMethod {
-	t.Helper()
-	switch network {
-	case "any":
-		accessMethods := vm.provider.SSHAccessMethods()
-		require.NotZero(t, len(accessMethods))
-		return &accessMethods[0]
-	default:
-		for _, accessMethod := range vm.provider.SSHAccessMethods() {
-			if accessMethod.network == network {
-				return &accessMethod
-			}
-		}
-	}
+// func (vm *testVM) findSSHAccessMethod(t *testing.T, network string) *SSHAccessMethod {
+// 	t.Helper()
+// 	switch network {
+// 	case "any":
+// 		accessMethods := vm.provider.SSHAccessMethods()
+// 		require.NotZero(t, len(accessMethods))
+// 		return &accessMethods[0]
+// 	default:
+// 		for _, accessMethod := range vm.provider.SSHAccessMethods() {
+// 			if accessMethod.network == network {
+// 				return &accessMethod
+// 			}
+// 		}
+// 	}
 
-	t.FailNow()
-	return nil
-}
+// 	t.Fatalf("unknown SSH network: %s", network)
+// 	return nil
+// }
+
+const (
+	GUEST_VSOCK_PORT = 2222
+	GUEST_TCP_PORT   = 22
+)
 
 func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 	t.Helper()
-	// vmMacAddress, err := vz.NewRandomLocallyAdministeredMACAddress()
-	// require.NoError(t, err)
-	// var (
-	// 	dev config.VirtioDevice
-	// )
+
+	var (
+		dev config.VirtioDevice
+		err error
+	)
+
 	// method := vm.findSSHAccessMethod(t, network)
-	// switch network {
-	// case "tcp":
-	// 	slog.InfoContext(ctx, "adding virtio-net device", "MAC", vmMacAddress)
-	// 	vm.sshNetwork = "tcp"
-	// 	vm.macAddress = vmMacAddress.String()
-	// 	vm.port = method.port
-	// 	dev, err = config.VirtioNetNew(vm.macAddress)
-	// 	require.NoError(t, err)
-	// case "vsock":
-	// 	slog.InfoContext(ctx, "adding virtio-vsock device", "port", method.port)
-	// 	vm.sshNetwork = "vsock"
-	// 	vm.vsockPath = filepath.Join(t.TempDir(), fmt.Sprintf("vsock-%d.sock", method.port))
-	// 	dev, err = config.VirtioVsockNew(uint(method.port), vm.vsockPath, false)
-	// 	require.NoError(t, err)
-	// default:
-	// 	t.FailNow()
-	// }
+	switch network {
+	case "tcp":
+		vmMacAddress, err := vz.NewRandomLocallyAdministeredMACAddress()
+		require.NoError(t, err)
+		slog.InfoContext(ctx, "adding virtio-net device", "MAC", vmMacAddress)
+		vm.sshNetwork = "tcp"
+		vm.sshAddress = vmMacAddress.String()
+		dev, err = config.VirtioNetNew(vm.sshAddress)
+		require.NoError(t, err)
+	case "vsock":
+		slog.InfoContext(ctx, "adding virtio-vsock device", "port", GUEST_VSOCK_PORT)
+		vm.sshNetwork = "vsock"
+		vm.sshAddress = filepath.Join(vm.tmpDir, fmt.Sprintf("vsock-%d.sock", GUEST_VSOCK_PORT))
+		dev, err = config.VirtioVsockNew(uint(GUEST_VSOCK_PORT), vm.sshAddress, false)
+		require.NoError(t, err)
+	case "gvproxy":
 
-	// vm.AddDevice(t, dev)
+		socketPath := "unixgram://" + filepath.Join(vm.tmpDir, "vf.sock")
 
-	socketPath := "unixgram://" + filepath.Join(t.TempDir(), "vf.sock")
+		// // create the socket
+		os.Remove(socketPath)
+		os.Create(socketPath)
 
-	// // create the socket
-	os.Remove(socketPath)
-	os.Create(socketPath)
+		gvproxySocket := gvproxy.NewVFKitVMSocket(socketPath)
 
-	gvproxySocket := gvproxy.NewVFKitVMSocket(socketPath)
+		dev, err = gvproxySocket.Device(ctx)
+		require.NoError(t, err)
 
-	dev, err := gvproxySocket.Device(ctx)
-	require.NoError(t, err)
+		readyChan := make(chan struct{})
+
+		vm.sshAddress = fmt.Sprintf("localhost:%d", vm.gvproxyPort)
+		vm.sshNetwork = "gvproxy"
+
+		go func() {
+			err := gvproxy.Proxy(ctx, &gvproxy.GvproxyConfig{
+				VMSocket: gvproxySocket,
+				// GuestSSHPort:       VSOCK_PORT,
+				VMHostPort:         fmt.Sprintf("tcp://%s", vm.sshAddress),
+				EnableDebug:        false,
+				EnableStdioSocket:  false,
+				EnableNoConnectAPI: true,
+				ReadyChan:          readyChan,
+			})
+			if err != nil {
+				slog.ErrorContext(ctx, "gvproxy failed", "error", err)
+			}
+		}()
+
+		// vm.port = 8822
+
+		select {
+		case <-readyChan:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for gvproxy to be ready ")
+		}
+
+	default:
+		t.Fatalf("unknown SSH network: %s", network)
+	}
 
 	vm.AddDevice(t, dev)
 
-	readyChan := make(chan struct{})
-
-	go func() {
-		err := gvproxy.Proxy(ctx, &gvproxy.GvproxyConfig{
-			VMSocket:           gvproxySocket,
-			GuestSSHPort:       2222,
-			VMHostPort:         fmt.Sprintf("tcp://localhost:%d", 8822),
-			EnableDebug:        false,
-			EnableStdioSocket:  false,
-			EnableNoConnectAPI: true,
-			ReadyChan:          readyChan,
-		})
-		if err != nil {
-			slog.ErrorContext(ctx, "gvproxy failed", "error", err)
-		}
-	}()
-
-	// vm.sshRetry = func(t *testing.T, ctx context.Context) (*ssh.Client, error) {
-	// 	return retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unixgram", strings.TrimPrefix(socketPath, "unixgram://"), vm.provider.SSHConfig())
-	// }
-
-	vm.sshNetwork = "unixgram"
-	// vm.ssh
-
-	select {
-	case <-readyChan:
-	case <-time.After(10 * time.Second):
-		t.FailNow()
-	}
 }
 
 func (vm *testVM) AddDevice(t *testing.T, dev config.VirtioDevice) {
@@ -330,15 +304,15 @@ func (vm *testVM) WaitForSSH(t *testing.T, ctx context.Context) {
 	)
 	switch vm.sshNetwork {
 	case "tcp":
-		ip, err := retryIPFromMAC(t, ctx, vm.vfkitCmd.errCh, vm.macAddress)
+		ip, err := retryIPFromMAC(t, ctx, vm.vfkitCmd.errCh, vm.sshAddress)
 		require.NoError(t, err)
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", net.JoinHostPort(ip, strconv.FormatUint(uint64(vm.port), 10)), vm.provider.SSHConfig())
+		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", net.JoinHostPort(ip, strconv.FormatUint(uint64(GUEST_TCP_PORT), 10)), vm.provider.SSHConfig())
 		require.NoError(t, err)
 	case "vsock":
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.vsockPath, vm.provider.SSHConfig())
+		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.sshAddress, vm.provider.SSHConfig())
 		require.NoError(t, err)
-	case "unixgram":
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", "localhost:8822", vm.provider.SSHConfig())
+	case "gvproxy":
+		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", vm.sshAddress, vm.provider.SSHConfig())
 		require.NoError(t, err)
 	default:
 		t.Fatalf("unknown SSH network: %s", vm.sshNetwork)

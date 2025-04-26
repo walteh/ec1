@@ -24,6 +24,8 @@ type OsProvider interface {
 	SSHConfig() *ssh.ClientConfig
 	SSHAccessMethods() []SSHAccessMethod
 	ShutdownCommand() string
+	Name() string
+	Version() string
 }
 
 func cacheDir(urld string) (string, error) {
@@ -36,10 +38,8 @@ func cacheDir(urld string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// filename := filepath.Base(parsedURL.Path)
-	hostname := parsedURL.Host
 
-	dirname := fmt.Sprintf("%s_%s", hostname, hrlHash[:16])
+	dirname := fmt.Sprintf("%s_%s", parsedURL.Host, hrlHash[:16])
 	userCacheDir, err := cacheDirPrefix()
 	if err != nil {
 		return "", err

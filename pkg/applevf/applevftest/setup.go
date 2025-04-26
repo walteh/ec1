@@ -2,6 +2,8 @@ package applevftest
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -14,11 +16,39 @@ import (
 	"gitlab.com/tozd/go/errors"
 )
 
+func ShortTestTempDir(t *testing.T) string {
+	// hash the test name, take the first 8 characters
+	hash := sha256.Sum256([]byte(t.Name()))
+	tmpdir := os.TempDir()
+	testTmpDir := t.TempDir()
+	dir := filepath.Join(tmpdir, fmt.Sprintf("t%x", hash[:4]), filepath.Base(testTmpDir))
+	slog.InfoContext(t.Context(), "creating short test temp dir", "dir", dir)
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		t.Fatalf("creating temp dir: %s", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+	RegisterRedactedLogValue(t, dir, "[short-tmp-dir]")
+	return dir
+}
+
 const MagicDecompressedFileName = "base"
 
-func SetupOS(t *testing.T, prov OsProvider) error {
+func FullSetupOS(t *testing.T, prov OsProvider) *testVM {
+	tmpDir := ShortTestTempDir(t)
+	err := SetupOS(t, prov, tmpDir)
+	if err != nil {
+		t.Fatalf("setting up os: %s", err)
+	}
+	return NewTestVM(t, prov, tmpDir)
+}
+
+func SetupOS(t *testing.T, prov OsProvider, tmpDir string) error {
 	ctx := t.Context()
-	tmpDir := t.TempDir()
+	// create a new temp dir for the os image
+
 	url := prov.URL()
 
 	if true {

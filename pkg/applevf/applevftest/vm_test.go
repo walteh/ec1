@@ -26,10 +26,8 @@ func TestFailedVfkitStart(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, puipuiProvider)
+	vm := FullSetupOS(t, puipuiProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
@@ -42,7 +40,7 @@ func TestFailedVfkitStart(t *testing.T) {
 	vm.Start(t, ctx)
 
 	slog.InfoContext(ctx, "waiting for SSH")
-	_, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.vsockPath, vm.provider.SSHConfig())
+	_, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.sshAddress, vm.provider.SSHConfig())
 	require.Error(t, err)
 }
 
@@ -67,19 +65,18 @@ func TestSSHAccess(t *testing.T) {
 	ctx := t.Context()
 	ctx = setupSlog(t, ctx)
 
-	puipuiProvider := NewFedoraProvider()
-	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
-
-	for _, accessMethod := range puipuiProvider.SSHAccessMethods() {
-		t.Run(accessMethod.network, func(t *testing.T) {
-			ctx := setupSlog(t, ctx)
-			vm := NewTestVM(t, puipuiProvider)
+	providers := []OsProvider{
+		NewFedoraProvider(),
+		NewPuipuiProvider(),
+	}
+	for _, provider := range providers {
+		t.Run(provider.Name(), func(t *testing.T) {
+			slog.InfoContext(ctx, "fetching os image")
+			vm := FullSetupOS(t, provider)
 			defer vm.Close(t, ctx)
 			require.NotNil(t, vm)
 			slog.InfoContext(ctx, "starting VM")
-			testSSHAccess(t, ctx, vm, accessMethod.network)
+			testSSHAccess(t, ctx, vm, "gvproxy")
 		})
 	}
 }
@@ -92,17 +89,14 @@ func TestVsockConnect(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, puipuiProvider)
+	vm := FullSetupOS(t, puipuiProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
 	vm.AddSSH(t, ctx, "tcp")
 
-	tempDir := t.TempDir()
-	vsockConnectPath := filepath.Join(tempDir, "vsock-connect.sock")
+	vsockConnectPath := filepath.Join(vm.tmpDir, "vsock-connect.sock")
 	dev, err := config.VirtioVsockNew(1234, vsockConnectPath, false)
 	require.NoError(t, err)
 	vm.AddDevice(t, dev)
@@ -140,16 +134,14 @@ func TestVsockListen(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, puipuiProvider)
+	vm := FullSetupOS(t, puipuiProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
 	vm.AddSSH(t, ctx, "tcp")
 
-	tempDir := t.TempDir()
+	tempDir := ShortTestTempDir(t)
 	vsockListenPath := filepath.Join(tempDir, "vsock-listen.sock")
 	ln, err := net.Listen("unix", vsockListenPath)
 	require.NoError(t, err)
@@ -182,16 +174,14 @@ func TestFileSharing(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, puipuiProvider)
+	vm := FullSetupOS(t, puipuiProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
 	vm.AddSSH(t, ctx, "tcp")
 
-	sharedDir := t.TempDir()
+	sharedDir := ShortTestTempDir(t)
 	share, err := config.VirtioFsNew(sharedDir, "vfkit-test-share")
 	require.NoError(t, err)
 	vm.AddDevice(t, share)
@@ -217,7 +207,7 @@ func TestFileSharing(t *testing.T) {
 	vm.Stop(t, ctx)
 }
 
-type createDevFunc func(t *testing.T) (config.VirtioDevice, error)
+type createDevFunc func(t *testing.T, vm *testVM) (config.VirtioDevice, error)
 type pciidTest struct {
 	vendorID  int
 	deviceID  int
@@ -228,35 +218,35 @@ var pciidTests = map[string]pciidTest{
 	"virtio-net": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x1041,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(t *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioNetNew("")
 		},
 	},
 	"virtio-serial": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x1043,
-		createDev: func(t *testing.T) (config.VirtioDevice, error) {
-			return config.VirtioSerialNew(filepath.Join(t.TempDir(), "serial.log"))
+		createDev: func(t *testing.T, vm *testVM) (config.VirtioDevice, error) {
+			return config.VirtioSerialNew(filepath.Join(vm.tmpDir, "serial.log"))
 		},
 	},
 	"virtio-rng": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x1044,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioRngNew()
 		},
 	},
 	"virtio-fs": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x105a,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
-			return config.VirtioFsNew("./", "vfkit-share-test")
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
+			return config.VirtioFsNew(vm.tmpDir, "vfkit-share-test")
 		},
 	},
 	"virtio-balloon": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x1045,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioBalloonNew()
 		},
 	},
@@ -266,21 +256,21 @@ var pciidMacOS13Tests = map[string]pciidTest{
 	"virtio-gpu": {
 		vendorID: 0x1af4, // Red Hat
 		deviceID: 0x1050,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioGPUNew()
 		},
 	},
 	"virtio-input/trackpad": {
 		vendorID: 0x106b, // Apple
 		deviceID: 0x1a06,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioInputNew("pointing")
 		},
 	},
 	"virtio-input/keyboard": {
 		vendorID: 0x106b, // Apple
 		deviceID: 0x1a06,
-		createDev: func(_ *testing.T) (config.VirtioDevice, error) {
+		createDev: func(_ *testing.T, vm *testVM) (config.VirtioDevice, error) {
 			return config.VirtioInputNew("keyboard")
 		},
 	},
@@ -290,8 +280,8 @@ var pciidMacOS14Tests = map[string]pciidTest{
 	"nvm-express": {
 		vendorID: 0x106b, // Apple
 		deviceID: 0x1a09,
-		createDev: func(t *testing.T) (config.VirtioDevice, error) {
-			diskimg := filepath.Join(t.TempDir(), "nvmexpress.img")
+		createDev: func(t *testing.T, vm *testVM) (config.VirtioDevice, error) {
+			diskimg := filepath.Join(vm.tmpDir, "nvmexpress.img")
 			f, err := os.Create(diskimg)
 			require.NoError(t, err)
 			require.NoError(t, f.Close())
@@ -324,12 +314,12 @@ func restInspect(t *testing.T, vm *testVM) *config.VirtualMachine {
 }
 
 func testPCIId(t *testing.T, ctx context.Context, test pciidTest, provider OsProvider) {
-	vm := NewTestVM(t, provider)
+	vm := FullSetupOS(t, provider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
 	vm.AddSSH(t, ctx, "tcp")
-	dev, err := test.createDev(t)
+	dev, err := test.createDev(t, vm)
 	require.NoError(t, err)
 	vm.AddDevice(t, dev)
 
@@ -350,8 +340,6 @@ func TestPCIIds(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
 	for name, test := range pciidTests {
 		t.Run(name, func(t *testing.T) {
@@ -379,10 +367,8 @@ func TestVirtioSerialPTY(t *testing.T) {
 
 	puipuiProvider := NewPuipuiProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, puipuiProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, puipuiProvider)
+	vm := FullSetupOS(t, puipuiProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 
@@ -431,10 +417,8 @@ func TestCloudInit(t *testing.T) {
 	}
 	fedoraProvider := NewFedoraProvider()
 	slog.InfoContext(ctx, "fetching os image")
-	err := SetupOS(t, fedoraProvider)
-	require.NoError(t, err)
 
-	vm := NewTestVM(t, fedoraProvider)
+	vm := FullSetupOS(t, fedoraProvider)
 	defer vm.Close(t, ctx)
 	require.NotNil(t, vm)
 

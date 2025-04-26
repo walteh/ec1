@@ -20,7 +20,6 @@ require (
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.1.0
 	github.com/google/cel-go v0.24.1
-	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/kdomanski/iso9660 v0.4.0
 	github.com/lmittmann/tint v1.0.7
