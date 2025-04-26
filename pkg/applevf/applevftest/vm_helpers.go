@@ -3,8 +3,10 @@ package applevftest
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,7 +27,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func retryIPFromMAC(t *testing.T, ctx context.Context, errCh chan error, macAddress string) (string, error) {
+func (vm *testVM) retryIPFromMAC(t *testing.T, ctx context.Context, macAddress string) (string, error) {
 	t.Helper()
 	var (
 		err error
@@ -36,7 +38,7 @@ func retryIPFromMAC(t *testing.T, ctx context.Context, errCh chan error, macAddr
 
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-vm.vfkitCmd.errCh:
 			// slog.ErrorContext(ctx, "retryIPFromMAC returned", "error", err)
 			return "", errors.Errorf("error observed before finding IP address: %w", err)
 		case <-time.After(1 * time.Second):
@@ -56,7 +58,7 @@ func retryIPFromMAC(t *testing.T, ctx context.Context, errCh chan error, macAddr
 	}
 }
 
-func retrySSHDial(t *testing.T, ctx context.Context, errCh chan error, scheme string, address string, sshConfig *ssh.ClientConfig) (*ssh.Client, error) {
+func (vm *testVM) retrySSHDial(t *testing.T, ctx context.Context, scheme string, address string) (*ssh.Client, error) {
 	t.Helper()
 	var (
 		sshClient *ssh.Client
@@ -66,16 +68,17 @@ func retrySSHDial(t *testing.T, ctx context.Context, errCh chan error, scheme st
 	tenSeconds := time.After(30 * time.Second)
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-vm.vfkitCmd.errCh:
 			return nil, errors.Errorf("error observed before establishing SSH connection: %w", err)
 		case <-time.After(1 * time.Second):
 			slog.DebugContext(ctx, "trying ssh dial", "address", address, "scheme", scheme)
-			sshClient, err = ssh.Dial(scheme, address, sshConfig)
+			sshClient, err = ssh.Dial(scheme, address, vm.provider.SSHConfig())
 			if err == nil {
 				slog.InfoContext(ctx, "established SSH connection", "address", address, "scheme", scheme)
 				return sshClient, nil
 			}
 			slog.DebugContext(ctx, "ssh failed", "error", err)
+			go vm.vfkitCmd.TryInspect(t, ctx)
 		case <-tenSeconds:
 			return nil, errors.New("timeout waiting for SSH")
 		}
@@ -93,10 +96,11 @@ func startVfkit(t *testing.T, ctx context.Context, vm *config.VirtualMachine) *v
 	t.Helper()
 	opts := &cmdline.Options{}
 
-	// restSocketPath := filepath.Join(t.TempDir(), "rest.sock")
+	opts.LogLevel = "debug"
 
-	// opts.RestfulURI = fmt.Sprintf("unix://%s", restSocketPath)
-	opts.RestfulURI = "none://"
+	restSocketPath := filepath.Join(t.TempDir(), "rest.sock")
+	opts.RestfulURI = fmt.Sprintf("unix://%s", restSocketPath)
+	// opts.RestfulURI = "none://"
 	opts.Bootloader.Append("efi")
 
 	errCh := make(chan error)
@@ -114,8 +118,48 @@ func startVfkit(t *testing.T, ctx context.Context, vm *config.VirtualMachine) *v
 	return &vfkitRunner{
 		errCh,
 		false,
-		"",
+		restSocketPath,
 	}
+}
+
+func (cmd *vfkitRunner) TryInspect(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	// Create a custom transport for Unix socket
+	transport := &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", cmd.restSocketPath)
+		},
+	}
+
+	// Create a client with the Unix socket transport
+	_ = &http.Client{Transport: transport}
+
+	_ = func(t *testing.T, ctx context.Context, client *http.Client, path string) {
+
+		// Use a standard HTTP URL for the request path
+		// Note: The host part will be ignored due to custom transport
+		req, err := http.NewRequest("GET", "http://unix"+path, nil)
+		require.NoError(t, err)
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "vfkit/test")
+		req.Header.Set("X-VFKit-Version", "test")
+		req.Header.Set("X-VFKit-Test", "true")
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		slog.DebugContext(ctx, "hitting vm at", "path", path, "body", SlogRawJSONValue{rawJson: body})
+	}
+
+	// doRequest(t, ctx, client, "/vm/inspect")
+
+	// doRequest(t, ctx, client, "/vm/state")
 }
 
 func (cmd *vfkitRunner) Wait(t *testing.T, ctx context.Context) {
@@ -148,6 +192,8 @@ type testVM struct {
 
 	tmpDir   string
 	vfkitCmd *vfkitRunner
+
+	// fatalSSHErrorChan chan error
 
 	sshRetry func(t *testing.T, ctx context.Context) (*ssh.Client, error)
 }
@@ -285,7 +331,7 @@ func (vm *testVM) Start(t *testing.T, ctx context.Context) {
 
 func (vm *testVM) Stop(t *testing.T, ctx context.Context) {
 	t.Helper()
-	go vm.SSHRun(t, ctx, vm.provider.ShutdownCommand())
+	go vm.SSHRunFatal(t, ctx, vm.provider.ShutdownCommand())
 	vm.vfkitCmd.Wait(t, ctx)
 }
 
@@ -304,15 +350,15 @@ func (vm *testVM) WaitForSSH(t *testing.T, ctx context.Context) {
 	)
 	switch vm.sshNetwork {
 	case "tcp":
-		ip, err := retryIPFromMAC(t, ctx, vm.vfkitCmd.errCh, vm.sshAddress)
+		ip, err := vm.retryIPFromMAC(t, ctx, vm.sshAddress)
 		require.NoError(t, err)
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", net.JoinHostPort(ip, strconv.FormatUint(uint64(GUEST_TCP_PORT), 10)), vm.provider.SSHConfig())
+		sshClient, err = vm.retrySSHDial(t, ctx, "tcp", net.JoinHostPort(ip, strconv.FormatUint(uint64(GUEST_TCP_PORT), 10)))
 		require.NoError(t, err)
 	case "vsock":
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.sshAddress, vm.provider.SSHConfig())
+		sshClient, err = vm.retrySSHDial(t, ctx, "unix", vm.sshAddress)
 		require.NoError(t, err)
 	case "gvproxy":
-		sshClient, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "tcp", vm.sshAddress, vm.provider.SSHConfig())
+		sshClient, err = vm.retrySSHDial(t, ctx, "tcp", vm.sshAddress)
 		require.NoError(t, err)
 	default:
 		t.Fatalf("unknown SSH network: %s", vm.sshNetwork)
@@ -327,8 +373,25 @@ func (vm *testVM) SSHRun(t *testing.T, ctx context.Context, command string) {
 	sshSession, err := vm.sshClient.NewSession()
 	require.NoError(t, err)
 	defer sshSession.Close()
-	err = sshSession.Run(command)
-	slog.InfoContext(ctx, "command returned", "error", err)
+	output, err := sshSession.CombinedOutput(command)
+	if err != nil {
+		slog.ErrorContext(ctx, "command failed", "error", err, "output", string(output))
+
+	}
+}
+
+func (vm *testVM) SSHRunFatal(t *testing.T, ctx context.Context, command string) {
+	t.Helper()
+	slog.InfoContext(ctx, "running command", "command", command)
+
+	sshSession, err := vm.sshClient.NewSession()
+	require.NoError(t, err)
+	defer sshSession.Close()
+	output, err := sshSession.CombinedOutput(command)
+	if err != nil {
+		slog.ErrorContext(ctx, "command failed", "error", err, "output", string(output))
+		vm.vfkitCmd.errCh <- errors.Errorf("important ssh command failed: %w", err)
+	}
 }
 
 func (vm *testVM) SSHSignal(t *testing.T, ctx context.Context, signal ssh.Signal) {
@@ -336,7 +399,8 @@ func (vm *testVM) SSHSignal(t *testing.T, ctx context.Context, signal ssh.Signal
 	sshSession, err := vm.sshClient.NewSession()
 	require.NoError(t, err)
 	defer sshSession.Close()
-	sshSession.Signal(signal)
+	err = sshSession.Signal(signal)
+	require.NoError(t, err)
 }
 
 func (vm *testVM) SSHCombinedOutput(t *testing.T, ctx context.Context, command string) ([]byte, error) {

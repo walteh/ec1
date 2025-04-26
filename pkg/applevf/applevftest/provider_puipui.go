@@ -66,7 +66,6 @@ func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) err
 func (puipui *PuiPuiProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
 	bootloader := config.NewLinuxBootloader(puipui.vmlinuz, puipui.kernelArgs, puipui.initramfs)
 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
-
 	return vm, nil
 }
 
@@ -80,19 +79,6 @@ func (puipui *PuiPuiProvider) SSHConfig() *ssh.ClientConfig {
 		Auth: []ssh.AuthMethod{ssh.Password("passwd")},
 		// #nosec 106 -- the host SSH key of the VM will change each time it boots
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-}
-
-func (puipui *PuiPuiProvider) SSHAccessMethods() []SSHAccessMethod {
-	return []SSHAccessMethod{
-		{
-			network: "tcp",
-			port:    22,
-		},
-		{
-			network: "vsock",
-			port:    2222,
-		},
 	}
 }
 

@@ -368,7 +368,7 @@ func createCloudInitISO(ctx context.Context, files map[string]io.Reader) (string
 		}
 	}
 
-	isoFile, err := os.CreateTemp("", "vfkit-cloudinit-")
+	isoFile, err := os.CreateTemp("", "vfkit-cloudinit-*.iso")
 	if err != nil {
 		return "", fmt.Errorf("unable to create temporary cloud-init ISO file: %w", err)
 	}

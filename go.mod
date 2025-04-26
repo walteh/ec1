@@ -22,6 +22,7 @@ require (
 	github.com/google/cel-go v0.24.1
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/kdomanski/iso9660 v0.4.0
+	github.com/lima-vm/go-qcow2reader v0.6.0
 	github.com/lmittmann/tint v1.0.7
 	github.com/mholt/archives v0.1.1
 	github.com/ogen-go/ogen v1.12.0

@@ -22,7 +22,6 @@ type OsProvider interface {
 	Initialize(ctx context.Context, cacheDir string) error
 	ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error)
 	SSHConfig() *ssh.ClientConfig
-	SSHAccessMethods() []SSHAccessMethod
 	ShutdownCommand() string
 	Name() string
 	Version() string

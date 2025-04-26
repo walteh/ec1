@@ -40,7 +40,7 @@ func TestFailedVfkitStart(t *testing.T) {
 	vm.Start(t, ctx)
 
 	slog.InfoContext(ctx, "waiting for SSH")
-	_, err = retrySSHDial(t, ctx, vm.vfkitCmd.errCh, "unix", vm.sshAddress, vm.provider.SSHConfig())
+	_, err = vm.retrySSHDial(t, ctx, "unix", vm.sshAddress)
 	require.Error(t, err)
 }
 
@@ -53,11 +53,66 @@ func testSSHAccess(t *testing.T, ctx context.Context, vm *testVM, network string
 	slog.InfoContext(ctx, "waiting for SSH")
 	vm.WaitForSSH(t, ctx)
 
-	// err := DebugVsockConnection(ctx, vm.sshClient)
-	// require.NoError(t, err)
+	data, err := vm.SSHCombinedOutput(t, ctx, "whoami")
+	require.NoError(t, err)
+	slog.InfoContext(ctx, "executed whoami - output", "output", string(data))
+
+	messWithAlpine(t, ctx, vm)
 
 	slog.InfoContext(ctx, "shutting down VM")
 	vm.Stop(t, ctx)
+}
+
+func messWithAlpine(t *testing.T, ctx context.Context, vm *testVM) {
+	// Check which shell you're using
+	out, err := vm.SSHCombinedOutput(t, ctx, "echo $SHELL")
+	require.NoError(t, err, "should get shell info")
+	slog.InfoContext(ctx, "shell info", "output", string(out))
+
+	// Check if poweroff exists and where
+	out, err = vm.SSHCombinedOutput(t, ctx, "which poweroff || echo 'not found'")
+	require.NoError(t, err, "should check poweroff command")
+	slog.InfoContext(ctx, "poweroff location", "output", string(out))
+
+	// Check available shutdown commands
+	out, err = vm.SSHCombinedOutput(t, ctx, "ls -la /sbin/*off /sbin/shutdown /sbin/halt 2>/dev/null || echo 'commands not found'")
+	require.NoError(t, err, "should list shutdown commands")
+	slog.InfoContext(ctx, "shutdown commands", "output", string(out))
+
+	// Check if cloud-init ran at all
+	out, err = vm.SSHCombinedOutput(t, ctx, "ls -la /var/log/cloud-init* 2>/dev/null || echo 'no cloud-init logs'")
+	require.NoError(t, err, "should check cloud-init logs")
+	slog.InfoContext(ctx, "cloud-init logs", "output", string(out))
+
+	// Look at cloud-init logs if they exist
+	out, err = vm.SSHCombinedOutput(t, ctx, "cat /var/log/cloud-init.log 2>/dev/null || echo 'no cloud-init log file'")
+	require.NoError(t, err, "should check cloud-init log content")
+	slog.InfoContext(ctx, "cloud-init log content", "output", string(out))
+
+	// Check installed packages
+	out, err = vm.SSHCombinedOutput(t, ctx, "apk list --installed | grep -E 'sudo|doas' || echo 'packages not found'")
+	require.NoError(t, err, "should check installed packages")
+	slog.InfoContext(ctx, "sudo/doas packages", "output", string(out))
+
+	// Try to install sudo directly
+	out, err = vm.SSHCombinedOutput(t, ctx, "apk add --no-cache sudo 2>&1 || echo 'failed to install sudo'")
+	require.NoError(t, err, "should attempt to install sudo")
+	slog.InfoContext(ctx, "sudo installation attempt", "output", string(out))
+
+	// Check if you're root and can just use direct commands
+	out, err = vm.SSHCombinedOutput(t, ctx, "id")
+	require.NoError(t, err, "should get user info")
+	slog.InfoContext(ctx, "user identity", "output", string(out))
+
+	// Check if acpid is running (needed for graceful shutdown)
+	out, err = vm.SSHCombinedOutput(t, ctx, "ps aux | grep acpid || echo 'acpid not running'")
+	require.NoError(t, err, "should check acpid status")
+	slog.InfoContext(ctx, "acpid status", "output", string(out))
+
+	// Check if cloud-init data is being passed correctly
+	out, err = vm.SSHCombinedOutput(t, ctx, "blkid | grep -i cidata || echo 'no cloud-init data source'")
+	require.NoError(t, err, "should check for cloud-init data source")
+	slog.InfoContext(ctx, "cloud-init data source", "output", string(out))
 }
 
 func TestSSHAccess(t *testing.T) {
@@ -65,12 +120,14 @@ func TestSSHAccess(t *testing.T) {
 	ctx := t.Context()
 	ctx = setupSlog(t, ctx)
 
-	providers := []OsProvider{
-		NewFedoraProvider(),
-		NewPuipuiProvider(),
+	providers := map[string]OsProvider{
+		"fedora": NewFedoraProvider(),
+		"puipui": NewPuipuiProvider(),
+		"alpine": NewAlpineProvider(),
 	}
-	for _, provider := range providers {
-		t.Run(provider.Name(), func(t *testing.T) {
+
+	for name, provider := range providers {
+		t.Run(name, func(t *testing.T) {
 			slog.InfoContext(ctx, "fetching os image")
 			vm := FullSetupOS(t, provider)
 			defer vm.Close(t, ctx)

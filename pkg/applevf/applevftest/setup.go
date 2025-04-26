@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/cavaliergopher/grab/v3"
+	"github.com/lima-vm/go-qcow2reader"
+	"github.com/lima-vm/go-qcow2reader/convert"
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 )
@@ -23,6 +25,11 @@ func ShortTestTempDir(t *testing.T) string {
 	testTmpDir := t.TempDir()
 	dir := filepath.Join(tmpdir, fmt.Sprintf("t%x", hash[:4]), filepath.Base(testTmpDir))
 	slog.InfoContext(t.Context(), "creating short test temp dir", "dir", dir)
+	// clean the dir
+	if _, err := os.Stat(dir); err == nil {
+		os.RemoveAll(dir)
+	}
+
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		t.Fatalf("creating temp dir: %s", err)
@@ -33,8 +40,6 @@ func ShortTestTempDir(t *testing.T) string {
 	RegisterRedactedLogValue(t, dir, "[short-tmp-dir]")
 	return dir
 }
-
-const MagicDecompressedFileName = "base"
 
 func FullSetupOS(t *testing.T, prov OsProvider) *testVM {
 	tmpDir := ShortTestTempDir(t)
@@ -71,6 +76,25 @@ func SetupOS(t *testing.T, prov OsProvider, tmpDir string) error {
 		}
 	}
 
+	// if strings.HasSuffix(url, ".qcow2") {
+	// 	slog.InfoContext(ctx, "converting qcow2 to raw", "cacheFile", cacheFile)
+	// 	updatedCacheFile := strings.TrimSuffix(cacheFile, ".qcow2") + ".raw"
+	// 	outFile, err := os.Create(updatedCacheFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("creating file: %w", err)
+	// 	}
+	// 	defer outFile.Close()
+	// 	qcow2File, err := os.Open(cacheFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("opening file: %w", err)
+	// 	}
+	// 	defer qcow2File.Close()
+	// 	err = convertQcow2ToRaw(ctx, qcow2File, outFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("converting qcow2 to raw: %w", err)
+	// 	}
+	// 	cacheFile = updatedCacheFile
+	// }
 	if _, err := os.Stat(extractedCachedZip); err != nil {
 
 		err = extractIntoDir(ctx, cacheFile, extractedTmpDir)
@@ -295,4 +319,42 @@ func renameExtensionOfExtractedFile(ctx context.Context, afmt archives.Format, f
 	}
 
 	return out
+}
+
+func convertQcow2ToRaw(ctx context.Context, qcow2File io.ReaderAt, rawFile io.WriterAt) error {
+	img, err := qcow2reader.Open(qcow2File)
+	if err != nil {
+		return errors.Errorf("opening qcow2 file: %w", err)
+	}
+	err = convert.Convert(rawFile, img, convert.Options{})
+	if err != nil {
+		return errors.Errorf("converting qcow2 to raw: %w", err)
+	}
+
+	return nil
+}
+
+func convertFileToRaw(ctx context.Context, in string) (string, error) {
+	if !strings.HasSuffix(in, ".qcow2") {
+		return "", errors.Errorf("file is not a qcow2 file: %s", in)
+	}
+
+	updatedCacheFile := strings.TrimSuffix(in, ".qcow2") + ".raw"
+	outFile, err := os.Create(updatedCacheFile)
+	if err != nil {
+		return "", errors.Errorf("creating file: %w", err)
+	}
+	defer outFile.Close()
+	qcow2File, err := os.Open(in)
+	if err != nil {
+		return "", errors.Errorf("opening file: %w", err)
+	}
+	defer qcow2File.Close()
+
+	err = convertQcow2ToRaw(ctx, qcow2File, outFile)
+	if err != nil {
+		return "", errors.Errorf("converting qcow2 to raw: %w", err)
+	}
+
+	return updatedCacheFile, nil
 }
