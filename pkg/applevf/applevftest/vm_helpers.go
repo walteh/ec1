@@ -331,7 +331,7 @@ func (vm *testVM) Start(t *testing.T, ctx context.Context) {
 
 func (vm *testVM) Stop(t *testing.T, ctx context.Context) {
 	t.Helper()
-	go vm.SSHRunFatal(t, ctx, vm.provider.ShutdownCommand())
+	go vm.SSHRun(t, ctx, vm.provider.ShutdownCommand())
 	vm.vfkitCmd.Wait(t, ctx)
 }
 

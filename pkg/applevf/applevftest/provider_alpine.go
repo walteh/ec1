@@ -80,6 +80,7 @@ ssh_pwauth: true
 chpasswd: { expire: false }
 packages:
   - doas
+  - sudo
 write_files:
   - path: /etc/doas.conf
     content: |
