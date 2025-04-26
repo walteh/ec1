@@ -29,11 +29,15 @@ import (
 )
 
 const (
-	gatewayIP   = "192.168.127.1"
-	sshHostPort = "192.168.127.2:22"
-	hostIP      = "192.168.127.254"
-	host        = "host"
-	gateway     = "gateway"
+	VIRTUAL_SUBNET_CIDR = "192.168.127.0/24"
+	VIRTUAL_GATEWAY_IP  = "192.168.127.1"
+	VIRTUAL_GUEST_IP    = "192.168.127.2"
+	VIRUTAL_HOST_IP     = "192.168.127.254"
+	VIRTUAL_GUEST_MAC   = "5a:94:ef:e4:0c:ee"
+	VIRTUAL_GATEWAY_MAC = "5a:94:ef:e4:0c:dd"
+	LOCAL_HOST_IP       = "127.0.0.1"
+	host                = "host"
+	gateway             = "gateway"
 )
 
 type Forward struct {
@@ -72,8 +76,8 @@ type GvproxyConfig struct {
 	MTU      int // set the MTU, default is 1500
 	VMSocket VMSocket
 
-	GuestSSHPort int    // port to access the guest virtual machine, must be between 1024 and 65535
-	VMHostPort   string // host port to access the guest virtual machine, must be between 1024 and 65535
+	// GuestSSHPort int    // port to access the guest virtual machine, must be between 1024 and 65535
+	VMHostPort string // host port to access the guest virtual machine, must be between 1024 and 65535
 	// guestSSHPortOnHost string // host port to access the guest virtual machine
 	// pidFile    string // path to pid file
 	// workingDir string // working directory
@@ -92,9 +96,9 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
 	ctx = slogctx.WithGroup(ctx, "gvproxy")
 
-	if cfg.GuestSSHPort == 0 {
-		cfg.GuestSSHPort = 22
-	}
+	// if cfg.GuestSSHPort == 0 {
+	// 	cfg.GuestSSHPort = 22
+	// }
 
 	// log.Info(version.String())
 	ctx, cancel := context.WithCancel(ctx)
@@ -145,23 +149,24 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		Debug:             cfg.EnableDebug,
 		CaptureFile:       captureFile(cfg),
 		MTU:               cfg.MTU,
-		Subnet:            "192.168.127.0/24",
-		GatewayIP:         gatewayIP,
-		GatewayMacAddress: "5a:94:ef:e4:0c:dd",
+		Subnet:            VIRTUAL_SUBNET_CIDR,
+		GatewayIP:         VIRTUAL_GATEWAY_IP,
+		GatewayMacAddress: VIRTUAL_GATEWAY_MAC,
 		DHCPStaticLeases: map[string]string{
-			"192.168.127.2": "5a:94:ef:e4:0c:ee",
+			VIRTUAL_GUEST_IP: VIRTUAL_GUEST_MAC,
 		},
 		DNS: []types.Zone{
 			{
 				Name: "containers.internal.",
 				Records: []types.Record{
+
 					{
 						Name: gateway,
-						IP:   net.ParseIP(gatewayIP),
+						IP:   net.ParseIP(VIRTUAL_GATEWAY_IP),
 					},
 					{
 						Name: host,
-						IP:   net.ParseIP(hostIP),
+						IP:   net.ParseIP(VIRUTAL_HOST_IP),
 					},
 				},
 			},
@@ -170,11 +175,11 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 				Records: []types.Record{
 					{
 						Name: gateway,
-						IP:   net.ParseIP(gatewayIP),
+						IP:   net.ParseIP(VIRTUAL_GATEWAY_IP),
 					},
 					{
 						Name: host,
-						IP:   net.ParseIP(hostIP),
+						IP:   net.ParseIP(VIRUTAL_HOST_IP),
 					},
 				},
 			},
@@ -182,11 +187,11 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		DNSSearchDomains: dnss,
 		Forwards:         virtualPortMap,
 		NAT: map[string]string{
-			hostIP: "127.0.0.1",
+			VIRUTAL_HOST_IP: LOCAL_HOST_IP,
 		},
-		GatewayVirtualIPs: []string{hostIP},
+		GatewayVirtualIPs: []string{VIRUTAL_HOST_IP},
 		VpnKitUUIDMacAddresses: map[string]string{
-			"c3d68012-0208-11ea-9fd7-f2189899ab08": "5a:94:ef:e4:0c:ee",
+			"c3d68012-0208-11ea-9fd7-f2189899ab08": VIRTUAL_GUEST_MAC,
 		},
 		Protocol: cfg.VMSocket.Protocol(),
 	}
@@ -220,10 +225,6 @@ func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgro
 
 	for guestPortTarget, matcher := range forwards {
 
-		// if guestPortTarget < 1024 || guestPortTarget > 65535 {
-		// 	return nil, nil, errors.New("ssh-port value must be between 1024 and 65535")
-		// }
-
 		listener := m.Match(matcher)
 
 		hostProxyPort, err := port.ReservePort(ctx)
@@ -231,25 +232,28 @@ func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgro
 			return nil, nil, errors.Errorf("reserving ssh port: %w", err)
 		}
 
+		hostProxyPortStr := fmt.Sprintf("%s:%d", LOCAL_HOST_IP, hostProxyPort)
+		guestPortTargetStr := fmt.Sprintf("%s:%d", VIRTUAL_GUEST_IP, guestPortTarget)
+
 		groupErrs.Go(func() error {
-			return ForwardListenerToPort(ctx, listener, fmt.Sprintf("127.0.0.1:%d", hostProxyPort), groupErrs)
+			return ForwardListenerToPort(ctx, listener, hostProxyPortStr, groupErrs)
 		})
 
-		virtualPortMap[fmt.Sprintf("127.0.0.1:%d", hostProxyPort)] = fmt.Sprintf("192.168.127.2:%d", guestPortTarget)
+		virtualPortMap[hostProxyPortStr] = guestPortTargetStr
 
 	}
 
 	return m, virtualPortMap, nil
 }
 
-func getSSHForwarders(guestSSHPort int, guestSSHPortOnHost string) (map[string]string, error) {
-	if guestSSHPort < 1024 || guestSSHPort > 65535 {
-		return nil, errors.New("ssh-port value must be between 1024 and 65535")
-	}
-	return map[string]string{
-		fmt.Sprintf("127.0.0.1:%d", guestSSHPort): sshHostPort,
-	}, nil
-}
+// func getSSHForwarders(guestSSHPort int, guestSSHPortOnHost string) (map[string]string, error) {
+// 	if guestSSHPort < 1024 || guestSSHPort > 65535 {
+// 		return nil, errors.New("ssh-port value must be between 1024 and 65535")
+// 	}
+// 	return map[string]string{
+// 		fmt.Sprintf("127.0.0.1:%d", guestSSHPort): VIRTUAL_GUEST_IP,
+// 	}, nil
+// }
 
 type arrayFlags []string
 
@@ -294,7 +298,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 	}
 
 	// setup the gateway cmuxl
-	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", gatewayIP))
+	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", VIRTUAL_GATEWAY_IP))
 	if err != nil {
 		return err
 	}
@@ -364,7 +368,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		dest := &url.URL{
 			Scheme: "ssh",
 			User:   url.User(socket.User),
-			Host:   "192.168.127.2:22",
+			Host:   fmt.Sprintf("%s:22", VIRTUAL_GUEST_IP),
 			Path:   socket.URIPath,
 		}
 		g.Go(func() error {
