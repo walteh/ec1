@@ -2,7 +2,6 @@ package gvproxy
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -11,7 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func ForwardListenerToPort(ctx context.Context, listener net.Listener, port uint16, errgroup *errgroup.Group) error {
+func ForwardListenerToPort(ctx context.Context, listener net.Listener, port string, errgroup *errgroup.Group) error {
 	for {
 		// Accept connection with timeout
 		clientConn, err := listener.Accept()
@@ -25,9 +24,9 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port uint
 		// Handle each client in a separate goroutine
 		errgroup.Go(func() error {
 			defer clientConn.Close()
-			slog.InfoContext(ctx, "forwarding connection", "client", clientConn.RemoteAddr(), "backend", fmt.Sprintf("127.0.0.1:%d", port))
+			slog.InfoContext(ctx, "forwarding connection", "client", clientConn.RemoteAddr(), "backend", port)
 			// Connect to the backend FOR THIS CLIENT
-			backend, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			backend, err := net.Dial("tcp", port)
 			if err != nil {
 				return errors.Errorf("failed to connect to backend: %w", err)
 			}

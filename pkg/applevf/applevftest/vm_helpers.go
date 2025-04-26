@@ -256,8 +256,8 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 	socketPath := "unixgram://" + filepath.Join(t.TempDir(), "vf.sock")
 
 	// // create the socket
-	// os.Remove(socketPath)
-	// os.Create(socketPath)
+	os.Remove(socketPath)
+	os.Create(socketPath)
 
 	gvproxySocket := gvproxy.NewVFKitVMSocket(socketPath)
 

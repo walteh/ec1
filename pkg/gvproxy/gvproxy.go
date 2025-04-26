@@ -93,7 +93,7 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 	ctx = slogctx.WithGroup(ctx, "gvproxy")
 
 	if cfg.GuestSSHPort == 0 {
-		cfg.GuestSSHPort = 2222
+		cfg.GuestSSHPort = 22
 	}
 
 	// log.Info(version.String())
@@ -132,8 +132,8 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		return errors.Errorf("searching domains: %w", err)
 	}
 
-	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[uint16]cmux.Matcher{
-		uint16(cfg.GuestSSHPort): cmux.PrefixMatcher("SSH-"),
+	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{
+		22: cmux.PrefixMatcher("SSH-"),
 	})
 	if err != nil {
 		return errors.Errorf("building forwards: %w", err)
@@ -208,7 +208,7 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 	return nil
 }
 
-func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgroup.Group, forwards map[uint16]cmux.Matcher) (cmux.CMux, map[string]string, error) {
+func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgroup.Group, forwards map[int]cmux.Matcher) (cmux.CMux, map[string]string, error) {
 	l, err := transport.Listen(globalHostPort)
 	if err != nil {
 		return nil, nil, errors.Errorf("listen: %w", err)
@@ -220,9 +220,9 @@ func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgro
 
 	for guestPortTarget, matcher := range forwards {
 
-		if guestPortTarget < 1024 || guestPortTarget > 65535 {
-			return nil, nil, errors.New("ssh-port value must be between 1024 and 65535")
-		}
+		// if guestPortTarget < 1024 || guestPortTarget > 65535 {
+		// 	return nil, nil, errors.New("ssh-port value must be between 1024 and 65535")
+		// }
 
 		listener := m.Match(matcher)
 
@@ -232,10 +232,10 @@ func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgro
 		}
 
 		groupErrs.Go(func() error {
-			return ForwardListenerToPort(ctx, listener, hostProxyPort, groupErrs)
+			return ForwardListenerToPort(ctx, listener, fmt.Sprintf("127.0.0.1:%d", hostProxyPort), groupErrs)
 		})
 
-		virtualPortMap[fmt.Sprintf("127.0.0.1:%d", guestPortTarget)] = fmt.Sprintf("127.0.0.1:%d", hostProxyPort)
+		virtualPortMap[fmt.Sprintf("127.0.0.1:%d", hostProxyPort)] = fmt.Sprintf("192.168.127.2:%d", guestPortTarget)
 
 	}
 
@@ -364,7 +364,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		dest := &url.URL{
 			Scheme: "ssh",
 			User:   url.User(socket.User),
-			Host:   virtualPortMap[fmt.Sprintf("127.0.0.1:%d", cfg.GuestSSHPort)],
+			Host:   "192.168.127.2:22",
 			Path:   socket.URIPath,
 		}
 		g.Go(func() error {
