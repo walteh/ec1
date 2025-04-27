@@ -16,9 +16,9 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
-	"github.com/crc-org/vfkit/pkg/config"
 	"github.com/walteh/ec1/pkg/applevf"
 	"github.com/walteh/ec1/pkg/gvproxy"
+	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 

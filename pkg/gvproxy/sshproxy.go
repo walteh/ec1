@@ -30,6 +30,7 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port stri
 			if err != nil {
 				return errors.Errorf("failed to connect to backend: %w", err)
 			}
+
 			defer backend.Close()
 
 			slog.InfoContext(ctx, "connected to backend", "backend", backend.RemoteAddr())

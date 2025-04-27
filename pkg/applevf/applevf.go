@@ -37,11 +37,12 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
-	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/crc-org/vfkit/pkg/rest"
-	restvf "github.com/crc-org/vfkit/pkg/rest/vf"
-	"github.com/crc-org/vfkit/pkg/vf"
 	"github.com/kdomanski/iso9660"
+	"github.com/walteh/ec1/pkg/hypervisors/vf"
+	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/hypervisors/vf/rest"
+	restvf "github.com/walteh/ec1/pkg/hypervisors/vf/rest/vf"
+
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/crc-org/vfkit/pkg/util"

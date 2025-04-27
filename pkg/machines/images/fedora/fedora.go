@@ -1,4 +1,4 @@
-package applevftest
+package fedora
 
 import (
 	"context"
@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/walteh/ec1/pkg/applevf"
 	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines"
+	"github.com/walteh/ec1/pkg/machines/host"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
@@ -16,7 +17,10 @@ import (
 const fedoraVersion = "42"
 const fedoraRelease = "1.1"
 
-var _ OsProvider = &FedoraProvider{}
+const fedoraCPUs = 2
+const fedoraMemoryMiB = 2048
+
+var _ machines.OsProvider = &FedoraProvider{}
 
 type FedoraProvider struct {
 	diskImage            string
@@ -38,18 +42,18 @@ func (prov *FedoraProvider) Version() string {
 }
 
 func (prov *FedoraProvider) URL() string {
-	arch := kernelArch()
-	// GCE doesn't work
-	// https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
+	arch := host.CurrentKernelArch()
+	// GCE doesn't work https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
 	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
 	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
 func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
-	diskImage, err := findFirstFileWithExtension(cacheDir, ".raw")
+	diskImage, err := host.FindFirstFileWithExtension(cacheDir, ".raw")
 	if err != nil {
 		return errors.Errorf("could not find disk image: %w", err)
 	}
+
 	prov.diskImage = diskImage
 	prov.efiVariableStorePath = filepath.Join(cacheDir, "efi-variable-store")
 	prov.createVariableStore = true
@@ -60,30 +64,10 @@ func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) err
 func (fedora *FedoraProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
 	bootloader := config.NewEFIBootloader(fedora.efiVariableStorePath, fedora.createVariableStore)
 
-	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
-
-	cloudInitFiles := applevf.CloudInitFiles{
-		UserData: `#cloud-config
-users:
-  - name: vfkituser
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    groups: users
-    plain_text_passwd: vfkittest
-    lock_passwd: false
-ssh_pwauth: true
-chpasswd: { expire: false }`,
-		MetaData: "",
-	}
-
-	cloudInitISO, err := cloudInitFiles.GenerateISO(ctx)
-	if err != nil {
-		return nil, err
-	}
+	vm := config.NewVirtualMachine(fedoraCPUs, fedoraMemoryMiB, bootloader)
 
 	virtioBlkDevices := []string{
 		fedora.diskImage,
-		cloudInitISO,
 	}
 
 	for _, diskImage := range virtioBlkDevices {

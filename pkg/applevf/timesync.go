@@ -11,10 +11,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/crc-org/vfkit/pkg/vf"
 	sleepnotifier "github.com/prashantgupta24/mac-sleep-notifier/notifier"
 	log "github.com/sirupsen/logrus"
+	"github.com/walteh/ec1/pkg/hypervisors/vf"
+	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 )
 
 func syncGuestTime(ctx context.Context, conn net.Conn) error {

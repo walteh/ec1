@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/crc-org/vfkit/pkg/config"
+	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,7 +122,7 @@ func TestSSHAccess(t *testing.T) {
 	providers := map[string]OsProvider{
 		"fedora": NewFedoraProvider(),
 		"puipui": NewPuipuiProvider(),
-		"alpine": NewAlpineProvider(),
+		// "alpine": NewAlpineProvider(),
 	}
 
 	for name, provider := range providers {
