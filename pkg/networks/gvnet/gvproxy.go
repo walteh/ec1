@@ -1,4 +1,4 @@
-package gvproxy
+package gvnet
 
 import (
 	"bufio"
@@ -89,12 +89,12 @@ type GvproxyConfig struct {
 }
 
 func GvproxyVersion() string {
-	return types.NewVersion("gvproxy").String()
+	return types.NewVersion("gvnet").String()
 }
 
 func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
-	ctx = slogctx.WithGroup(ctx, "gvproxy")
+	ctx = slogctx.WithGroup(ctx, "gvnet")
 
 	// if cfg.GuestSSHPort == 0 {
 	// 	cfg.GuestSSHPort = 22
@@ -208,7 +208,7 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 	})
 
 	if err := groupErrs.Wait(); err != nil {
-		return errors.Errorf("gvproxy exiting: %v", err)
+		return errors.Errorf("gvnet exiting: %v", err)
 	}
 	return nil
 }

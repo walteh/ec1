@@ -132,7 +132,7 @@ func TestSSHAccess(t *testing.T) {
 			defer vm.Close(t, ctx)
 			require.NotNil(t, vm)
 			slog.InfoContext(ctx, "starting VM")
-			testSSHAccess(t, ctx, vm, "gvproxy")
+			testSSHAccess(t, ctx, vm, "gvnet")
 		})
 	}
 }

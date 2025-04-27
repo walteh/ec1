@@ -1,4 +1,4 @@
-package gvproxy
+package gvnet
 
 import (
 	"context"

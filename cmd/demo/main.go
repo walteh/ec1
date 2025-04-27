@@ -55,7 +55,7 @@ import (
 
 // 	// If debug is set, lets seed the log file with some basic information
 // 	// about the environment and how it was called
-// 	log.Debugf("gvproxy version: %q", version.String())
+// 	log.Debugf("gvnet version: %q", version.String())
 // 	log.Debugf("os: %q arch: %q", runtime.GOOS, runtime.GOARCH)
 // 	log.Debugf("command line: %q", os.Args)
 // }
@@ -153,7 +153,7 @@ func main() {
 
 	// Wait for all of the go funcs to finish up
 	if err := groupErrs.Wait(); err != nil {
-		log.Errorf("gvproxy exiting: %v", err)
+		log.Errorf("gvnet exiting: %v", err)
 		// exitCode = 1
 		os.Exit(1)
 	}

@@ -6,54 +6,49 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/walteh/ec1/pkg/applevf"
+	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
 	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 )
 
-const alpineVersion = "3.21"
-const alpineRelease = "2"
+const fedoraVersion = "42"
+const fedoraRelease = "1.1"
 
-var _ OsProvider = &AlpineProvider{}
+var _ OsProvider = &FedoraProvider{}
 
-type AlpineProvider struct {
+type FedoraProvider struct {
 	diskImage            string
 	efiVariableStorePath string
 	createVariableStore  bool
 	socketPath           string
 }
 
-func NewAlpineProvider() *AlpineProvider {
-	return &AlpineProvider{}
+func NewFedoraProvider() *FedoraProvider {
+	return &FedoraProvider{}
 }
 
-func (prov *AlpineProvider) Name() string {
-	return "alpine"
+func (prov *FedoraProvider) Name() string {
+	return "fedora"
 }
 
-func (prov *AlpineProvider) Version() string {
-	return semver.Canonical(fmt.Sprintf("v%s.%s", alpineVersion, alpineRelease))
+func (prov *FedoraProvider) Version() string {
+	return semver.Canonical(fmt.Sprintf("v%s.%s", fedoraVersion, fedoraRelease))
 }
 
-func (prov *AlpineProvider) URL() string {
+func (prov *FedoraProvider) URL() string {
 	arch := kernelArch()
 	// GCE doesn't work
-	// https://download.alpineproject.org/pub/alpine/linux/releases/42/Cloud/aarch64/images/Alpine-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
-	return fmt.Sprintf("https://dl-cdn.alpinelinux.org/alpine/v%[1]s/releases/cloud/nocloud_alpine-%[1]s.%[2]s-%[3]s-uefi-cloudinit-r0.qcow2", alpineVersion, alpineRelease, arch)
+	// https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
+	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
+	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
-func (prov *AlpineProvider) Initialize(ctx context.Context, cacheDir string) error {
-
-	diskImage, err := findFirstFileWithExtension(cacheDir, ".qcow2")
+func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
+	diskImage, err := findFirstFileWithExtension(cacheDir, ".raw")
 	if err != nil {
 		return errors.Errorf("could not find disk image: %w", err)
-	}
-
-	diskImage, err = convertFileToRaw(ctx, diskImage)
-	if err != nil {
-		return errors.Errorf("could not convert disk image: %w", err)
 	}
 	prov.diskImage = diskImage
 	prov.efiVariableStorePath = filepath.Join(cacheDir, "efi-variable-store")
@@ -62,8 +57,8 @@ func (prov *AlpineProvider) Initialize(ctx context.Context, cacheDir string) err
 	return nil
 }
 
-func (alpine *AlpineProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
-	bootloader := config.NewEFIBootloader(alpine.efiVariableStorePath, alpine.createVariableStore)
+func (fedora *FedoraProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
+	bootloader := config.NewEFIBootloader(fedora.efiVariableStorePath, fedora.createVariableStore)
 
 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
 
@@ -72,22 +67,12 @@ func (alpine *AlpineProvider) ToVirtualMachine(ctx context.Context) (*config.Vir
 users:
   - name: vfkituser
     sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/sh
-    groups: users, wheel
+    shell: /bin/bash
+    groups: users
     plain_text_passwd: vfkittest
     lock_passwd: false
 ssh_pwauth: true
-chpasswd: { expire: false }
-packages:
-  - doas
-  - sudo
-write_files:
-  - path: /etc/doas.conf
-    content: |
-      permit nopass :wheel
-    permissions: '0400'
-    owner: root:root
-`,
+chpasswd: { expire: false }`,
 		MetaData: "",
 	}
 
@@ -97,7 +82,7 @@ write_files:
 	}
 
 	virtioBlkDevices := []string{
-		alpine.diskImage,
+		fedora.diskImage,
 		cloudInitISO,
 	}
 
@@ -116,11 +101,11 @@ write_files:
 	return vm, nil
 }
 
-func (alpine *AlpineProvider) ShutdownCommand() string {
-	return "doas poweroff"
+func (fedora *FedoraProvider) ShutdownCommand() string {
+	return "sudo shutdown -h now"
 }
 
-func (alpine *AlpineProvider) SSHConfig() *ssh.ClientConfig {
+func (fedora *FedoraProvider) SSHConfig() *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User: "vfkituser",
 		Auth: []ssh.AuthMethod{ssh.Password("vfkittest")},

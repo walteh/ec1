@@ -16,9 +16,9 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
-	"github.com/walteh/ec1/pkg/applevf"
-	"github.com/walteh/ec1/pkg/gvproxy"
+	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
 	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 
@@ -186,7 +186,7 @@ type testVM struct {
 
 	sshNetwork     string
 	sshAddress     string // mac for tcp, vsock for vsock, localhost:port for unixgram
-	gvproxyPort    uint
+	gvnetPort      uint
 	sshClient      *ssh.Client
 	restSocketPath string
 
@@ -215,7 +215,7 @@ func NewTestVM(t *testing.T, provider OsProvider, tmpDir string) *testVM { //nol
 
 	myport, err := port.ReservePort(t.Context())
 	require.NoError(t, err)
-	vm.gvproxyPort = uint(myport)
+	vm.gvnetPort = uint(myport)
 
 	return vm
 }
@@ -268,7 +268,7 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		vm.sshAddress = filepath.Join(vm.tmpDir, fmt.Sprintf("vsock-%d.sock", GUEST_VSOCK_PORT))
 		dev, err = config.VirtioVsockNew(uint(GUEST_VSOCK_PORT), vm.sshAddress, false)
 		require.NoError(t, err)
-	case "gvproxy":
+	case "gvnet":
 
 		socketPath := "unixgram://" + filepath.Join(vm.tmpDir, "vf.sock")
 
@@ -276,19 +276,19 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		os.Remove(socketPath)
 		os.Create(socketPath)
 
-		gvproxySocket := gvproxy.NewVFKitVMSocket(socketPath)
+		gvnetSocket := gvnet.NewVFKitVMSocket(socketPath)
 
-		dev, err = gvproxySocket.Device(ctx)
+		dev, err = gvnetSocket.Device(ctx)
 		require.NoError(t, err)
 
 		readyChan := make(chan struct{})
 
-		vm.sshAddress = fmt.Sprintf("localhost:%d", vm.gvproxyPort)
-		vm.sshNetwork = "gvproxy"
+		vm.sshAddress = fmt.Sprintf("localhost:%d", vm.gvnetPort)
+		vm.sshNetwork = "gvnet"
 
 		go func() {
-			err := gvproxy.Proxy(ctx, &gvproxy.GvproxyConfig{
-				VMSocket: gvproxySocket,
+			err := gvnet.Proxy(ctx, &gvnet.GvproxyConfig{
+				VMSocket: gvnetSocket,
 				// GuestSSHPort:       VSOCK_PORT,
 				VMHostPort:         fmt.Sprintf("tcp://%s", vm.sshAddress),
 				EnableDebug:        false,
@@ -297,7 +297,7 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 				ReadyChan:          readyChan,
 			})
 			if err != nil {
-				slog.ErrorContext(ctx, "gvproxy failed", "error", err)
+				slog.ErrorContext(ctx, "gvnet failed", "error", err)
 			}
 		}()
 
@@ -306,7 +306,7 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		select {
 		case <-readyChan:
 		case <-time.After(10 * time.Second):
-			t.Fatalf("timeout waiting for gvproxy to be ready ")
+			t.Fatalf("timeout waiting for gvnet to be ready ")
 		}
 
 	default:
@@ -357,7 +357,7 @@ func (vm *testVM) WaitForSSH(t *testing.T, ctx context.Context) {
 	case "vsock":
 		sshClient, err = vm.retrySSHDial(t, ctx, "unix", vm.sshAddress)
 		require.NoError(t, err)
-	case "gvproxy":
+	case "gvnet":
 		sshClient, err = vm.retrySSHDial(t, ctx, "tcp", vm.sshAddress)
 		require.NoError(t, err)
 	default:
