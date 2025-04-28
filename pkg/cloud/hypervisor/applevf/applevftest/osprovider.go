@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/crc-org/vfkit/pkg/config"
 
 	"golang.org/x/crypto/ssh"
 )

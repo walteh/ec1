@@ -1,4 +1,4 @@
-package vf
+package hypervisors
 
 import (
 	"context"
@@ -11,32 +11,33 @@ import (
 	"inet.af/tcpproxy"
 )
 
-func ExposeVsock(vm *VirtualMachine, port uint32, vsockPath string, listen bool) (io.Closer, error) {
+func ExposeVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string, listen bool) (io.Closer, error) {
 	if listen {
-		return listenVsock(vm, port, vsockPath)
+		return listenVsock(ctx, vm, port, vsockPath)
 	}
-	return connectVsock(vm, port, vsockPath)
+	return connectVsock(ctx, vm, port, vsockPath)
 }
 
-func ConnectVsockSync(vm *VirtualMachine, port uint32) (net.Conn, error) {
-	socketDevices := vm.SocketDevices()
-	if len(socketDevices) != 1 {
-		return nil, fmt.Errorf("VM has too many/not enough virtio-vsock devices (%d)", len(socketDevices))
-	}
-	vsockDevice := socketDevices[0]
+// func ConnectVsockSync(ctx context.Context, vm VirtualMachine, port uint32) (net.Conn, error) {
 
-	conn, err := vsockDevice.Connect(port)
-	if err != nil {
-		// we can't `return vsockDevice.Connect()` directly, see https://go.dev/doc/faq#nil_error
-		// checking the return value for nil won't work as expected if we don't do this
-		return nil, err
-	}
-	return conn, nil
-}
+// 	// socketDevices := vm.SocketDevices()
+// 	// if len(socketDevices) != 1 {
+// 	// 	return nil, fmt.Errorf("VM has too many/not enough virtio-vsock devices (%d)", len(socketDevices))
+// 	// }
+// 	// vsockDevice := socketDevices[0]
+
+// 	conn, err := vm.VSockConnect(ctx, port)
+// 	if err != nil {
+// 		// we can't `return vsockDevice.Connect()` directly, see https://go.dev/doc/faq#nil_error
+// 		// checking the return value for nil won't work as expected if we don't do this
+// 		return nil, err
+// 	}
+// 	return conn, nil
+// }
 
 // connectVsock proxies connections from a host unix socket to a vsock port
 // This allows the host to initiate connections to the guest over vsock
-func connectVsock(vm *VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
+func connectVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
 	var proxy tcpproxy.Proxy
 	// listen for connections on the host unix socket
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
@@ -63,7 +64,7 @@ func connectVsock(vm *VirtualMachine, port uint32, vsockPath string) (io.Closer,
 			}
 			switch parsed.Scheme {
 			case "vsock":
-				return ConnectVsockSync(vm, port)
+				return vm.VSockConnect(ctx, port)
 			default:
 				return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
 			}
@@ -74,7 +75,7 @@ func connectVsock(vm *VirtualMachine, port uint32, vsockPath string) (io.Closer,
 
 // listenVsock proxies connections from a vsock port to a host unix socket.
 // This allows the guest to initiate connections to the host over vsock
-func listenVsock(vm *VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
+func listenVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
 	var proxy tcpproxy.Proxy
 	// listen for connections on the vsock port
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
@@ -88,11 +89,7 @@ func listenVsock(vm *VirtualMachine, port uint32, vsockPath string) (io.Closer, 
 			if err != nil {
 				return nil, err
 			}
-			socketDevices := vm.SocketDevices()
-			if len(socketDevices) != 1 {
-				return nil, fmt.Errorf("VM has too many/not enough virtio-vsock devices (%d)", len(socketDevices))
-			}
-			return socketDevices[0].Listen(uint32(port)) //#nosec G115 -- strconv.ParseUint(_, _, 32) guarantees no overflow
+			return vm.VSockListen(ctx, uint32(port)) //#nosec G115 -- strconv.ParseUint(_, _, 32) guarantees no overflow
 		default:
 			return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
 		}

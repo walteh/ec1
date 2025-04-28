@@ -15,33 +15,29 @@ import (
 	"time"
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
-	"github.com/walteh/ec1/pkg/machines/boot"
+	"github.com/walteh/ec1/pkg/hypervisors"
+	"github.com/walteh/ec1/pkg/machines"
+	"github.com/walteh/ec1/pkg/machines/virtio"
 	"gitlab.com/tozd/go/errors"
 )
 
 const (
-	appleVFIgnitionPort = 1024
+	APPLE_HF_STATIC_IGNITION_PORT = 1024
 )
 
-var _ boot.BootConfigProvider = &DarwinIgnitionBootConfigProvider{}
+var _ hypervisors.BootProvisioner = &DarwinIgnitionBootConfigProvider{}
 
 type IgnitionBootConfigProvider = DarwinIgnitionBootConfigProvider
 
-func NewIgnitionBootConfigProvider(cfg *types_exp.Config, tmpDir string) *IgnitionBootConfigProvider {
-	return &DarwinIgnitionBootConfigProvider{cfg: cfg, tmpDir: tmpDir}
-}
-
 type DarwinIgnitionBootConfigProvider struct {
-	cfg    *types_exp.Config
-	tmpDir string
+	cfg *types_exp.Config
 }
 
 func (me *DarwinIgnitionBootConfigProvider) ignitionSocketPath() string {
-	return filepath.Join(me.tmpDir, "ignition.sock")
+	return filepath.Join(machines.INJECTED_VM_BOOT_TMP_DIR, "ignition.sock")
 }
 
-func (me *DarwinIgnitionBootConfigProvider) Run(ctx context.Context) error {
+func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, vm hypervisors.VirtualMachine) error {
 	// we could prob just straight encode this, might as well do the validation and marshall before
 	// 	waiting on the server though to avoid any issues with error propagation
 
@@ -92,10 +88,11 @@ func (me *DarwinIgnitionBootConfigProvider) Run(ctx context.Context) error {
 	return srv.Serve(listener)
 }
 
-func (me *DarwinIgnitionBootConfigProvider) Device(ctx context.Context) boot.BootDevice {
-	return boot.BootDevice(config.VirtioVsock{
-		Port:      appleVFIgnitionPort,
+func (me *DarwinIgnitionBootConfigProvider) VirtioDevices(ctx context.Context) ([]virtio.VirtioDevice, error) {
+	sock := &virtio.VirtioVsock{
+		Port:      APPLE_HF_STATIC_IGNITION_PORT,
 		SocketURL: me.ignitionSocketPath(),
 		Listen:    true,
-	})
+	}
+	return []virtio.VirtioDevice{sock}, nil
 }

@@ -9,14 +9,14 @@ import (
 	"syscall"
 
 	"github.com/crc-org/vfkit/pkg/util"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/virtio"
 
 	"github.com/Code-Hex/vz/v3"
 	log "github.com/sirupsen/logrus"
 )
 
 type VirtioNet struct {
-	*config.VirtioNet
+	*virtio.VirtioNet
 	localAddr *net.UnixAddr
 }
 

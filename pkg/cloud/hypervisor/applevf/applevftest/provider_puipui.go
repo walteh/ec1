@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/crc-org/vfkit/pkg/config"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"

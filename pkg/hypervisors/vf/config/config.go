@@ -61,7 +61,7 @@ const (
 // will use vcpus virtual CPUs and it will be allocated memoryMiB mibibytes
 // (1024*1024 bytes) of RAM. bootloader specifies how the virtual machine will
 // be booted (UEFI or with the specified kernel/initrd/commandline)
-func NewVirtualMachine(vcpus uint, memoryMiB uint64, bootloader Bootloader) *VirtualMachine {
+func NewVirtualMachine(vcpus uint, memoryMiB strongunits.MiB, bootloader Bootloader) *VirtualMachine {
 	return &VirtualMachine{
 		Vcpus:      vcpus,
 		Memory:     strongunits.MiB(memoryMiB).ToBytes(),

@@ -52,6 +52,14 @@ func CacheDirPrefix() (string, error) {
 	return filepath.Join(userCacheDir, "ec1", "cache"), nil
 }
 
+func EmphiricalVMCacheDir(ctx context.Context, id string) (string, error) {
+	cacheDir, err := CacheDirPrefix()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheDir, "vm", id), nil
+}
+
 func TempDir(ctx context.Context) string {
 	tmp, err := os.MkdirTemp(filepath.Join(os.TempDir(), "ec1"), "hostfs-*")
 	if err != nil {

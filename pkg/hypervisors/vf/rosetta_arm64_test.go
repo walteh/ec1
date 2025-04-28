@@ -6,7 +6,7 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
 type checkRosettaAvailabilityTest struct {
@@ -85,7 +85,7 @@ func testCheckRosettaAvailability(t *testing.T, test *checkRosettaAvailabilityTe
 		RosettaShare{
 			InstallRosetta:  test.installRosetta,
 			IgnoreIfMissing: test.ignoreIfMissing,
-			DirectorySharingConfig: config.DirectorySharingConfig{
+			DirectorySharingConfig: virtio.DirectorySharingConfig{
 				MountTag: "mount",
 			},
 		}

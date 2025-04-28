@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
 func sourceSocketPath(t *testing.T, sourcePathLen int) (string, func()) {
@@ -40,7 +40,7 @@ func testConnectUnixgram(t *testing.T, sourcePathLen int) error {
 	defer l.Close()
 
 	dev := &VirtioNet{
-		&config.VirtioNet{
+		&virtio.VirtioNet{
 			UnixSocketPath: unixSocketPath,
 		},
 		&net.UnixAddr{},

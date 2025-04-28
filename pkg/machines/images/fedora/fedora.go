@@ -1,15 +1,15 @@
 package fedora
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"path/filepath"
+	"strings"
 
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
-	"github.com/walteh/ec1/pkg/machines"
+	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
+	"github.com/walteh/ec1/pkg/hypervisors"
+	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
-	"gitlab.com/tozd/go/errors"
+	"github.com/walteh/ec1/pkg/machines/provisioner/ignition"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 )
@@ -17,16 +17,17 @@ import (
 const fedoraVersion = "42"
 const fedoraRelease = "1.1"
 
-const fedoraCPUs = 2
-const fedoraMemoryMiB = 2048
+func (prov *FedoraProvider) SupportsEFI() bool {
+	return true
+}
 
-var _ machines.OsProvider = &FedoraProvider{}
+func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
+	return guest.GuestKernelTypeLinux
+}
+
+var _ hypervisors.VMIProvider = &FedoraProvider{}
 
 type FedoraProvider struct {
-	diskImage            string
-	efiVariableStorePath string
-	createVariableStore  bool
-	socketPath           string
 }
 
 func NewFedoraProvider() *FedoraProvider {
@@ -41,48 +42,25 @@ func (prov *FedoraProvider) Version() string {
 	return semver.Canonical(fmt.Sprintf("v%s.%s", fedoraVersion, fedoraRelease))
 }
 
-func (prov *FedoraProvider) URL() string {
+func (prov *FedoraProvider) DiskImageURL() string {
 	arch := host.CurrentKernelArch()
 	// GCE doesn't work https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
 	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
 	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
 }
 
-func (prov *FedoraProvider) Initialize(ctx context.Context, cacheDir string) error {
-	diskImage, err := host.FindFirstFileWithExtension(cacheDir, ".raw")
-	if err != nil {
-		return errors.Errorf("could not find disk image: %w", err)
-	}
-
-	prov.diskImage = diskImage
-	prov.efiVariableStorePath = filepath.Join(cacheDir, "efi-variable-store")
-	prov.createVariableStore = true
-	prov.socketPath = filepath.Join(cacheDir, "vf.sock")
-	return nil
+func (prov *FedoraProvider) DiskImageRawFileName() string {
+	diskImageURL := prov.DiskImageURL()
+	return strings.TrimSuffix(filepath.Base(diskImageURL), filepath.Ext(diskImageURL))
 }
 
-func (fedora *FedoraProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
-	bootloader := config.NewEFIBootloader(fedora.efiVariableStorePath, fedora.createVariableStore)
+func (prov *FedoraProvider) BootProvisioners() []hypervisors.BootProvisioner {
+	cfg := &types_exp.Config{}
+	return []hypervisors.BootProvisioner{ignition.NewIgnitionBootConfigProvider(cfg)}
+}
 
-	vm := config.NewVirtualMachine(fedoraCPUs, fedoraMemoryMiB, bootloader)
-
-	virtioBlkDevices := []string{
-		fedora.diskImage,
-	}
-
-	for _, diskImage := range virtioBlkDevices {
-		dev, err := config.VirtioBlkNew(diskImage)
-		if err != nil {
-			return nil, errors.Errorf("creating virtio-blk device %s: %w", filepath.Base(diskImage), err)
-		}
-		err = vm.AddDevice(dev)
-		if err != nil {
-			return nil, errors.Errorf("adding virtio-blk device %s: %w", filepath.Base(diskImage), err)
-		}
-		slog.InfoContext(ctx, "shared disk", "name", dev.DevName)
-	}
-
-	return vm, nil
+func (fedora *FedoraProvider) RuntimeProvisioners() []hypervisors.RuntimeProvisioner {
+	return []hypervisors.RuntimeProvisioner{}
 }
 
 func (fedora *FedoraProvider) ShutdownCommand() string {

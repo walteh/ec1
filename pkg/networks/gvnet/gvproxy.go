@@ -11,18 +11,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/containers/gvisor-tap-vsock/pkg/net/stdio"
 	"github.com/containers/gvisor-tap-vsock/pkg/sshclient"
+	"github.com/containers/gvisor-tap-vsock/pkg/tap"
 	"github.com/containers/gvisor-tap-vsock/pkg/transport"
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/dustin/go-humanize"
 	"github.com/soheilhy/cmux"
 	slogctx "github.com/veqryn/slog-context"
+	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
 	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sync/errgroup"
@@ -74,7 +78,7 @@ type GvproxyConfig struct {
 	// restEndpointWithoutConnect string // Exposes the same HTTP API as the --listen flag, without the /connect endpoint
 
 	MTU      int // set the MTU, default is 1500
-	VMSocket VMSocket
+	VMSocket tapsock.VMSocket
 
 	// GuestSSHPort int    // port to access the guest virtual machine, must be between 1024 and 65535
 	VMHostPort string // host port to access the guest virtual machine, must be between 1024 and 65535
@@ -331,8 +335,10 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		})
 	}
 
+	swtch := GetUnexportedField(reflect.ValueOf(vn).Elem().FieldByName("networkSwitch")).(*tap.Switch)
+
 	// start the vmFileSocket
-	if err := cfg.VMSocket.Listen(ctx, g, vn); err != nil {
+	if err := cfg.VMSocket.Listen(ctx, g, swtch); err != nil {
 		return errors.Errorf("vmFileSocket listen: %w", err)
 	}
 
@@ -508,4 +514,14 @@ func parseSearchString(ctx context.Context, text, searchPrefix string) []string 
 	}
 
 	return searchDomains
+}
+
+func GetUnexportedField(field reflect.Value) interface{} {
+	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
+}
+
+func SetUnexportedField(field reflect.Value, value interface{}) {
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).
+		Elem().
+		Set(reflect.ValueOf(value))
 }

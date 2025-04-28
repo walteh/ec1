@@ -16,9 +16,10 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
+	"github.com/crc-org/vfkit/pkg/config"
 	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 	"github.com/walteh/ec1/pkg/networks/gvnet"
+	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
 	"github.com/walteh/ec1/pkg/port"
 	"gitlab.com/tozd/go/errors"
 
@@ -269,33 +270,37 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		dev, err = config.VirtioVsockNew(uint(GUEST_VSOCK_PORT), vm.sshAddress, false)
 		require.NoError(t, err)
 	case "gvnet":
+		vm.sshAddress = fmt.Sprintf("127.0.0.1:%d", vm.gvnetPort)
+		vm.sshNetwork = "gvnet"
 
 		socketPath := "unixgram://" + filepath.Join(vm.tmpDir, "vf.sock")
+		readyChan := make(chan struct{})
+
+		cfg := &gvnet.GvproxyConfig{
+			VMSocket: tapsock.NewVFKitVMSocket(socketPath),
+			// GuestSSHPort:       VSOCK_PORT,
+			VMHostPort:         fmt.Sprintf("tcp://%s", vm.sshAddress),
+			EnableDebug:        false,
+			EnableStdioSocket:  false,
+			EnableNoConnectAPI: true,
+			ReadyChan:          readyChan,
+		}
 
 		// // create the socket
 		os.Remove(socketPath)
 		os.Create(socketPath)
 
-		gvnetSocket := gvnet.NewVFKitVMSocket(socketPath)
-
-		dev, err = gvnetSocket.Device(ctx)
+		devd, err := cfg.VirtioNetDevice(ctx)
 		require.NoError(t, err)
 
-		readyChan := make(chan struct{})
-
-		vm.sshAddress = fmt.Sprintf("localhost:%d", vm.gvnetPort)
-		vm.sshNetwork = "gvnet"
+		devz, err := config.VirtioNetNew(devd.MacAddress.String())
+		require.NoError(t, err)
+		devz.SetUnixSocketPath(devd.UnixSocketPath)
+		dev = devz
+		require.NoError(t, err)
 
 		go func() {
-			err := gvnet.Proxy(ctx, &gvnet.GvproxyConfig{
-				VMSocket: gvnetSocket,
-				// GuestSSHPort:       VSOCK_PORT,
-				VMHostPort:         fmt.Sprintf("tcp://%s", vm.sshAddress),
-				EnableDebug:        false,
-				EnableStdioSocket:  false,
-				EnableNoConnectAPI: true,
-				ReadyChan:          readyChan,
-			})
+			err := gvnet.Proxy(ctx, cfg)
 			if err != nil {
 				slog.ErrorContext(ctx, "gvnet failed", "error", err)
 			}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/Code-Hex/vz/v3"
+	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
 )
 
@@ -21,13 +22,13 @@ type VirtualMachine struct {
 
 var PlatformType string
 
-func NewVirtualMachine(vmConfig config.VirtualMachine) (*VirtualMachine, error) {
-	vfConfig, err := NewVirtualMachineConfiguration(&vmConfig)
+func NewVirtualMachine(vmConfig *hypervisors.NewVMOptions, bootLoader config.Bootloader) (*VirtualMachine, error) {
+	vfConfig, err := NewVirtualMachineConfiguration(vmConfig, bootLoader)
 	if err != nil {
 		return nil, err
 	}
 
-	if macosBootloader, ok := vmConfig.Bootloader.(*config.MacOSBootloader); ok {
+	if macosBootloader, ok := bootLoader.(*config.MacOSBootloader); ok {
 		platformConfig, err := NewMacPlatformConfiguration(macosBootloader.MachineIdentifierPath, macosBootloader.HardwareModelPath, macosBootloader.AuxImagePath)
 
 		PlatformType = "macos"
@@ -69,13 +70,13 @@ func (vm *VirtualMachine) toVz() error {
 	return nil
 }
 
-func (vm *VirtualMachine) Config() *config.VirtualMachine {
+func (vm *VirtualMachine) Config() *hypervisors.NewVMOptions {
 	return vm.vfConfig.config
 }
 
 type VirtualMachineConfiguration struct {
-	*vz.VirtualMachineConfiguration                             // wrapper for Objective-C type
-	config                               *config.VirtualMachine // go-friendly virtual machine configuration definition
+	*vz.VirtualMachineConfiguration                                // wrapper for Objective-C type
+	config                               *hypervisors.NewVMOptions // go-friendly virtual machine configuration definition
 	storageDevicesConfiguration          []vz.StorageDeviceConfiguration
 	directorySharingDevicesConfiguration []vz.DirectorySharingDeviceConfiguration
 	keyboardConfiguration                []vz.KeyboardConfiguration
@@ -84,12 +85,12 @@ type VirtualMachineConfiguration struct {
 	networkDevicesConfiguration          []*vz.VirtioNetworkDeviceConfiguration
 	entropyDevicesConfiguration          []*vz.VirtioEntropyDeviceConfiguration
 	serialPortsConfiguration             []*vz.VirtioConsoleDeviceSerialPortConfiguration
-	socketDevicesConfiguration           []vz.SocketDeviceConfiguration
-	consolePortsConfiguration            []*vz.VirtioConsolePortConfiguration
+	// socketDevicesConfiguration           []vz.SocketDeviceConfiguration
+	consolePortsConfiguration []*vz.VirtioConsolePortConfiguration
 }
 
-func NewVirtualMachineConfiguration(vmConfig *config.VirtualMachine) (*VirtualMachineConfiguration, error) {
-	vzBootloader, err := toVzBootloader(vmConfig.Bootloader)
+func NewVirtualMachineConfiguration(vmConfig *hypervisors.NewVMOptions, bootLoader config.Bootloader) (*VirtualMachineConfiguration, error) {
+	vzBootloader, err := toVzBootloader(bootLoader)
 	if err != nil {
 		return nil, err
 	}
@@ -111,16 +112,16 @@ func (cfg *VirtualMachineConfiguration) toVz() (*vz.VirtualMachineConfiguration,
 			return nil, err
 		}
 	}
-	if cfg.config.Timesync != nil && cfg.config.Timesync.VsockPort != 0 {
-		// automatically add the vsock device we'll need for communication over VsockPort
-		vsockDev := VirtioVsock{
-			Port:   cfg.config.Timesync.VsockPort,
-			Listen: false,
-		}
-		if err := vsockDev.AddToVirtualMachineConfig(cfg); err != nil {
-			return nil, err
-		}
-	}
+	// if cfg.config.Timesync != nil && cfg.config.Timesync.VsockPort != 0 {
+	// 	// automatically add the vsock device we'll need for communication over VsockPort
+	// 	vsockDev := VirtioVsock{
+	// 		Port:   cfg.config.Timesync.VsockPort,
+	// 		Listen: false,
+	// 	}
+	// 	if err := vsockDev.AddToVirtualMachineConfig(cfg); err != nil {
+	// 		return nil, err
+	// 	}
+	// }
 
 	cfg.SetStorageDevicesVirtualMachineConfiguration(cfg.storageDevicesConfiguration)
 	cfg.SetDirectorySharingDevicesVirtualMachineConfiguration(cfg.directorySharingDevicesConfiguration)
@@ -144,7 +145,11 @@ func (cfg *VirtualMachineConfiguration) toVz() (*vz.VirtualMachineConfiguration,
 
 	// len(cfg.socketDevicesConfiguration should be 0 or 1
 	// https://developer.apple.com/documentation/virtualization/vzvirtiosocketdeviceconfiguration?language=objc
-	cfg.SetSocketDevicesVirtualMachineConfiguration(cfg.socketDevicesConfiguration)
+	vzdev, err := vz.NewVirtioSocketDeviceConfiguration()
+	if err != nil {
+		return nil, err
+	}
+	cfg.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{vzdev})
 
 	valid, err := cfg.Validate()
 	if err != nil {

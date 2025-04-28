@@ -1,15 +1,14 @@
-package gvnet
+package tapsock
 
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/url"
 	"os"
 
+	"github.com/containers/gvisor-tap-vsock/pkg/tap"
 	"github.com/containers/gvisor-tap-vsock/pkg/transport"
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
-	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sync/errgroup"
 )
@@ -17,7 +16,8 @@ import (
 type VMSocket interface {
 	Protocol() types.Protocol
 	Validate() error
-	Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error
+	Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error
+	URL() string
 }
 
 func NewVFKitVMSocket(path string) *VFKitSocket {
@@ -34,6 +34,10 @@ func NewBessVMSocket(path string) *BessSocket {
 
 type VFKitSocket struct {
 	Path string
+}
+
+func (s *VFKitSocket) URL() string {
+	return s.Path
 }
 
 func (s *VFKitSocket) Protocol() types.Protocol {
@@ -54,7 +58,7 @@ func (s *VFKitSocket) Validate() error {
 	return nil
 }
 
-func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
+func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
 	conn, err := transport.ListenUnixgram(s.Path)
 	if err != nil {
 		return errors.Errorf("vfkit listen error %w", err)
@@ -74,7 +78,7 @@ func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtual
 		if err != nil {
 			return errors.Errorf("vfkit accept error %w", err)
 		}
-		return vn.AcceptVfkit(ctx, vfkitConn)
+		return vn.Accept(ctx, vfkitConn, types.VfkitProtocol)
 	})
 
 	return nil
@@ -82,6 +86,10 @@ func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtual
 
 type QEMUSocket struct {
 	Path string
+}
+
+func (s *QEMUSocket) URL() string {
+	return s.Path
 }
 
 func (s *QEMUSocket) Protocol() types.Protocol {
@@ -99,12 +107,16 @@ func (s *QEMUSocket) Validate() error {
 	return nil
 }
 
-func (s *QEMUSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
-	return commonListen(ctx, g, "qemu", s.Path, vn.AcceptQemu)
+func (s *QEMUSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
+	return commonListen(ctx, g, "qemu", s.Path, vn, types.QemuProtocol)
 }
 
 type BessSocket struct {
 	Path string
+}
+
+func (s *BessSocket) URL() string {
+	return s.Path
 }
 
 func (s *BessSocket) Protocol() types.Protocol {
@@ -125,11 +137,11 @@ func (s *BessSocket) Validate() error {
 	return nil
 }
 
-func (s *BessSocket) Listen(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork) error {
-	return commonListen(ctx, g, "bess", s.Path, vn.AcceptBess)
+func (s *BessSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
+	return commonListen(ctx, g, "bess", s.Path, vn, types.BessProtocol)
 }
 
-func commonListen(ctx context.Context, g *errgroup.Group, name, path string, accept func(ctx context.Context, conn net.Conn) error) error {
+func commonListen(ctx context.Context, g *errgroup.Group, name, path string, swtch *tap.Switch, protocol types.Protocol) error {
 	listener, err := transport.Listen(path)
 	if err != nil {
 		return errors.Wrap(err, "listen error")
@@ -148,7 +160,7 @@ func commonListen(ctx context.Context, g *errgroup.Group, name, path string, acc
 		if err != nil {
 			return errors.Wrap(err, "accept error")
 		}
-		return accept(ctx, conn)
+		return swtch.Accept(ctx, conn, protocol)
 	})
 
 	return nil
