@@ -4,7 +4,7 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"gitlab.com/tozd/go/errors"
 )
 
@@ -16,12 +16,12 @@ const (
 	GuestKernelTypeDarwin  GuestKernelType = "darwin"
 )
 
-func (t GuestKernelType) EmphericalBootLoaderConfig(ctx context.Context, cacheDir string) (config.Bootloader, error) {
+func (t GuestKernelType) EmphericalBootLoaderConfig(ctx context.Context, cacheDir string) (bootloader.Bootloader, error) {
 	switch t {
 	case GuestKernelTypeLinux:
-		return config.NewEFIBootloader(filepath.Join(cacheDir, "efivars.fd"), true), nil
+		return bootloader.NewEFIBootloader(filepath.Join(cacheDir, "efivars.fd"), true), nil
 	case GuestKernelTypeDarwin:
-		return &config.MacOSBootloader{
+		return &bootloader.MacOSBootloader{
 			MachineIdentifierPath: filepath.Join(cacheDir, "machine-identifier.bin"),
 			HardwareModelPath:     filepath.Join(cacheDir, "hardware-model.bin"),
 			AuxImagePath:          filepath.Join(cacheDir, "aux.img"),

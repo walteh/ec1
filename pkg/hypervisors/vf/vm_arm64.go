@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 )
 
 func NewMacPlatformConfiguration(machineIdentifierVar, hardwareModelVar, auxiliaryStorageVar string) (vz.PlatformConfiguration, error) {
@@ -47,7 +47,7 @@ func NewMacPlatformConfiguration(machineIdentifierVar, hardwareModelVar, auxilia
 	return platformConfig, nil
 }
 
-func toVzMacOSBootloader(_ *config.MacOSBootloader) (vz.BootLoader, error) {
+func toVzMacOSBootloader(_ *bootloader.MacOSBootloader) (vz.BootLoader, error) {
 	return vz.NewMacOSBootLoader()
 }
 

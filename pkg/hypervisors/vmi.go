@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/rs/xid"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"golang.org/x/crypto/ssh"
@@ -25,7 +25,7 @@ type VMIProvider interface {
 
 type MacOSVMIProvider interface {
 	VMIProvider
-	BootLoaderConfig() *config.MacOSBootloader
+	BootLoaderConfig() *bootloader.MacOSBootloader
 }
 
 func RunVMI(ctx context.Context, vmi VMIProvider) error {

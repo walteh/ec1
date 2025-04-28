@@ -11,7 +11,8 @@ import (
 
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/rs/xid"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
@@ -19,10 +20,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider) (config.Bootloader, error) {
+func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider) (bootloader.Bootloader, error) {
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
-		return config.NewEFIBootloader(filepath.Join(config.INJECTED_VM_CACHE_DIR, "efivars.fd"), true), nil
+		return bootloader.NewEFIBootloader(filepath.Join(machines.INJECTED_VM_RUNTIME_CACHE_DIR, "efivars.fd"), true), nil
 	case guest.GuestKernelTypeDarwin:
 		if mos, ok := provider.(MacOSVMIProvider); ok {
 			return mos.BootLoaderConfig(), nil

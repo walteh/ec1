@@ -12,7 +12,7 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 )
 
 type VirtualMachine struct {
@@ -22,13 +22,13 @@ type VirtualMachine struct {
 
 var PlatformType string
 
-func NewVirtualMachine(vmConfig *hypervisors.NewVMOptions, bootLoader config.Bootloader) (*VirtualMachine, error) {
+func NewVirtualMachine(vmConfig *hypervisors.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachine, error) {
 	vfConfig, err := NewVirtualMachineConfiguration(vmConfig, bootLoader)
 	if err != nil {
 		return nil, err
 	}
 
-	if macosBootloader, ok := bootLoader.(*config.MacOSBootloader); ok {
+	if macosBootloader, ok := bootLoader.(*bootloader.MacOSBootloader); ok {
 		platformConfig, err := NewMacPlatformConfiguration(macosBootloader.MachineIdentifierPath, macosBootloader.HardwareModelPath, macosBootloader.AuxImagePath)
 
 		PlatformType = "macos"
@@ -89,7 +89,7 @@ type VirtualMachineConfiguration struct {
 	consolePortsConfiguration []*vz.VirtioConsolePortConfiguration
 }
 
-func NewVirtualMachineConfiguration(vmConfig *hypervisors.NewVMOptions, bootLoader config.Bootloader) (*VirtualMachineConfiguration, error) {
+func NewVirtualMachineConfiguration(vmConfig *hypervisors.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachineConfiguration, error) {
 	vzBootloader, err := toVzBootloader(bootLoader)
 	if err != nil {
 		return nil, err

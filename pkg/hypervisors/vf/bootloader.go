@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/config"
+	"github.com/walteh/ec1/pkg/machines/bootloader"
 )
 
 // from https://github.com/h2non/filetype/blob/cfcd7d097bc4990dc8fc86187307651ae79bf9d9/matchers/document.go#L159-L174
@@ -45,7 +45,7 @@ func isKernelUncompressed(filename string) (bool, error) {
 	return isUncompressedArm64Kernel(buf), nil
 }
 
-func toVzLinuxBootloader(bootloader *config.LinuxBootloader) (vz.BootLoader, error) {
+func toVzLinuxBootloader(bootloader *bootloader.LinuxBootloader) (vz.BootLoader, error) {
 	if runtime.GOARCH == "arm64" {
 		uncompressed, err := isKernelUncompressed(bootloader.VmlinuzPath)
 		if err != nil {
@@ -63,7 +63,7 @@ func toVzLinuxBootloader(bootloader *config.LinuxBootloader) (vz.BootLoader, err
 	)
 }
 
-func toVzEFIBootloader(bootloader *config.EFIBootloader) (vz.BootLoader, error) {
+func toVzEFIBootloader(bootloader *bootloader.EFIBootloader) (vz.BootLoader, error) {
 	var efiVariableStore *vz.EFIVariableStore
 	var err error
 
@@ -81,13 +81,13 @@ func toVzEFIBootloader(bootloader *config.EFIBootloader) (vz.BootLoader, error) 
 	)
 }
 
-func toVzBootloader(bootloader config.Bootloader) (vz.BootLoader, error) {
-	switch b := bootloader.(type) {
-	case *config.LinuxBootloader:
+func toVzBootloader(bl bootloader.Bootloader) (vz.BootLoader, error) {
+	switch b := bl.(type) {
+	case *bootloader.LinuxBootloader:
 		return toVzLinuxBootloader(b)
-	case *config.EFIBootloader:
+	case *bootloader.EFIBootloader:
 		return toVzEFIBootloader(b)
-	case *config.MacOSBootloader:
+	case *bootloader.MacOSBootloader:
 		return toVzMacOSBootloader(b)
 	default:
 		return nil, fmt.Errorf("Unexpected bootloader type: %T", b)
