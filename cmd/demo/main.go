@@ -17,7 +17,7 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/pkg/management"
+	"github.com/walteh/ec1/pkg/cloud/management"
 	"golang.org/x/sync/errgroup"
 )
 

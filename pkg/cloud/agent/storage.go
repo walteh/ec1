@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/walteh/ec1/pkg/id"
+	"github.com/walteh/ec1/pkg/cloud/id"
 	"gitlab.com/tozd/go/errors"
 )
 

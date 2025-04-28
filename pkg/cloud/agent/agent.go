@@ -11,8 +11,8 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/pkg/hypervisor"
-	"github.com/walteh/ec1/pkg/id"
+	"github.com/walteh/ec1/pkg/cloud/hypervisor"
+	"github.com/walteh/ec1/pkg/cloud/id"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
