@@ -8,15 +8,11 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
 	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/machines"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 	"gitlab.com/tozd/go/errors"
 )
@@ -34,7 +30,15 @@ type DarwinIgnitionBootConfigProvider struct {
 }
 
 func (me *DarwinIgnitionBootConfigProvider) ignitionSocketPath() string {
-	return filepath.Join(machines.INJECTED_VM_BOOT_TMP_DIR, "ignition.sock")
+	return "ignition.sock"
+}
+
+func (me *DarwinIgnitionBootConfigProvider) device() *virtio.VirtioVsock {
+	return &virtio.VirtioVsock{
+		Port:      APPLE_HF_STATIC_IGNITION_PORT,
+		SocketURL: me.ignitionSocketPath(),
+		Direction: virtio.VirtioVsockDirectionGuestConnectsAsClient,
+	}
 }
 
 func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, vm hypervisors.VirtualMachine) error {
@@ -56,7 +60,7 @@ func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, v
 		}
 	})
 
-	listener, err := net.Listen("unix", me.ignitionSocketPath())
+	listener, err := hypervisors.ListenVsock(ctx, vm, me.device())
 	if err != nil {
 		return errors.Errorf("listening on ignition socket: %w", err)
 	}
@@ -64,14 +68,14 @@ func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, v
 		if err := listener.Close(); err != nil {
 			slog.ErrorContext(ctx, "failed to close ignition socket (defer)", "error", err)
 		}
-		if err := os.Remove(me.ignitionSocketPath()); err != nil {
-			slog.ErrorContext(ctx, "failed to remove ignition socket (defer)", "error", err)
-		}
+		// if err := os.Remove(socketPath); err != nil {
+		// 	slog.ErrorContext(ctx, "failed to remove ignition socket (defer)", "error", err)
+		// }
 	}()
 
 	srv := &http.Server{
-		Handler:           mux,
-		Addr:              me.ignitionSocketPath(),
+		Handler: mux,
+		// Addr:              socketPath,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -83,16 +87,11 @@ func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, v
 		}
 	}()
 
-	slog.DebugContext(ctx, "ignition socket", "socket", me.ignitionSocketPath)
+	// slog.DebugContext(ctx, "ignition socket", "socket", socketPath)
 
 	return srv.Serve(listener)
 }
 
 func (me *DarwinIgnitionBootConfigProvider) VirtioDevices(ctx context.Context) ([]virtio.VirtioDevice, error) {
-	sock := &virtio.VirtioVsock{
-		Port:      APPLE_HF_STATIC_IGNITION_PORT,
-		SocketURL: me.ignitionSocketPath(),
-		Listen:    true,
-	}
-	return []virtio.VirtioDevice{sock}, nil
+	return []virtio.VirtioDevice{me.device()}, nil
 }

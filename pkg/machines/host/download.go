@@ -12,7 +12,7 @@ import (
 	"github.com/lima-vm/go-qcow2reader"
 	"github.com/lima-vm/go-qcow2reader/convert"
 	"github.com/mholt/archives"
-	"github.com/pkg/errors"
+	"gitlab.com/tozd/go/errors"
 )
 
 func DownloadAndExtractVMI(ctx context.Context, url string, outDir string) error {

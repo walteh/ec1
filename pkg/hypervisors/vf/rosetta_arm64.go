@@ -64,7 +64,7 @@ func (dev *RosettaShare) toVz() (vz.DirectorySharingDeviceConfiguration, error) 
 	return config, nil
 }
 
-func (dev *RosettaShare) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *RosettaShare) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	fileSystemDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err

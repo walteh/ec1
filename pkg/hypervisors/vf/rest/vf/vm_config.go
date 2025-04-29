@@ -1,38 +1,50 @@
 package rest
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	"github.com/walteh/ec1/pkg/hypervisors/vf"
+	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/hypervisors/vf/rest/define"
 )
 
-type VzVirtualMachine struct {
-	*vf.VirtualMachine
+type ControllableVirtualMachine struct {
+	hypervisors.VirtualMachine
 }
 
-func NewVzVirtualMachine(vm *vf.VirtualMachine) *VzVirtualMachine {
-	return &VzVirtualMachine{vm}
+func NewControllableVirtualMachine(vm hypervisors.VirtualMachine) *ControllableVirtualMachine {
+	return &ControllableVirtualMachine{vm}
 }
 
 // Inspect returns information about the virtual machine like hw resources
 // and devices
-func (vm *VzVirtualMachine) Inspect(c *gin.Context) {
-	c.JSON(http.StatusOK, vm.Config())
+func (vm *ControllableVirtualMachine) Inspect(c *gin.Context) {
+	// resources, err := vm.Resources(c.Request.Context())
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// 	return
+	// }
+	c.JSON(http.StatusOK, gin.H{
+		"state": vm.CurrentState(),
+	})
 }
 
 // GetVMState retrieves the current vm state
-func (vm *VzVirtualMachine) GetVMState(c *gin.Context) {
-	current := vm.State()
+func (vm *ControllableVirtualMachine) GetVMState(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"state":       current.String(),
-		"canStart":    vm.CanStart(),
-		"canPause":    vm.CanPause(),
-		"canResume":   vm.CanResume(),
-		"canStop":     vm.CanRequestStop(),
-		"canHardStop": vm.CanStop(),
+		"id": vm.ID(),
+
+		"time": time.Now().Format(time.RFC3339),
+		// "uptime":      vm.Uptime().String(),
+		"state":       vm.CurrentState(),
+		"canStart":    vm.CanStart(c.Request.Context()),
+		"canPause":    vm.CanPause(c.Request.Context()),
+		"canResume":   vm.CanResume(c.Request.Context()),
+		"canStop":     vm.CanRequestStop(c.Request.Context()),
+		"canHardStop": vm.CanHardStop(c.Request.Context()),
 	})
 }
 
@@ -42,7 +54,7 @@ func (vm *VzVirtualMachine) GetVMState(c *gin.Context) {
 // Resume - resume a paused machine
 // Stop - stops a running machine
 // HardStop - forceably stops a running machine
-func (vm *VzVirtualMachine) SetVMState(c *gin.Context) {
+func (vm *ControllableVirtualMachine) SetVMState(ctx context.Context, c *gin.Context) {
 	var (
 		s define.VMState
 	)
@@ -52,7 +64,7 @@ func (vm *VzVirtualMachine) SetVMState(c *gin.Context) {
 		return
 	}
 
-	response := vm.ChangeState(define.StateChange(s.State))
+	response := vm.ChangeState(ctx, define.StateChange(s.State))
 	if response != nil {
 		logrus.Errorf("failed action %s: %q", s.State, response)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": response.Error()})

@@ -3,8 +3,6 @@ package virtio
 import (
 	"fmt"
 	"math"
-	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -67,11 +65,19 @@ var _ VirtioDevice = &VirtioGPUResolution{}
 type VirtioGPU struct {
 	UsesGUI bool `json:"usesGUI"`
 	VirtioGPUResolution
+	IsMacOS bool `json:"isMacOS"`
 }
 
 func (v *VirtioGPU) isVirtioDevice() {}
 
 var _ VirtioDevice = &VirtioGPU{}
+
+type VirtioVsockDirection string
+
+const (
+	VirtioVsockDirectionGuestListensAsServer  VirtioVsockDirection = "guest-listens-as-server"
+	VirtioVsockDirectionGuestConnectsAsClient VirtioVsockDirection = "guest-connects-as-client"
+)
 
 // VirtioVsock configures of a virtio-vsock device allowing 2-way communication
 // between the host and the virtual machine type
@@ -83,8 +89,7 @@ type VirtioVsock struct {
 	SocketURL string `json:"socketURL"`
 	// If true, vsock connections will have to be done from guest to host. If false, vsock connections will only be possible
 	// from host to guest
-	Listen  bool `json:"listen,omitempty"`
-	Connect bool `json:"connect,omitempty"`
+	Direction VirtioVsockDirection `json:"direction,omitempty"`
 }
 
 func (v *VirtioVsock) isVirtioDevice() {}
@@ -144,24 +149,6 @@ type VirtioRng struct {
 var _ VirtioDevice = &VirtioRng{}
 
 func (v *VirtioRng) isVirtioDevice() {}
-
-// TODO: Add BridgedNetwork support
-// https://github.com/Code-Hex/vz/blob/d70a0533bf8ed0fa9ab22fa4d4ca554b7c3f3ce5/network.go#L81-L82
-
-// VirtioNet configures the virtual machine networking.
-type VirtioNet struct {
-	Nat        bool             `json:"nat"`
-	MacAddress net.HardwareAddr `json:"-"` // custom marshaller in json.go
-	// file parameter is holding a connected datagram socket.
-	// see https://github.com/Code-Hex/vz/blob/7f648b6fb9205d6f11792263d79876e3042c33ec/network.go#L113-L155
-	Socket *os.File `json:"socket,omitempty"`
-
-	UnixSocketPath string `json:"unixSocketPath,omitempty"`
-}
-
-var _ VirtioDevice = &VirtioNet{}
-
-func (v *VirtioNet) isVirtioDevice() {}
 
 // VirtioSerial configures the virtual machine serial ports.
 type VirtioSerial struct {
@@ -479,109 +466,6 @@ func (dev *VirtioGPU) FromOptions(options []option) error {
 	return dev.validate()
 }
 
-// VirtioNetNew creates a new network device for the virtual machine. It will
-// use macAddress as its MAC address.
-func VirtioNetNew(macAddress string) (*VirtioNet, error) {
-	var hwAddr net.HardwareAddr
-
-	if macAddress != "" {
-		var err error
-		if hwAddr, err = net.ParseMAC(macAddress); err != nil {
-			return nil, err
-		}
-	}
-	return &VirtioNet{
-		Nat:        true,
-		MacAddress: hwAddr,
-	}, nil
-}
-
-// SetSocket Set the socket to use for the network communication
-//
-// This maps the virtual machine network interface to a connected datagram
-// socket. This means all network traffic on this interface will go through
-// file.
-// file must be a connected datagram (SOCK_DGRAM) socket.
-func (dev *VirtioNet) SetSocket(file *os.File) {
-	dev.Socket = file
-	dev.Nat = false
-}
-
-func (dev *VirtioNet) SetUnixSocketPath(path string) {
-	dev.UnixSocketPath = path
-	dev.Nat = false
-}
-
-func (dev *VirtioNet) validate() error {
-	if dev.Nat && dev.Socket != nil {
-		return fmt.Errorf("'nat' and 'fd' cannot be set at the same time")
-	}
-	if dev.Nat && dev.UnixSocketPath != "" {
-		return fmt.Errorf("'nat' and 'unixSocketPath' cannot be set at the same time")
-	}
-	if dev.Socket != nil && dev.UnixSocketPath != "" {
-		return fmt.Errorf("'fd' and 'unixSocketPath' cannot be set at the same time")
-	}
-	if !dev.Nat && dev.Socket == nil && dev.UnixSocketPath == "" {
-		return fmt.Errorf("one of 'nat' or 'fd' or 'unixSocketPath' must be set")
-	}
-
-	return nil
-}
-
-func (dev *VirtioNet) ToCmdLine() ([]string, error) {
-	if err := dev.validate(); err != nil {
-		return nil, err
-	}
-
-	builder := strings.Builder{}
-	builder.WriteString("virtio-net")
-	switch {
-	case dev.Nat:
-		builder.WriteString(",nat")
-	case dev.UnixSocketPath != "":
-		fmt.Fprintf(&builder, ",unixSocketPath=%s", dev.UnixSocketPath)
-	default:
-		fmt.Fprintf(&builder, ",fd=%d", dev.Socket.Fd())
-	}
-
-	if len(dev.MacAddress) != 0 {
-		builder.WriteString(fmt.Sprintf(",mac=%s", dev.MacAddress))
-	}
-
-	return []string{"--device", builder.String()}, nil
-}
-
-func (dev *VirtioNet) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "nat":
-			if option.value != "" {
-				return fmt.Errorf("unexpected value for virtio-net 'nat' option: %s", option.value)
-			}
-			dev.Nat = true
-		case "mac":
-			macAddress, err := net.ParseMAC(option.value)
-			if err != nil {
-				return err
-			}
-			dev.MacAddress = macAddress
-		case "fd":
-			fd, err := strconv.Atoi(option.value)
-			if err != nil {
-				return err
-			}
-			dev.Socket = os.NewFile(uintptr(fd), "vfkit virtio-net socket")
-		case "unixSocketPath":
-			dev.UnixSocketPath = option.value
-		default:
-			return fmt.Errorf("unknown option for virtio-net devices: %s", option.key)
-		}
-	}
-
-	return dev.validate()
-}
-
 // VirtioRngNew creates a new random number generator device to feed entropy
 // into the virtual machine.
 func VirtioRngNew() (VirtioDevice, error) {
@@ -675,15 +559,18 @@ func (dev *VirtioBlk) ToCmdLine() ([]string, error) {
 // vsock port, and on the host it will use the unix socket at socketURL.
 // When listen is true, the host will be listening for connections over vsock.
 // When listen  is false, the guest will be listening for connections over vsock.
-func VirtioVsockNew(port uint, socketURL string, listen bool) (VirtioDevice, error) {
+func VirtioVsockNew(port uint, socketURL string, shouldHostActAsServer bool) (VirtioDevice, error) {
 	if port > math.MaxUint32 {
 		return nil, fmt.Errorf("invalid vsock port: %d", port)
+	}
+	direction := VirtioVsockDirectionGuestListensAsServer
+	if shouldHostActAsServer {
+		direction = VirtioVsockDirectionGuestConnectsAsClient
 	}
 	return &VirtioVsock{
 		Port:      uint32(port), //#nosec G115 -- was compared to math.MaxUint32
 		SocketURL: socketURL,
-		Listen:    listen,
-		Connect:   !listen,
+		Direction: direction,
 	}, nil
 }
 
@@ -692,7 +579,8 @@ func (dev *VirtioVsock) ToCmdLine() ([]string, error) {
 		return nil, fmt.Errorf("virtio-vsock needs both a port and a socket URL")
 	}
 	var listenStr string
-	if dev.Listen {
+	if dev.Direction == VirtioVsockDirectionGuestConnectsAsClient {
+		// the listenStr is for the host, so it's the opposite of the direction
 		listenStr = "listen"
 	} else {
 		listenStr = "connect"
@@ -702,7 +590,7 @@ func (dev *VirtioVsock) ToCmdLine() ([]string, error) {
 
 func (dev *VirtioVsock) FromOptions(options []option) error {
 	// default to listen for backwards compatibliity
-	dev.Listen = true
+	dev.Direction = VirtioVsockDirectionGuestListensAsServer
 	for _, option := range options {
 		switch option.key {
 		case "socketURL":
@@ -714,9 +602,9 @@ func (dev *VirtioVsock) FromOptions(options []option) error {
 			}
 			dev.Port = uint32(port) //#nosec G115 -- ParseUint(_, _, 32) guarantees no overflow
 		case "listen":
-			dev.Listen = true
+			dev.Direction = VirtioVsockDirectionGuestListensAsServer
 		case "connect":
-			dev.Listen = false
+			dev.Direction = VirtioVsockDirectionGuestConnectsAsClient
 		default:
 			return fmt.Errorf("unknown option for virtio-vsock devices: %s", option.key)
 		}

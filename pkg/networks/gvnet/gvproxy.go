@@ -98,6 +98,10 @@ func GvproxyVersion() string {
 
 func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
+	defer func() {
+		slog.DebugContext(ctx, "gvproxy defer")
+	}()
+
 	ctx = slogctx.WithGroup(ctx, "gvnet")
 
 	// if cfg.GuestSSHPort == 0 {
@@ -118,6 +122,8 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		}
 	}
 
+	slog.DebugContext(ctx, "validating vmFileSocket")
+
 	if cfg.VMSocket == nil {
 		return errors.New("vmFileSocket is required")
 	}
@@ -135,11 +141,13 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		return errors.New("vmHostPort is required")
 	}
 
+	slog.DebugContext(ctx, "searching domains")
 	dnss, err := searchDomains(ctx)
 	if err != nil {
 		return errors.Errorf("searching domains: %w", err)
 	}
 
+	slog.DebugContext(ctx, "building forwards")
 	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{
 		22: cmux.PrefixMatcher("SSH-"),
 	})
@@ -202,12 +210,15 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
 	groupErrs.Go(func() error {
 		defer func() {
+			slog.DebugContext(ctx, "gvproxy exiting")
 			if cfg.ReadyChan != nil {
+				slog.DebugContext(ctx, "signaling gvproxy ready")
 				go func() {
 					cfg.ReadyChan <- struct{}{}
 				}()
 			}
 		}()
+		slog.DebugContext(ctx, "running gvproxy")
 		return run(ctx, groupErrs, &config, cfg, m, virtualPortMap)
 	})
 

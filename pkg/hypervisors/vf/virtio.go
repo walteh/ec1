@@ -1,6 +1,7 @@
 package vf
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -50,7 +51,7 @@ func (dev *NVMExpressController) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *NVMExpressController) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *NVMExpressController) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -82,7 +83,7 @@ func (dev *VirtioBlk) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *VirtioBlk) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioBlk) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -112,7 +113,7 @@ func (dev *VirtioInput) toVz() (interface{}, error) {
 	return inputConfig, nil
 }
 
-func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	inputDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -148,18 +149,18 @@ func newVirtioGraphicsDeviceConfiguration(dev *VirtioGPU) (vz.GraphicsDeviceConf
 	return gpuDeviceConfig, nil
 }
 
-func (dev *VirtioGPU) toVz() (vz.GraphicsDeviceConfiguration, error) {
+func (dev *VirtioGPU) toVz(useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceConfiguration, error) {
 	log.Debugf("Setting up graphics device with %vx%v resolution.", dev.Width, dev.Height)
 
-	if PlatformType == "macos" {
+	if useMacOSGPUGraphicsDevice {
 		return newMacGraphicsDeviceConfiguration(dev)
 	}
 	return newVirtioGraphicsDeviceConfiguration(dev)
 
 }
 
-func (dev *VirtioGPU) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
-	gpuDeviceConfig, err := dev.toVz()
+func (dev *VirtioGPU) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+	gpuDeviceConfig, err := dev.toVz(vmConfig.useMacOSGPUGraphicsDevice)
 	if err != nil {
 		return err
 	}
@@ -199,7 +200,7 @@ func (dev *VirtioFs) toVz() (vz.DirectorySharingDeviceConfiguration, error) {
 	return fileSystemDeviceConfig, nil
 }
 
-func (dev *VirtioFs) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioFs) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	fileSystemDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -213,7 +214,7 @@ func (dev *VirtioRng) toVz() (*vz.VirtioEntropyDeviceConfiguration, error) {
 	return vz.NewVirtioEntropyDeviceConfiguration()
 }
 
-func (dev *VirtioRng) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioRng) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	log.Infof("Adding virtio-rng device")
 	entropyConfig, err := dev.toVz()
 	if err != nil {
@@ -228,13 +229,13 @@ func (dev *VirtioBalloon) toVz() (*vz.VirtioTraditionalMemoryBalloonDeviceConfig
 	return vz.NewVirtioTraditionalMemoryBalloonDeviceConfiguration()
 }
 
-func (dev *VirtioBalloon) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
-	log.Infof("Adding virtio-balloon device")
-	balloonConfig, err := dev.toVz()
-	if err != nil {
-		return err
-	}
-	vmConfig.SetMemoryBalloonDevicesVirtualMachineConfiguration([]vz.MemoryBalloonDeviceConfiguration{balloonConfig})
+func (dev *VirtioBalloon) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+	// log.Infof("Adding virtio-balloon device")
+	// balloonConfig, err := dev.toVz()
+	// if err != nil {
+	// 	return err
+	// }
+	// vmConfig.SetMemoryBalloonDevicesVirtualMachineConfiguration([]vz.MemoryBalloonDeviceConfiguration{balloonConfig})
 
 	return nil
 }
@@ -306,7 +307,7 @@ func (dev *VirtioSerial) toVzConsole() (*vz.VirtioConsolePortConfiguration, erro
 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
 }
 
-func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	if dev.LogFile != "" {
 		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
 	}
@@ -335,7 +336,7 @@ func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfi
 	return nil
 }
 
-// func (dev *VirtioVsock) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+// func (dev *VirtioVsock) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 // 	if len(vmConfig.socketDevicesConfiguration) != 0 {
 // 		log.Debugf("virtio-vsock device already present, not adding a second one")
 // 		return nil
@@ -417,7 +418,7 @@ func (dev *NetworkBlockDevice) SynchronizationModeVZ() vz.DiskSynchronizationMod
 	return vz.DiskSynchronizationModeFull
 }
 
-func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -428,8 +429,9 @@ func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *VirtualMachin
 	return nil
 }
 
-func ListenNetworkBlockDevices(vm *VirtualMachine) error {
-	for _, dev := range vm.vfConfig.storageDevicesConfiguration {
+func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
+
+	for _, dev := range vm.configuration.wrapper.storageDevicesConfiguration {
 		if nbdDev, isNbdDev := dev.(vzNetworkBlockDevice); isNbdDev {
 			nbdAttachment, isNbdAttachment := dev.Attachment().(*vz.NetworkBlockDeviceStorageDeviceAttachment)
 			if !isNbdAttachment {
@@ -452,7 +454,7 @@ func ListenNetworkBlockDevices(vm *VirtualMachine) error {
 	return nil
 }
 
-func AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration, dev virtio.VirtioDevice) error {
+func AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper, dev virtio.VirtioDevice) error {
 	switch d := dev.(type) {
 	case *virtio.USBMassStorage:
 		return (*USBMassStorage)(d).AddToVirtualMachineConfig(vmConfig)
@@ -505,7 +507,7 @@ func (dev *USBMassStorage) toVz() (vz.StorageDeviceConfiguration, error) {
 	return vz.NewUSBMassStorageDeviceConfiguration(attachment)
 }
 
-func (dev *USBMassStorage) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *USBMassStorage) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err

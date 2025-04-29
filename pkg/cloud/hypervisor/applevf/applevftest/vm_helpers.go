@@ -28,6 +28,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func init() {
+	// pp.
+}
+
 func (vm *testVM) retryIPFromMAC(t *testing.T, ctx context.Context, macAddress string) (string, error) {
 	t.Helper()
 	var (
@@ -211,6 +215,8 @@ func NewTestVM(t *testing.T, provider OsProvider, tmpDir string) *testVM { //nol
 	vm.config = vmConfig
 
 	vm.tmpDir = tmpDir
+
+	// pp.Println(vm.config)
 
 	// reserve port
 

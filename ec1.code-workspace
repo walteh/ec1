@@ -3,6 +3,10 @@
 		{
 			"name": "root",
 			"path": "."
+		},
+		{
+			"name": "vz",
+			"path": "../vz"
 		}
 	],
 	"extensions": {

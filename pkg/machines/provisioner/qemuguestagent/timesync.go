@@ -22,6 +22,14 @@ var _ hypervisors.RuntimeProvisioner = &QemuGuestAgentTimesyncProvisioner{}
 type QemuGuestAgentTimesyncProvisioner struct {
 }
 
+func (me *QemuGuestAgentTimesyncProvisioner) device() *virtio.VirtioVsock {
+	return &virtio.VirtioVsock{
+		Port:      QEMU_GUEST_AGENT_SOCKET_PORT,
+		SocketURL: "", // no proxied socket path
+		Direction: virtio.VirtioVsockDirectionGuestConnectsAsClient,
+	}
+}
+
 func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Context, vm hypervisors.VirtualMachine) error {
 
 	var vsockConn net.Conn
@@ -42,7 +50,7 @@ func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Contex
 			log.Infof("machine awake")
 			if vsockConn == nil {
 				var err error
-				vsockConn, err = vm.VSockConnect(ctx, QEMU_GUEST_AGENT_SOCKET_PORT)
+				vsockConn, err = hypervisors.ConnectVsock(ctx, vm, me.device())
 				if err != nil {
 					log.Debugf("error connecting to vsock port %d: %v", QEMU_GUEST_AGENT_SOCKET_PORT, err)
 					break
@@ -60,12 +68,7 @@ func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Contex
 }
 
 func (me *QemuGuestAgentTimesyncProvisioner) VirtioDevices(ctx context.Context) ([]virtio.VirtioDevice, error) {
-	sock := &virtio.VirtioVsock{
-		Port:      QEMU_GUEST_AGENT_SOCKET_PORT,
-		SocketURL: "", // the hypervisor will handle the socket path
-		Listen:    false,
-	}
-	return []virtio.VirtioDevice{sock}, nil
+	return []virtio.VirtioDevice{me.device()}, nil
 }
 
 func SyncGuestTime(ctx context.Context, conn net.Conn) error {

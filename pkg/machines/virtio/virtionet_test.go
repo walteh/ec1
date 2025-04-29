@@ -1,6 +1,7 @@
-package vf
+package virtio
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
 func sourceSocketPath(t *testing.T, sourcePathLen int) (string, func()) {
@@ -27,7 +27,7 @@ func sourceSocketPath(t *testing.T, sourcePathLen int) (string, func()) {
 	return unixSocketPath, func() { os.RemoveAll(subDir) }
 
 }
-func testConnectUnixgram(t *testing.T, sourcePathLen int) error {
+func testConnectUnixgram(t *testing.T, ctx context.Context, sourcePathLen int) error {
 	unixSocketPath, closer := sourceSocketPath(t, sourcePathLen)
 	defer closer()
 
@@ -40,24 +40,23 @@ func testConnectUnixgram(t *testing.T, sourcePathLen int) error {
 	defer l.Close()
 
 	dev := &VirtioNet{
-		&virtio.VirtioNet{
-			UnixSocketPath: unixSocketPath,
-		},
-		&net.UnixAddr{},
+		UnixSocketPath: unixSocketPath,
+		LocalAddr:      &net.UnixAddr{},
 	}
 
-	return dev.connectUnixPath()
+	return dev.ConnectUnixPath(ctx)
 }
 
 func TestConnectUnixPath(t *testing.T) {
+	ctx := t.Context()
 	t.Run("Successful connection - no error", func(t *testing.T) {
 		// 50 is an arbitrary number, small enough for the 104 bytes limit not to be exceeded
-		err := testConnectUnixgram(t, 50)
+		err := testConnectUnixgram(t, ctx, 50)
 		require.NoError(t, err)
 	})
 
 	t.Run("Failed connection - End socket longer than 104 bytes", func(t *testing.T) {
-		err := testConnectUnixgram(t, maxUnixgramPathLen)
+		err := testConnectUnixgram(t, ctx, maxUnixgramPathLen)
 		// It should return an error
 		require.Error(t, err)
 		require.ErrorContains(t, err, "is too long")

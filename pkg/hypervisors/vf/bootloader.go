@@ -82,6 +82,7 @@ func toVzEFIBootloader(bootloader *bootloader.EFIBootloader) (vz.BootLoader, err
 }
 
 func toVzBootloader(bl bootloader.Bootloader) (vz.BootLoader, error) {
+
 	switch b := bl.(type) {
 	case *bootloader.LinuxBootloader:
 		return toVzLinuxBootloader(b)

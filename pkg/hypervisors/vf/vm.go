@@ -1,163 +1,240 @@
-// Package vf converts a config.VirtualMachine configuration to native
-// virtualization framework datatypes. It also provides APIs to start/stop/...
-// the virtualization framework virtual machine.
-//
-// The interaction with the virtualization framework is done using the
-// Code-Hex/vz Objective-C bindings. This requires cgo, and this package cannot
-// be easily cross-compiled, it must be built on macOS.
 package vf
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"net"
+	"unsafe"
 
 	"github.com/Code-Hex/vz/v3"
+	"github.com/containers/common/pkg/strongunits"
+	"github.com/walteh/ec1/pkg/hack"
 	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/machines/bootloader"
+	"github.com/walteh/ec1/pkg/machines/virtio"
+	"gitlab.com/tozd/go/errors"
 )
 
+type MemoryBalloonDevice struct {
+}
+
+var _ hypervisors.VirtualMachine = &VirtualMachine{}
+
+func vzStateToHypervisorState(state vz.VirtualMachineState) hypervisors.VirtualMachineStateType {
+	switch state {
+	case vz.VirtualMachineStateRunning:
+		return hypervisors.VirtualMachineStateTypeRunning
+	case vz.VirtualMachineStatePaused:
+		return hypervisors.VirtualMachineStateTypePaused
+	case vz.VirtualMachineStateStarting:
+		return hypervisors.VirtualMachineStateTypeStarting
+	case vz.VirtualMachineStateStopping:
+		return hypervisors.VirtualMachineStateTypeStopping
+	case vz.VirtualMachineStateStopped:
+		return hypervisors.VirtualMachineStateTypeStopped
+	case vz.VirtualMachineStateError:
+		return hypervisors.VirtualMachineStateTypeError
+	default:
+		return hypervisors.VirtualMachineStateTypeUnknown
+	}
+}
+
 type VirtualMachine struct {
-	*vz.VirtualMachine
-	vfConfig *VirtualMachineConfiguration
+	vzvm          *vz.VirtualMachine
+	configuration *VirtualMachineConfiguration
 }
 
-var PlatformType string
-
-func NewVirtualMachine(vmConfig *hypervisors.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachine, error) {
-	vfConfig, err := NewVirtualMachineConfiguration(vmConfig, bootLoader)
-	if err != nil {
-		return nil, err
+func (vm *VirtualMachine) objcPtr() unsafe.Pointer {
+	objcVM := hack.GetUnexportedFieldOf(vm.vzvm, "pointer")
+	objcVMp, ok := objcVM.(unsafe.Pointer)
+	if !ok {
+		panic("objcVM is not a pointer")
 	}
+	return objcVMp
+}
 
-	if macosBootloader, ok := bootLoader.(*bootloader.MacOSBootloader); ok {
-		platformConfig, err := NewMacPlatformConfiguration(macosBootloader.MachineIdentifierPath, macosBootloader.HardwareModelPath, macosBootloader.AuxImagePath)
+// func (vm *VirtualMachine) BalloonDevice() *vz.VirtioTraditionalMemoryBalloonDevice {
+// 	devices := vm.vzvm.MemoryBalloonDevices()
+// 	if len(devices) == 0 {
+// 		return nil
+// 	}
+// 	return devices[0].(*vz.VirtioTraditionalMemoryBalloonDevice)
+// }
 
-		PlatformType = "macos"
+// // SetMemoryBalloonTargetSize adjusts the size of memory available to the VM
+// // by inflating or deflating the memory balloon.
+// // targetBytes is the amount of memory the guest OS should have access to.
+// // Note that the target memory should be less than the total VM memory.
+// func (vm *VirtualMachine) SetMemoryBalloonTargetSize(targetBytes strongunits.B) error {
+// 	if vm.CurrentState() != hypervisors.VirtualMachineStateTypeRunning {
+// 		return fmt.Errorf("VM must be running to adjust memory balloon")
+// 	}
 
-		if err != nil {
-			return nil, err
+// 	balloonDevice := vm.BalloonDevice()
+// 	if balloonDevice == nil {
+// 		return fmt.Errorf("no memory balloon device found in VM configuration")
+// 	}
+
+// 	// Calculate total VM memory from config
+// 	totalMemory := strongunits.B(vm.configuration.memorySize)
+// 	if targetBytes >= totalMemory {
+// 		return fmt.Errorf("target memory size (%s) must be less than total VM memory (%s)", targetBytes, totalMemory)
+// 	}
+
+// 	// Set the target memory size
+// 	balloonDevice.SetTargetVirtualMachineMemory(uint64(targetBytes.ToBytes()))
+
+// 	return nil
+// }
+
+// MemoryUsage implements hypervisors.VirtualMachine.
+// func (vm *VirtualMachine) MemoryUsage() strongunits.B {
+// 	// For now, just return the configured memory size
+// 	// In a real implementation, you would get this from the balloon device
+// 	return strongunits.B(vm.configuration.memorySize)
+// }
+
+// // VCPUsUsage implements hypervisors.VirtualMachine.
+// func (vm *VirtualMachine) VCPUsUsage() float64 {
+// 	return vm.vzvm.VCPUsUsage()
+// }
+
+// CanHardStop implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) CanHardStop(ctx context.Context) bool {
+	return vm.vzvm.CanStop()
+}
+
+// CanRequestStop implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) CanRequestStop(ctx context.Context) bool {
+	return vm.vzvm.CanRequestStop()
+}
+
+// HardStop implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) HardStop(ctx context.Context) error {
+	return vm.Stop(ctx)
+}
+
+// CurrentState implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) CurrentState() hypervisors.VirtualMachineStateType {
+	return vzStateToHypervisorState(vm.vzvm.State())
+}
+
+// Devices implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) Devices() []virtio.VirtioDevice {
+	return vm.configuration.newVMOpts.Devices
+}
+
+// ID implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) ID() string {
+	return vm.configuration.id
+}
+
+func (vm *VirtualMachine) GetVSockDevice() (*vz.VirtioSocketDevice, error) {
+	devices := vm.vzvm.SocketDevices()
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("no socket device found")
+	}
+	return devices[0], nil
+}
+
+// StartGraphicApplication implements hypervisors.VirtualMachine.
+// Subtle: this method shadows the method (*VirtualMachine).StartGraphicApplication of VirtualMachine.VirtualMachine.
+func (vm *VirtualMachine) StartGraphicApplication(width float64, height float64) error {
+	return vm.vzvm.StartGraphicApplication(width, height)
+}
+
+// StateChangeNotify implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan hypervisors.VirtualMachineStateChange {
+	stateChangeNotify := make(chan hypervisors.VirtualMachineStateChange)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				slog.DebugContext(ctx, "state change notify context done")
+				return
+			case yep := <-vm.vzvm.StateChangedNotify():
+				slog.DebugContext(ctx, "state change notify start", "state", yep)
+				stateChangeNotify <- hypervisors.VirtualMachineStateChange{
+					StateType: vzStateToHypervisorState(yep),
+					Metadata: map[string]string{
+						"raw_state": yep.String(),
+					},
+				}
+				slog.DebugContext(ctx, "state change notify end", "state", yep)
+			}
 		}
-
-		vfConfig.SetPlatformVirtualMachineConfiguration(platformConfig)
-	} else {
-		PlatformType = "linux"
-	}
-
-	return &VirtualMachine{
-		vfConfig: vfConfig,
-	}, nil
+	}()
+	return stateChangeNotify
 }
 
-func (vm *VirtualMachine) Start() error {
-	if vm.VirtualMachine == nil {
-		if err := vm.toVz(); err != nil {
-			return err
-		}
+// VSockConnect implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) VSockConnect(ctx context.Context, port uint32) (net.Conn, error) {
+	vsockDev, err := vm.GetVSockDevice()
+	if err != nil {
+		return nil, errors.Errorf("getting vsock device: %w", err)
 	}
-	return vm.VirtualMachine.Start()
+	return vsockDev.Connect(port)
 }
 
-func (vm *VirtualMachine) toVz() error {
-	vzVMConfig, err := vm.vfConfig.toVz()
+// VSockListen implements hypervisors.VirtualMachine.
+func (vm *VirtualMachine) VSockListen(ctx context.Context, port uint32) (net.Listener, error) {
+	vsockDev, err := vm.GetVSockDevice()
 	if err != nil {
-		return err
+		return nil, errors.Errorf("getting vsock device: %w", err)
 	}
-	vzVM, err := vz.NewVirtualMachine(vzVMConfig)
-	if err != nil {
-		return err
-	}
-	vm.VirtualMachine = vzVM
-
-	return nil
+	return vsockDev.Listen(port)
 }
 
-func (vm *VirtualMachine) Config() *hypervisors.NewVMOptions {
-	return vm.vfConfig.config
+func (vm *VirtualMachine) CanStart(_ context.Context) bool {
+	return vm.vzvm.CanStart()
 }
 
-type VirtualMachineConfiguration struct {
-	*vz.VirtualMachineConfiguration                                // wrapper for Objective-C type
-	config                               *hypervisors.NewVMOptions // go-friendly virtual machine configuration definition
-	storageDevicesConfiguration          []vz.StorageDeviceConfiguration
-	directorySharingDevicesConfiguration []vz.DirectorySharingDeviceConfiguration
-	keyboardConfiguration                []vz.KeyboardConfiguration
-	pointingDevicesConfiguration         []vz.PointingDeviceConfiguration
-	graphicsDevicesConfiguration         []vz.GraphicsDeviceConfiguration
-	networkDevicesConfiguration          []*vz.VirtioNetworkDeviceConfiguration
-	entropyDevicesConfiguration          []*vz.VirtioEntropyDeviceConfiguration
-	serialPortsConfiguration             []*vz.VirtioConsoleDeviceSerialPortConfiguration
-	// socketDevicesConfiguration           []vz.SocketDeviceConfiguration
-	consolePortsConfiguration []*vz.VirtioConsolePortConfiguration
+func (vm *VirtualMachine) CanStop(_ context.Context) bool {
+	return vm.vzvm.CanStop()
 }
 
-func NewVirtualMachineConfiguration(vmConfig *hypervisors.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachineConfiguration, error) {
-	vzBootloader, err := toVzBootloader(bootLoader)
-	if err != nil {
-		return nil, err
-	}
-
-	vzVMConfig, err := vz.NewVirtualMachineConfiguration(vzBootloader, vmConfig.Vcpus, uint64(vmConfig.Memory.ToBytes()))
-	if err != nil {
-		return nil, err
-	}
-
-	return &VirtualMachineConfiguration{
-		VirtualMachineConfiguration: vzVMConfig,
-		config:                      vmConfig,
-	}, nil
+func (vm *VirtualMachine) CanPause(_ context.Context) bool {
+	return vm.vzvm.CanPause()
 }
 
-func (cfg *VirtualMachineConfiguration) toVz() (*vz.VirtualMachineConfiguration, error) {
-	for _, dev := range cfg.config.Devices {
-		if err := AddToVirtualMachineConfig(cfg, dev); err != nil {
-			return nil, err
-		}
-	}
-	// if cfg.config.Timesync != nil && cfg.config.Timesync.VsockPort != 0 {
-	// 	// automatically add the vsock device we'll need for communication over VsockPort
-	// 	vsockDev := VirtioVsock{
-	// 		Port:   cfg.config.Timesync.VsockPort,
-	// 		Listen: false,
-	// 	}
-	// 	if err := vsockDev.AddToVirtualMachineConfig(cfg); err != nil {
-	// 		return nil, err
-	// 	}
-	// }
+func (vm *VirtualMachine) CanResume(_ context.Context) bool {
+	return vm.vzvm.CanResume()
+}
 
-	cfg.SetStorageDevicesVirtualMachineConfiguration(cfg.storageDevicesConfiguration)
-	cfg.SetDirectorySharingDevicesVirtualMachineConfiguration(cfg.directorySharingDevicesConfiguration)
-	cfg.SetPointingDevicesVirtualMachineConfiguration(cfg.pointingDevicesConfiguration)
-	cfg.SetKeyboardsVirtualMachineConfiguration(cfg.keyboardConfiguration)
-	cfg.SetGraphicsDevicesVirtualMachineConfiguration(cfg.graphicsDevicesConfiguration)
-	cfg.SetNetworkDevicesVirtualMachineConfiguration(cfg.networkDevicesConfiguration)
-	cfg.SetEntropyDevicesVirtualMachineConfiguration(cfg.entropyDevicesConfiguration)
-	cfg.SetSerialPortsVirtualMachineConfiguration(cfg.serialPortsConfiguration)
+func (vm *VirtualMachine) Pause(_ context.Context) error {
+	return vm.vzvm.Pause()
+}
 
-	if len(cfg.consolePortsConfiguration) > 0 {
-		consoleDeviceConfiguration, err := vz.NewVirtioConsoleDeviceConfiguration()
-		if err != nil {
-			return nil, err
-		}
-		for i, portCfg := range cfg.consolePortsConfiguration {
-			consoleDeviceConfiguration.SetVirtioConsolePortConfiguration(i, portCfg)
-		}
-		cfg.SetConsoleDevicesVirtualMachineConfiguration([]vz.ConsoleDeviceConfiguration{consoleDeviceConfiguration})
-	}
+func (vm *VirtualMachine) Resume(_ context.Context) error {
+	return vm.vzvm.Resume()
+}
 
-	// len(cfg.socketDevicesConfiguration should be 0 or 1
-	// https://developer.apple.com/documentation/virtualization/vzvirtiosocketdeviceconfiguration?language=objc
-	vzdev, err := vz.NewVirtioSocketDeviceConfiguration()
+func (vm *VirtualMachine) Stop(_ context.Context) error {
+	return vm.vzvm.Stop()
+}
+
+func (vm *VirtualMachine) RequestStop(_ context.Context) (bool, error) {
+	return vm.vzvm.RequestStop()
+}
+
+func (vm *VirtualMachine) GetMemoryBalloonTargetSize(_ context.Context) (strongunits.B, error) {
+	balloonDevices, err := vm.MemoryBalloonDevices()
 	if err != nil {
-		return nil, err
+		return 0, errors.Errorf("getting memory balloon devices: %w", err)
 	}
-	cfg.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{vzdev})
-
-	valid, err := cfg.Validate()
+	balloonDevice := balloonDevices[0]
+	size, err := balloonDevice.GetTargetVirtualMachineMemorySize()
 	if err != nil {
-		return nil, err
+		return 0, errors.Errorf("getting memory balloon target size: %w", err)
 	}
-	if !valid {
-		return nil, fmt.Errorf("Invalid virtual machine configuration")
-	}
+	return strongunits.B(size), nil
+}
 
-	return cfg.VirtualMachineConfiguration, nil
+func (vm *VirtualMachine) SetMemoryBalloonTargetSize(_ context.Context, targetBytes strongunits.B) error {
+	balloonDevices, err := vm.MemoryBalloonDevices()
+	if err != nil {
+		return errors.Errorf("getting memory balloon devices: %w", err)
+	}
+	balloonDevice := balloonDevices[0]
+	return balloonDevice.SetTargetVirtualMachineMemorySize(uint64(targetBytes.ToBytes()))
 }

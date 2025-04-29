@@ -14,7 +14,6 @@ type VMIProvider interface {
 	DiskImageURL() string
 	BootProvisioners() []BootProvisioner
 	RuntimeProvisioners() []RuntimeProvisioner
-	DiskImageRawFileName() string
 	SSHConfig() *ssh.ClientConfig
 	ShutdownCommand() string
 	Name() string
@@ -23,9 +22,20 @@ type VMIProvider interface {
 	GuestKernelType() guest.GuestKernelType
 }
 
+type CustomExtractorVMIProvider interface {
+	CustomExtraction(ctx context.Context, cacheDir string) error
+}
+
+type DiskImageRawFileNameVMIProvider interface {
+	DiskImageRawFileName() string
+}
+
 type MacOSVMIProvider interface {
-	VMIProvider
 	BootLoaderConfig() *bootloader.MacOSBootloader
+}
+
+type LinuxVMIProvider interface {
+	BootLoaderConfig(cacheDir string) *bootloader.LinuxBootloader
 }
 
 func RunVMI(ctx context.Context, vmi VMIProvider) error {

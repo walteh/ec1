@@ -11,19 +11,23 @@ import (
 
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/rs/xid"
-	"github.com/walteh/ec1/pkg/machines"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sync/errgroup"
 )
 
-func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider) (bootloader.Bootloader, error) {
+func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider, bootCacheDir string) (bootloader.Bootloader, error) {
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
-		return bootloader.NewEFIBootloader(filepath.Join(machines.INJECTED_VM_RUNTIME_CACHE_DIR, "efivars.fd"), true), nil
+		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
+			return linuxVMIProvider.BootLoaderConfig(bootCacheDir), nil
+		} else {
+			return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
+		}
 	case guest.GuestKernelTypeDarwin:
 		if mos, ok := provider.(MacOSVMIProvider); ok {
 			return mos.BootLoaderConfig(), nil
@@ -47,39 +51,67 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	err = host.DownloadAndExtractVMI(ctx, vmi.DiskImageURL(), workingDir)
 	if err != nil {
-		return err
+		return errors.Errorf("downloading and extracting VMI: %w", err)
 	}
 
-	diskImageToRun := filepath.Join(workingDir, vmi.DiskImageRawFileName())
-
-	if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
-		return errors.Errorf("disk image does not exist: %s", diskImageToRun)
+	if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
+		err = customExtractor.CustomExtraction(ctx, workingDir)
+		if err != nil {
+			return errors.Errorf("custom extraction: %w", err)
+		}
 	}
 
-	blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
-	if err != nil {
-		return err
+	if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
+		diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
+
+		if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
+			return errors.Errorf("disk image does not exist: %s", diskImageToRun)
+		}
+
+		blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
+		if err != nil {
+			return errors.Errorf("creating virtio block device: %w", err)
+		}
+
+		devices = append(devices, blkDev)
 	}
 
-	devices = append(devices, blkDev)
+	// add memory balloon device
+	// memoryBalloonDev, err := virtio.VirtioBalloonNew()
+	// if err != nil {
+	// 	return errors.Errorf("creating memory balloon device: %w", err)
+	// }
+	// devices = append(devices, memoryBalloonDev)
 
 	// run boot provisioner
 	bootProvisioners := vmi.BootProvisioners()
 	for _, bootProvisioner := range bootProvisioners {
 		if bootProvisionerVirtioDevices, err := bootProvisioner.VirtioDevices(ctx); err != nil {
-			return err
+			return errors.Errorf("getting boot provisioner virtio devices: %w", err)
 		} else {
 			devices = append(devices, bootProvisionerVirtioDevices...)
 		}
 	}
 
 	runtimeProvisioners := vmi.RuntimeProvisioners()
+
+	tapSock := tapsock.NewVFKitVMSocket("unixgram://" + filepath.Join(workingDir, "gvproxy.sock"))
+
+	runtimeProvisioners = append(runtimeProvisioners, &GvproxyProvisioner{
+		sock: tapSock,
+	})
+
 	for _, runtimeProvisioner := range runtimeProvisioners {
 		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
-			return err
+			return errors.Errorf("getting runtime provisioner virtio devices: %w", err)
 		} else {
 			devices = append(devices, runtimeProvisionerVirtioDevices...)
 		}
+	}
+
+	bl, err := EmphericalBootLoaderConfigForGuest(ctx, vmi, workingDir)
+	if err != nil {
+		return errors.Errorf("getting boot loader config: %w", err)
 	}
 
 	opts := NewVMOptions{
@@ -88,7 +120,7 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		Devices: devices,
 	}
 
-	vm, err := hpv.NewVirtualMachine(ctx, opts)
+	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
 	if err != nil {
 		return errors.Errorf("creating virtual machine: %w", err)
 	}
@@ -98,7 +130,7 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		return errors.Errorf("booting virtual machine: %w", err)
 	}
 
-	errGroup, runCancel, err := run(ctx, hpv, vm, vmi)
+	errGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
 	if err != nil {
 		return errors.Errorf("running virtual machine: %w", err)
 	}
@@ -136,11 +168,11 @@ func startVSockDevices(ctx context.Context, vm VirtualMachine) error {
 			continue
 		}
 		var listenStr string
-		if vsock.Listen {
+		if vsock.Direction == virtio.VirtioVsockDirectionGuestConnectsAsClient {
 			listenStr = " (listening)"
 		}
 		slog.InfoContext(ctx, "Exposing vsock port", "port", port, "socketURL", socketURL, "listenStr", listenStr)
-		closer, err := ExposeVsock(ctx, vm, port, socketURL, vsock.Listen)
+		closer, err := ExposeVsock(ctx, vm, vsock)
 		if err != nil {
 			slog.WarnContext(ctx, "error exposing vsock port", "port", port, "error", err)
 			continue
@@ -162,6 +194,7 @@ func boot(ctx context.Context, vm VirtualMachine, vmi VMIProvider) error {
 	}()
 
 	for _, provisioner := range vmi.BootProvisioners() {
+		slog.InfoContext(ctx, "running boot provisioner", "provisioner", provisioner)
 		errGroup.Go(func() error {
 			return provisioner.RunDuringBoot(bootCtx, vm)
 		})
@@ -171,7 +204,7 @@ func boot(ctx context.Context, vm VirtualMachine, vmi VMIProvider) error {
 		return errors.Errorf("starting virtual machine: %w", err)
 	}
 
-	if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeRunning, time.After(5*time.Second)); err != nil {
+	if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
 		return errors.Errorf("waiting for virtual machine to start: %w", err)
 	}
 
@@ -180,24 +213,40 @@ func boot(ctx context.Context, vm VirtualMachine, vmi VMIProvider) error {
 	return nil
 }
 
-func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, vmi VMIProvider) (*errgroup.Group, func(), error) {
+func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []RuntimeProvisioner) (*errgroup.Group, func(), error) {
 	bootCtx, bootCancel := context.WithCancel(ctx)
 	errGroup, ctx := errgroup.WithContext(bootCtx)
 
-	if err := hpv.ListenNetworkBlockDevices(bootCtx, vm); err != nil {
+	if err := vm.ListenNetworkBlockDevices(bootCtx); err != nil {
 		bootCancel()
 		return nil, nil, errors.Errorf("listening network block devices: %w", err)
 	}
 
-	for _, provisioner := range vmi.RuntimeProvisioners() {
+	for _, provisioner := range provisioners {
 		errGroup.Go(func() error {
-			return provisioner.RunDuringRuntime(bootCtx, vm)
+			err := provisioner.RunDuringRuntime(bootCtx, vm)
+			if err != nil {
+				slog.DebugContext(ctx, "error running runtime provisioner", "error", err)
+				return errors.Errorf("running runtime provisioner: %w", err)
+			}
+			return nil
 		})
 	}
 
 	if err := startVSockDevices(bootCtx, vm); err != nil {
 		bootCancel()
 		return nil, nil, errors.Errorf("starting vsock devices: %w", err)
+	}
+
+	netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](vm.Devices())
+	for _, netDev := range netDevs {
+		if netDev.UnixSocketPath != "" {
+			err := netDev.ConnectUnixPath(ctx)
+			if err != nil {
+				bootCancel()
+				return nil, nil, errors.Errorf("connecting unix socket path: %w", err)
+			}
+		}
 	}
 
 	gpuDevs := virtio.VirtioDevicesOfType[*virtio.VirtioGPU](vm.Devices())

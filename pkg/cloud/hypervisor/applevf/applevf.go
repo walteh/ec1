@@ -41,6 +41,7 @@ import (
 	"github.com/crc-org/vfkit/pkg/rest"
 	restvf "github.com/crc-org/vfkit/pkg/rest/vf"
 	"github.com/crc-org/vfkit/pkg/vf"
+	// "github.com/k0kubun/pp/v3"
 	"github.com/kdomanski/iso9660"
 
 	"gitlab.com/tozd/go/errors"
@@ -147,6 +148,8 @@ func RunVFKit(ctx context.Context, vmConfig *config.VirtualMachine, opts *cmdlin
 	if opts.UseGUI && len(gpuDevs) > 0 {
 		gpuDevs[0].UsesGUI = true
 	}
+
+	// pp.Println(vmConfig)
 
 	vfVM, err := vf.NewVirtualMachine(*vmConfig)
 	if err != nil {

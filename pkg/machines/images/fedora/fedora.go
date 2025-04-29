@@ -25,7 +25,10 @@ func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }
 
-var _ hypervisors.VMIProvider = &FedoraProvider{}
+var (
+	_ hypervisors.VMIProvider                     = &FedoraProvider{}
+	_ hypervisors.DiskImageRawFileNameVMIProvider = &FedoraProvider{}
+)
 
 type FedoraProvider struct {
 }

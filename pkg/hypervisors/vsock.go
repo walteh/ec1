@@ -6,39 +6,61 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strconv"
 
+	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/machines/virtio"
 	"inet.af/tcpproxy"
 )
 
-func ExposeVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string, listen bool) (io.Closer, error) {
-	if listen {
-		return listenVsock(ctx, vm, port, vsockPath)
+func ListenVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (net.Listener, error) {
+	if proxiedDevice.SocketURL == "" {
+		return vm.VSockListen(ctx, proxiedDevice.Port)
 	}
-	return connectVsock(ctx, vm, port, vsockPath)
+
+	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	if err != nil {
+		return nil, err
+	}
+
+	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+	return net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: vsockPath})
 }
 
-// func ConnectVsockSync(ctx context.Context, vm VirtualMachine, port uint32) (net.Conn, error) {
+func ConnectVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (net.Conn, error) {
+	if proxiedDevice.SocketURL == "" {
+		return vm.VSockConnect(ctx, proxiedDevice.Port)
+	}
 
-// 	// socketDevices := vm.SocketDevices()
-// 	// if len(socketDevices) != 1 {
-// 	// 	return nil, fmt.Errorf("VM has too many/not enough virtio-vsock devices (%d)", len(socketDevices))
-// 	// }
-// 	// vsockDevice := socketDevices[0]
+	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	if err != nil {
+		return nil, err
+	}
 
-// 	conn, err := vm.VSockConnect(ctx, port)
-// 	if err != nil {
-// 		// we can't `return vsockDevice.Connect()` directly, see https://go.dev/doc/faq#nil_error
-// 		// checking the return value for nil won't work as expected if we don't do this
-// 		return nil, err
-// 	}
-// 	return conn, nil
-// }
+	proxyPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+	return net.DialUnix("unix", nil, &net.UnixAddr{Net: "unix", Name: proxyPath})
+}
+
+func ExposeVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
+	if proxiedDevice.Direction == virtio.VirtioVsockDirectionGuestListensAsServer {
+		return exposeConnectVsockProxy(ctx, vm, proxiedDevice)
+	}
+	return exposeListenVsockProxy(ctx, vm, proxiedDevice)
+}
 
 // connectVsock proxies connections from a host unix socket to a vsock port
 // This allows the host to initiate connections to the guest over vsock
-func connectVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
+func exposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
 	var proxy tcpproxy.Proxy
+
+	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	if err != nil {
+		return nil, err
+	}
+
+	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+
 	// listen for connections on the host unix socket
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
 		parsed, err := url.Parse(laddr)
@@ -55,7 +77,7 @@ func connectVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath
 	}
 
 	proxy.AddRoute(fmt.Sprintf("unix://:%s", vsockPath), &tcpproxy.DialProxy{
-		Addr: fmt.Sprintf("vsock:%d", port),
+		Addr: fmt.Sprintf("vsock:%d", proxiedDevice.Port),
 		// when there's a connection to the unix socket listener, connect to the specified vsock port
 		DialContext: func(_ context.Context, _, addr string) (conn net.Conn, e error) {
 			parsed, err := url.Parse(addr)
@@ -64,7 +86,7 @@ func connectVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath
 			}
 			switch parsed.Scheme {
 			case "vsock":
-				return vm.VSockConnect(ctx, port)
+				return vm.VSockConnect(ctx, proxiedDevice.Port)
 			default:
 				return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
 			}
@@ -75,8 +97,16 @@ func connectVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath
 
 // listenVsock proxies connections from a vsock port to a host unix socket.
 // This allows the guest to initiate connections to the host over vsock
-func listenVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath string) (io.Closer, error) {
+func exposeListenVsockProxy(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
 	var proxy tcpproxy.Proxy
+
+	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	if err != nil {
+		return nil, err
+	}
+
+	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+
 	// listen for connections on the vsock port
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
 		parsed, err := url.Parse(laddr)
@@ -95,7 +125,7 @@ func listenVsock(ctx context.Context, vm VirtualMachine, port uint32, vsockPath 
 		}
 	}
 
-	proxy.AddRoute(fmt.Sprintf("vsock://:%d", port), &tcpproxy.DialProxy{
+	proxy.AddRoute(fmt.Sprintf("vsock://:%d", proxiedDevice.Port), &tcpproxy.DialProxy{
 		Addr: fmt.Sprintf("unix:%s", vsockPath),
 		// when there's a connection to the vsock listener, connect to the provided unix socket
 		DialContext: func(ctx context.Context, _, addr string) (conn net.Conn, e error) {

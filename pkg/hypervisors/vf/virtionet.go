@@ -1,14 +1,8 @@
 package vf
 
 import (
-	"fmt"
-	"math/rand"
 	"net"
-	"os"
-	"path/filepath"
-	"syscall"
 
-	"github.com/crc-org/vfkit/pkg/util"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 
 	"github.com/Code-Hex/vz/v3"
@@ -18,91 +12,6 @@ import (
 type VirtioNet struct {
 	*virtio.VirtioNet
 	localAddr *net.UnixAddr
-}
-
-func localUnixSocketPath(dir string) (string, error) {
-	// unix socket endpoints are filesystem paths, but their max length is
-	// quite small (a bit over 100 bytes).
-	// In this function we try to build a filename which is relatively
-	// unique, not easily guessable (to prevent hostile collisions), and
-	// short (`os.CreateTemp` filenames are a bit too long)
-	//
-	// os.Getpid() is unique but guessable. We append a short 16 bit random
-	// number to it. We only use hex values to make the representation more
-	// compact
-	filename := filepath.Join(dir, fmt.Sprintf("vfkit-%x-%x.sock", os.Getpid(), rand.Int31n(0xffff))) //#nosec G404 -- no need for crypto/rand here
-
-	tmpFile, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return "", err
-	}
-	// slightly racy, but hopefully this is in a directory only user-writable
-	defer tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
-
-	return tmpFile.Name(), nil
-}
-
-// path for unixgram sockets must be less than 104 bytes on macOS
-const maxUnixgramPathLen = 104
-
-func (dev *VirtioNet) connectUnixPath() error {
-
-	remoteAddr := net.UnixAddr{
-		Name: dev.UnixSocketPath,
-		Net:  "unixgram",
-	}
-	localSocketPath, err := localUnixSocketPath(filepath.Dir(dev.UnixSocketPath))
-	if err != nil {
-		return err
-	}
-	if len(localSocketPath) >= maxUnixgramPathLen {
-		return fmt.Errorf("unixgram path '%s' is too long: %d >= %d bytes", localSocketPath, len(localSocketPath), maxUnixgramPathLen)
-	}
-	localAddr := net.UnixAddr{
-		Name: localSocketPath,
-		Net:  "unixgram",
-	}
-	conn, err := net.DialUnix("unixgram", &localAddr, &remoteAddr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	rawConn, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	err = rawConn.Control(func(fd uintptr) {
-		err := syscall.SetsockoptInt(unixFd(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1*1024*1024)
-		if err != nil {
-			return
-		}
-		err = syscall.SetsockoptInt(unixFd(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 4*1024*1024)
-		if err != nil {
-			return
-		}
-	})
-	if err != nil {
-		return err
-	}
-
-	/* send vfkit magic so that the remote end can identify our connection attempt */
-	if _, err := conn.Write([]byte("VFKT")); err != nil {
-		return err
-	}
-	log.Infof("local: %v remote: %v", conn.LocalAddr(), conn.RemoteAddr())
-
-	fd, err := conn.File()
-	if err != nil {
-		return err
-	}
-
-	dev.Socket = fd
-	dev.localAddr = &localAddr
-	dev.UnixSocketPath = ""
-	util.RegisterExitHandler(func() { _ = dev.Shutdown() })
-	return nil
 }
 
 func (dev *VirtioNet) toVz() (*vz.VirtioNetworkDeviceConfiguration, error) {
@@ -137,38 +46,23 @@ func (dev *VirtioNet) toVz() (*vz.VirtioNetworkDeviceConfiguration, error) {
 	return networkConfig, nil
 }
 
-func (dev *VirtioNet) AddToVirtualMachineConfig(vmConfig *VirtualMachineConfiguration) error {
+func (dev *VirtioNet) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 	log.Infof("Adding virtio-net device (nat: %t macAddress: [%s])", dev.Nat, dev.MacAddress)
-	if dev.Socket != nil {
-		log.Infof("Using fd %d", dev.Socket.Fd())
-	}
-	if dev.UnixSocketPath != "" {
-		log.Infof("Using unix socket %s", dev.UnixSocketPath)
-		if err := dev.connectUnixPath(); err != nil {
-			return err
-		}
-	}
+	// if dev.Socket != nil {
+	// 	log.Infof("Using fd %d", dev.Socket.Fd())
+	// }
+	// if dev.UnixSocketPath != "" {
+	// 	log.Infof("Using unix socket %s", dev.UnixSocketPath)
+	// 	if err := dev.connectUnixPath(); err != nil {
+	// 		return err
+	// 	}
+	// }
 	netConfig, err := dev.toVz()
 	if err != nil {
 		return err
 	}
 
 	vmConfig.networkDevicesConfiguration = append(vmConfig.networkDevicesConfiguration, netConfig)
-
-	return nil
-}
-
-func (dev *VirtioNet) Shutdown() error {
-	if dev.localAddr != nil {
-		if err := os.Remove(dev.localAddr.Name); err != nil {
-			return err
-		}
-	}
-	if dev.Socket != nil {
-		if err := dev.Socket.Close(); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
