@@ -1,10 +1,10 @@
 # nswrap.yaml for Apple Virtualization.framework
 # This configuration generates Go bindings for the Apple Virtualization framework
-package: github.com/walteh/ec1/gen/vz
+package: vzfobjc
 
 inputfiles:
   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Virtualization.framework/Headers/Virtualization.h
-  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
+#   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
 
 # Classes to generate bindings for
 classes:
@@ -94,51 +94,51 @@ enums:
   - VZ.*
 
 # Delegate implementations
-delegates:
-    VirtualMachineDelegateProxy:
-        VZVirtualMachineDelegate:
-          - guestDidStopVirtualMachine
-          - virtualMachine:didStopWithError
-          - virtualMachine:networkDevice:attachmentWasDisconnectedWithError
+# delegates:
+#     VirtualMachineDelegateProxy:
+#         VZVirtualMachineDelegate:
+#           - guestDidStopVirtualMachine
+#           - virtualMachine:didStopWithError
+#           - virtualMachine:networkDevice:attachmentWasDisconnectedWithError
 
-    VirtioSocketListenerDelegateProxy:
-        VZVirtioSocketListenerDelegate:
-          - listener:shouldAcceptNewConnection:fromSocketDevice
+#     VirtioSocketListenerDelegateProxy:
+#         VZVirtioSocketListenerDelegate:
+#           - listener:shouldAcceptNewConnection:fromSocketDevice
 
 # Frameworks to include
 frameworks:
   - Foundation
   - Virtualization
-  - Cocoa
+#   - Cocoa
 
 # Framework search dirs
-frameworkdirs:
-  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks
+# frameworkdirs:
+#   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks
 
 # Import statements
-imports:
-  - fmt
-  - sync
-  - unsafe
-  - runtime/cgo
+# imports:
+#   - fmt
+#   - sync
+#   - unsafe
+#   - runtime/cgo
 
-# System imports
-sysimports:
-  - github.com/walteh/ec1/gen/objc
-  - github.com/walteh/ec1/gen/infinity
+# System imports - replacing non-existent packages with standard Go packages
+# sysimports:
+#   - sync/atomic
 
 # Type substitutions
 typesubs:
-    "^NSString[_ ]*\\*": "string"
-    "^NSURL[_ ]*\\*": "string"
-    "^void[_ ]*\\*": "unsafe.Pointer"
-    "^const char[_ ]*\\*": "string"
-    "^char[_ ]*\\*": "string"
-    "^dispatch_queue_t": "unsafe.Pointer"
-    "^unsigned int": "uint32"
-    "^unsigned long long": "uint64"
-    "^uint32_t": "uint32"
-    "^uintptr_t": "uintptr"
+    "VZBridgedNetworkInterface": "VZBridgedNetworkInterface"
+    # "^NSString[_ ]*\\*": "string"
+    # "^NSURL[_ ]*\\*": "string"
+    # "^void[_ ]*\\*": "unsafe.Pointer"
+    # "^const char[_ ]*\\*": "string"
+    # "^char[_ ]*\\*": "string"
+    # "^dispatch_queue_t": "unsafe.Pointer"
+    # "^unsigned int": "uint32"
+    # "^unsigned long long": "uint64"
+    # "^uint32_t": "uint32"
+    # "^uintptr_t": "uintptr"
 
 # Compiler directives
 pragma:

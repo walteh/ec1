@@ -2,9 +2,11 @@ package vf
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
+	"github.com/walteh/ec1/pkg/hack"
 )
 
 var (
@@ -59,13 +61,20 @@ type VirtioTraditionalMemoryBalloonDevice struct {
 	id objc.ID
 }
 
+func (v *VirtualMachine) objcPtr() unsafe.Pointer {
+	return hack.GetUnexportedFieldOf(v.vzvm, "_ptr").(unsafe.Pointer)
+}
+
 // MemoryBalloonDevices returns the list of memory balloon devices for a VM
 // Returns an error if the operation fails
 func (v *VirtualMachine) MemoryBalloonDevices() ([]*VirtioTraditionalMemoryBalloonDevice, error) {
 	objPtr := v.objcPtr()
-	if objPtr == 0 {
+	if objPtr == nil {
 		return nil, fmt.Errorf("invalid virtual machine object")
 	}
+
+	// The NSAutoreleasePool is managed automatically by purego/objc
+	// Don't create one manually
 
 	// Call the Objective-C method
 	nsArray := objc.ID(objPtr).Send(sel_memoryBalloonDevices)
@@ -73,22 +82,22 @@ func (v *VirtualMachine) MemoryBalloonDevices() ([]*VirtioTraditionalMemoryBallo
 		return nil, fmt.Errorf("failed to get memory balloon devices from VM")
 	}
 
-	// Convert result to Go slice
-	count := int(nsArray.Send(sel_count))
+	// No need to manually retain/release with purego/objc
+	// It handles object lifetime automatically
+
+	// Get the count - this is where the crash occurs
+	// Convert count using explicit type conversion
+	count := int(uint(nsArray.Send(sel_count)))
 	devices := make([]*VirtioTraditionalMemoryBalloonDevice, count)
 
 	for i := 0; i < count; i++ {
-		// Get device at index
-		idx := objc.ID(nsNumberClass).Send(sel_numberWithInt, i)
-		if idx == 0 {
-			return nil, fmt.Errorf("failed to create NSNumber for index %d", i)
-		}
-
-		device := nsArray.Send(sel_objectAtIndex, idx)
+		// Pass index as int - purego/objc handles type conversion
+		device := nsArray.Send(sel_objectAtIndex, i)
 		if device == 0 {
 			return nil, fmt.Errorf("failed to get memory balloon device at index %d", i)
 		}
 
+		// No need to manually retain the device
 		devices[i] = &VirtioTraditionalMemoryBalloonDevice{
 			id: device,
 		}

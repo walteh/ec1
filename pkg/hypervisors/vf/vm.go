@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"reflect"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
@@ -43,15 +42,15 @@ type VirtualMachine struct {
 	configuration *VirtualMachineConfiguration
 }
 
-func (vm *VirtualMachine) objcPtr() uintptr {
-	objcVM := reflect.ValueOf(vm.vzvm).Pointer()
-	// objcVMp, ok := objcVM.(unsafe.Pointer)
-	// if !ok {
-	// 	panic("objcVM is not a pointer: " + fmt.Sprintf("%T", objcVM))
-	// }
+// func (vm *VirtualMachine) objcPtr() uintptr {
+// 	objcVM := reflect.ValueOf(vm.vzvm).Pointer()
+// 	// objcVMp, ok := objcVM.(unsafe.Pointer)
+// 	// if !ok {
+// 	// 	panic("objcVM is not a pointer: " + fmt.Sprintf("%T", objcVM))
+// 	// }
 
-	return objcVM
-}
+// 	return objcVM
+// }
 
 // func (vm *VirtualMachine) BalloonDevice() *vz.VirtioTraditionalMemoryBalloonDevice {
 // 	devices := vm.vzvm.MemoryBalloonDevices()
