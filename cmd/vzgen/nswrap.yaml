@@ -1,0 +1,161 @@
+# nswrap.yaml for Apple Virtualization.framework
+# This configuration generates Go bindings for the Apple Virtualization framework
+package: github.com/walteh/ec1/gen/vz
+
+inputfiles:
+  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Virtualization.framework/Headers/Virtualization.h
+  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
+
+# Classes to generate bindings for
+classes:
+  # Core VM classes
+  - VZVirtualMachine
+  - VZVirtualMachineConfiguration
+  - VZVirtualMachineStartOptions
+
+  # Bootloaders
+  - VZLinuxBootLoader
+  - VZEFIBootLoader
+  - VZMacOSBootLoader
+  - VZMacAuxiliaryStorage
+
+  # Storage
+  - VZDiskImageStorageDeviceAttachment
+  - VZVirtioBlockDeviceConfiguration
+  - VZStorageDeviceConfiguration
+
+  # Network
+  - VZVirtioNetworkDeviceConfiguration
+  - VZNetworkDeviceAttachment
+  - VZNATNetworkDeviceAttachment
+  - VZBridgedNetworkDeviceAttachment
+  - VZFileHandleNetworkDeviceAttachment
+
+  # Input/Output devices
+  - VZVirtioConsoleDeviceSerialPortConfiguration
+  - VZFileHandleSerialPortAttachment
+  - VZFileSerialPortAttachment
+  - VZVirtioEntropyDeviceConfiguration
+  - VZSerialPortConfiguration
+  - VZUSBKeyboardConfiguration
+  - VZUSBMassStorageDeviceConfiguration
+
+  # Memory
+  - VZVirtioTraditionalMemoryBalloonDeviceConfiguration
+
+  # Graphics
+  - VZGraphicsDeviceConfiguration
+  - VZMacGraphicsDeviceConfiguration
+  - VZMacGraphicsDisplayConfiguration
+
+  # Networking
+  - VZMACAddress
+
+  # Socket
+  - VZVirtioSocketDevice
+  - VZVirtioSocketDeviceConfiguration
+  - VZVirtioSocketConnection
+  - VZVirtioSocketListener
+
+  # Shared Directory
+  - VZSharedDirectory
+  - VZDirectoryShare
+  - VZSingleDirectoryShare
+  - VZMultipleDirectoryShare
+  - VZSharedDirectoryConfiguration
+  - VZVirtioFileSystemDeviceConfiguration
+
+  # USB
+  - VZUSBConfiguration
+  - VZUSBMassStorageDeviceConfiguration
+
+  # Misc
+  - NSAutoreleasePool
+  - NSString
+  - NSArray
+  - NSDictionary
+  - NSError
+
+# Functions to expose
+functions:
+  - VZVirtualMachine_.*
+  - makeDispatchQueue
+  - validateVZVirtualMachineConfiguration
+  - minimumAllowedMemorySizeVZVirtualMachineConfiguration
+  - maximumAllowedMemorySizeVZVirtualMachineConfiguration
+  - minimumAllowedCPUCountVZVirtualMachineConfiguration
+  - maximumAllowedCPUCountVZVirtualMachineConfiguration
+
+# Enums
+enums:
+  - VZVirtualMachineState.*
+  - VZErrorCode.*
+  - VZLinuxRosettaAvailability.*
+  - VZ.*
+
+# Delegate implementations
+delegates:
+    VirtualMachineDelegateProxy:
+        VZVirtualMachineDelegate:
+          - guestDidStopVirtualMachine
+          - virtualMachine:didStopWithError
+          - virtualMachine:networkDevice:attachmentWasDisconnectedWithError
+
+    VirtioSocketListenerDelegateProxy:
+        VZVirtioSocketListenerDelegate:
+          - listener:shouldAcceptNewConnection:fromSocketDevice
+
+# Frameworks to include
+frameworks:
+  - Foundation
+  - Virtualization
+  - Cocoa
+
+# Framework search dirs
+frameworkdirs:
+  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks
+
+# Import statements
+imports:
+  - fmt
+  - sync
+  - unsafe
+  - runtime/cgo
+
+# System imports
+sysimports:
+  - github.com/walteh/ec1/gen/objc
+  - github.com/walteh/ec1/gen/infinity
+
+# Type substitutions
+typesubs:
+    "^NSString[_ ]*\\*": "string"
+    "^NSURL[_ ]*\\*": "string"
+    "^void[_ ]*\\*": "unsafe.Pointer"
+    "^const char[_ ]*\\*": "string"
+    "^char[_ ]*\\*": "string"
+    "^dispatch_queue_t": "unsafe.Pointer"
+    "^unsigned int": "uint32"
+    "^unsigned long long": "uint64"
+    "^uint32_t": "uint32"
+    "^uintptr_t": "uintptr"
+
+# Compiler directives
+pragma:
+  - clang diagnostic ignored "-Wformat-security"
+  - clang diagnostic ignored "-Wdeprecated-declarations"
+
+# Setting for variadic argument functions
+vaargs: 16
+
+# Debug output for AST parsing
+debugast: false
+
+# Use ARC (Automatic Reference Counting) - false to match existing code
+arc: false
+
+# Use autoreleases
+autorelease: true
+
+# Disable garbage collection (to match existing code approach)
+nogc: false

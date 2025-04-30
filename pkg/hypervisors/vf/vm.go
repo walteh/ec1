@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"unsafe"
+	"reflect"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
-	"github.com/walteh/ec1/pkg/hack"
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 	"gitlab.com/tozd/go/errors"
@@ -44,13 +43,14 @@ type VirtualMachine struct {
 	configuration *VirtualMachineConfiguration
 }
 
-func (vm *VirtualMachine) objcPtr() unsafe.Pointer {
-	objcVM := hack.GetUnexportedFieldOf(vm.vzvm, "pointer")
-	objcVMp, ok := objcVM.(unsafe.Pointer)
-	if !ok {
-		panic("objcVM is not a pointer")
-	}
-	return objcVMp
+func (vm *VirtualMachine) objcPtr() uintptr {
+	objcVM := reflect.ValueOf(vm.vzvm).Pointer()
+	// objcVMp, ok := objcVM.(unsafe.Pointer)
+	// if !ok {
+	// 	panic("objcVM is not a pointer: " + fmt.Sprintf("%T", objcVM))
+	// }
+
+	return objcVM
 }
 
 // func (vm *VirtualMachine) BalloonDevice() *vz.VirtioTraditionalMemoryBalloonDevice {

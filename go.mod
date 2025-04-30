@@ -18,12 +18,10 @@ require (
 	github.com/ebitengine/purego v0.8.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/cel-go v0.24.1
-	github.com/k0kubun/pp/v3 v3.4.1
 	github.com/kdomanski/iso9660 v0.4.0
 	github.com/lima-vm/go-qcow2reader v0.6.0
 	github.com/lmittmann/tint v1.0.7
 	github.com/mholt/archives v0.1.1
-	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.9
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
@@ -103,6 +101,7 @@ require (
 	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect

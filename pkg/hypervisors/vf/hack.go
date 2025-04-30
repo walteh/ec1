@@ -63,7 +63,7 @@ type VirtioTraditionalMemoryBalloonDevice struct {
 // Returns an error if the operation fails
 func (v *VirtualMachine) MemoryBalloonDevices() ([]*VirtioTraditionalMemoryBalloonDevice, error) {
 	objPtr := v.objcPtr()
-	if objPtr == nil {
+	if objPtr == 0 {
 		return nil, fmt.Errorf("invalid virtual machine object")
 	}
 

@@ -2,10 +2,10 @@ package vf
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/k0kubun/pp/v3"
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"gitlab.com/tozd/go/errors"
@@ -13,7 +13,8 @@ import (
 
 func NewHypervisor() *Hypervisor {
 	return &Hypervisor{
-		vms: make(map[string]*VirtualMachine),
+		vms:    make(map[string]*VirtualMachine),
+		notify: make(chan *VirtualMachine),
 	}
 }
 
@@ -31,7 +32,7 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 		return nil, err
 	}
 
-	pp.Println(vfConfig)
+	// pp.Println(vfConfig)
 
 	valid, err := vfConfig.internal.Validate()
 	if err != nil {
@@ -55,6 +56,10 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 	hpv.vms[id] = vm
 	hpv.mu.Unlock()
 
+	slog.DebugContext(ctx, "notifying hypervisor", "vm", vm)
+	hpv.notify <- vm
+
+	slog.DebugContext(ctx, "returning vm", "vm", vm)
 	return vm, nil
 }
 

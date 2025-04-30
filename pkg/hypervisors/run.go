@@ -146,6 +146,7 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	errCh := make(chan error, 1)
 	go func() {
+
 		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
 			errCh <- fmt.Errorf("virtualization error: %v", err)
 		} else {
