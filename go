@@ -5,6 +5,8 @@ set -euo pipefail
 # export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
 # export CGO_ENABLED=0
 
+my_absolute_dir="$(dirname -- "$(realpath "${BASH_SOURCE[0]}")")"
+
 function truncate_logs() {
 	# Default to 1000 lines if not specified
 	MAX_LINES=${1:-1000}
@@ -56,6 +58,7 @@ if [ "${1:-}" == "test" ]; then
 	real_args=()
 	runtime_args=()
 	ide=0
+	vv=0
 	extra_args=""
 	max_lines=1000 # Default to 1000 lines
 	target_dir=""
@@ -72,6 +75,9 @@ if [ "${1:-}" == "test" ]; then
 			ff=1
 		elif [ "$arg" = "-codesign" ]; then
 			codesign=1
+		elif [ "$arg" = "-v" ]; then
+			vv=1
+			real_args+=("$arg")
 		elif [ "$arg" = "-ide" ]; then
 			ide=1
 		elif [[ "$arg" =~ ^-max-lines=(.*)$ ]]; then
@@ -130,35 +136,40 @@ if [ "${1:-}" == "test" ]; then
 
 	# build the test binary
 	if [[ "$codesign" == "1" ]]; then
-		items=$(go list -f '{{.ImportPath}}' "$target_dir")
-		project_root_dir="$(dirname -- "${BASH_SOURCE[0]}")"
+		# items=$(go list -f '{{.ImportPath}}' "$target_dir")
+		# project_root_dir="$(dirname -- "${BASH_SOURCE[0]}")"
 
-		entitlements_file="$project_root_dir/entitlements.plist"
-		if [[ ! -f "$entitlements_file" ]]; then
-			echo "Error: entitlements.plist file not found in project root - it is required for codesigning"
-			exit 1
-		fi
+		# entitlements_file="$project_root_dir/entitlements.plist"
+		# if [[ ! -f "$entitlements_file" ]]; then
+		# 	echo "Error: entitlements.plist file not found in project root - it is required for codesigning"
+		# 	exit 1
+		# fi
 
-		tmpdir=$(mktemp -d)
-		remove_tmpdir() {
-			rm -rf "$tmpdir"
-		}
-		trap remove_tmpdir EXIT
-		for item in $items; do
-			module=$item
-			file_name=$(basename "$module")
-			raw_args+="go test -c -o $tmpdir -v -vet=all -json -cover $extra_args ${real_args[*]} $module"
-			raw_args+=" && [ -f \"$tmpdir/$file_name.test\" ] "
-			raw_args+=" && codesign --entitlements $entitlements_file --verbose=0 -s - $tmpdir/$file_name.test "
-			raw_args+=" && go tool test2json -t -p $module -- $tmpdir/$file_name.test -test.v ${adjusted_runtime_args[*]} || true; "
-		done
-		# raw_args=
-	else
-		raw_args="go test -v -vet=all -json -cover $extra_args ${real_args[*]} $target_dir"
+		# tmpdir=$(mktemp -d)
+		# remove_tmpdir() {
+		# 	rm -rf "$tmpdir"
+		# }
+		# trap remove_tmpdir EXIT
+		# for item in $items; do
+		# 	module=$item
+		# 	file_name=$(basename "$module")
+		# 	raw_args+="go test -c -o $tmpdir -v -vet=all -json -cover $extra_args ${real_args[*]} $module"
+		# 	raw_args+=" && [ -f \"$tmpdir/$file_name.test\" ] "
+		# 	raw_args+=" && codesign --entitlements $entitlements_file --verbose=0 -s - $tmpdir/$file_name.test "
+		# 	raw_args+=" && go tool test2json -t -p $module -- $tmpdir/$file_name.test -test.v ${adjusted_runtime_args[*]} || true; "
+		# done
+
+		extra_args+="-exec 'go run $my_absolute_dir/cmd/codesign'"
+	fi
+	raw_args="go test -v -vet=all -json -cover $extra_args ${real_args[*]} $target_dir"
+	if [[ "$vv" == "1" ]]; then
+		echo "calling: $raw_args"
 	fi
 	if [[ "$ide" == "1" ]]; then
+
 		bash -c "$raw_args"
 	else
+
 		truncate_logs "$max_lines" -- go tool gotest.tools/gotestsum \
 			--format "$fmt" \
 			--format-icons "$fmt_icon" \
