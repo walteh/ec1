@@ -217,23 +217,25 @@ func (vm *VirtualMachine) RequestStop(_ context.Context) (bool, error) {
 }
 
 func (vm *VirtualMachine) GetMemoryBalloonTargetSize(_ context.Context) (strongunits.B, error) {
-	balloonDevices, err := vm.MemoryBalloonDevices()
-	if err != nil {
-		return 0, errors.Errorf("getting memory balloon devices: %w", err)
-	}
-	balloonDevice := balloonDevices[0]
-	size, err := balloonDevice.GetTargetVirtualMachineMemorySize()
-	if err != nil {
-		return 0, errors.Errorf("getting memory balloon target size: %w", err)
-	}
-	return strongunits.B(size), nil
+	// balloonDevices, err := vm.MemoryBalloonDevices()
+	// if err != nil {
+	// 	return 0, errors.Errorf("getting memory balloon devices: %w", err)
+	// }
+	// balloonDevice := balloonDevices[0]
+	// size, err := balloonDevice.GetTargetVirtualMachineMemorySize()
+	// if err != nil {
+	// 	return 0, errors.Errorf("getting memory balloon target size: %w", err)
+	// }
+	// return strongunits.B(size), nil
+	panic("not implemented")
 }
 
 func (vm *VirtualMachine) SetMemoryBalloonTargetSize(_ context.Context, targetBytes strongunits.B) error {
-	balloonDevices, err := vm.MemoryBalloonDevices()
-	if err != nil {
-		return errors.Errorf("getting memory balloon devices: %w", err)
-	}
-	balloonDevice := balloonDevices[0]
-	return balloonDevice.SetTargetVirtualMachineMemorySize(uint64(targetBytes.ToBytes()))
+	// balloonDevices, err := vm.MemoryBalloonDevices()
+	// if err != nil {
+	// 	return errors.Errorf("getting memory balloon devices: %w", err)
+	// }
+	// balloonDevice := balloonDevices[0]
+	// return balloonDevice.SetTargetVirtualMachineMemorySize(uint64(targetBytes.ToBytes()))
+	panic("not implemented")
 }
