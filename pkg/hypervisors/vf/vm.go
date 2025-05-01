@@ -217,25 +217,42 @@ func (vm *VirtualMachine) RequestStop(_ context.Context) (bool, error) {
 }
 
 func (vm *VirtualMachine) GetMemoryBalloonTargetSize(_ context.Context) (strongunits.B, error) {
-	// balloonDevices, err := vm.MemoryBalloonDevices()
-	// if err != nil {
-	// 	return 0, errors.Errorf("getting memory balloon devices: %w", err)
-	// }
-	// balloonDevice := balloonDevices[0]
-	// size, err := balloonDevice.GetTargetVirtualMachineMemorySize()
-	// if err != nil {
-	// 	return 0, errors.Errorf("getting memory balloon target size: %w", err)
-	// }
-	// return strongunits.B(size), nil
-	panic("not implemented")
+	balloonDevices := vm.vzvm.MemoryBalloonDevices()
+	if len(balloonDevices) == 0 {
+		return 0, errors.New("no memory balloon devices found")
+	}
+
+	trad, ok := balloonDevices[0].(*vz.VirtioTraditionalMemoryBalloonDevice)
+	if !ok {
+		return 0, errors.New("memory balloon device is not a VirtioTraditionalMemoryBalloonDevice")
+	}
+
+	size := trad.GetTargetVirtualMachineMemorySize()
+
+	return strongunits.B(size), nil
 }
 
-func (vm *VirtualMachine) SetMemoryBalloonTargetSize(_ context.Context, targetBytes strongunits.B) error {
-	// balloonDevices, err := vm.MemoryBalloonDevices()
-	// if err != nil {
-	// 	return errors.Errorf("getting memory balloon devices: %w", err)
-	// }
-	// balloonDevice := balloonDevices[0]
-	// return balloonDevice.SetTargetVirtualMachineMemorySize(uint64(targetBytes.ToBytes()))
-	panic("not implemented")
+func (vm *VirtualMachine) SetMemoryBalloonTargetSize(ctx context.Context, targetBytes strongunits.B) error {
+	balloonDevices := vm.vzvm.MemoryBalloonDevices()
+	if len(balloonDevices) == 0 {
+		return errors.New("no memory balloon devices found")
+	}
+
+	trad, ok := balloonDevices[0].(*vz.VirtioTraditionalMemoryBalloonDevice)
+	if !ok {
+		return errors.New("memory balloon device is not a VirtioTraditionalMemoryBalloonDevice")
+	}
+
+	trad.SetTargetVirtualMachineMemorySize(uint64(targetBytes.ToBytes()))
+
+	getSize, err := vm.GetMemoryBalloonTargetSize(ctx)
+	if err != nil {
+		return errors.Errorf("getting memory balloon target size: %w", err)
+	}
+
+	if getSize != targetBytes {
+		return errors.Errorf("validating memory balloon target size update: expected %d, got %d", uint64(targetBytes), uint64(getSize))
+	}
+
+	return nil
 }

@@ -2,6 +2,8 @@ module github.com/walteh/ec1
 
 go 1.24.2
 
+replace github.com/Code-Hex/vz/v3 => ../vz
+
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/Code-Hex/vz/v3 v3.6.0

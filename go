@@ -166,10 +166,8 @@ if [ "${1:-}" == "test" ]; then
 		echo "calling: $raw_args"
 	fi
 	if [[ "$ide" == "1" ]]; then
-
 		bash -c "$raw_args"
 	else
-
 		truncate_logs "$max_lines" -- go tool gotest.tools/gotestsum \
 			--format "$fmt" \
 			--format-icons "$fmt_icon" \
