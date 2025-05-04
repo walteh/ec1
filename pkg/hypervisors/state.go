@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/containers/common/pkg/strongunits"
-	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
@@ -18,10 +17,6 @@ type NewVMOptions struct {
 	Vcpus   uint
 	Memory  strongunits.B
 	Devices []virtio.VirtioDevice
-}
-
-type Hypervisor interface {
-	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl bootloader.Bootloader) (VirtualMachine, error)
 }
 
 type VirtualMachineStateType string
@@ -47,16 +42,7 @@ func WaitForVMState(ctx context.Context, vm VirtualMachine, state VirtualMachine
 
 	slog.DebugContext(ctx, "waiting for VM state", "state", state, "current state", vm.CurrentState())
 
-	// if vm.CurrentState() == state {
-	// 	return nil
-	// }
-
 	notifier := vm.StateChangeNotify(ctx)
-
-	// defer func() {
-	// 	signal.Stop(signalCh)
-	// 	close(signalCh)
-	// }()
 
 	for {
 		select {
