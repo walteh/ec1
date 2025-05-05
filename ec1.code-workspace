@@ -5,9 +5,29 @@
 			"path": "."
 		},
 		{
-			"name": "vz",
+			"name": "vz [fork]",
 			"path": "../vz"
+		},
+		{
+			"name": "kata-containers [fork]",
+			"path": "../kata-containers/src/runtime"
+		},
+		{
+			"name": "gvisor [fork]",
+			"path": "../gvisor"
+		},
+		{
+			"name": "rund [fork]",
+			"path": "../rund"
 		}
+		// {
+		// 	"name": "containerd [fork]",
+		// 	"path": "../containerd"
+		// }
+		// {
+		// 	"name": "cgroups [fork]",
+		// 	"path": "../cgroups"
+		// }
 	],
 	"extensions": {
 		"recommendations": [
@@ -23,6 +43,14 @@
 		]
 	},
 	"settings": {
+		"[toml]": {
+			"editor.defaultFormatter": "tamasfe.even-better-toml"
+		},
+		"evenBetterToml.formatter.alignEntries": true,
+		"evenBetterToml.formatter.alignComments": true,
+		"evenBetterToml.formatter.indentEntries": true,
+		"evenBetterToml.formatter.indentTables": true,
+
 		"workbench.colorCustomizations": {
 			"editorOverviewRuler.errorForeground": "#FF0000",
 			"editorError.background": "#FF000033",
@@ -34,6 +62,9 @@
 			"editorInfo.background": "#00AAFF33",
 			"editorInfo.border": "#00AAFF"
 			// "editorInfo.foreground": "#00AAFF",
+		},
+		"go.toolsEnvVars": {
+			"CGO_ENABLED": "1"
 		},
 		"go.alternateTools": {
 			"go": "${workspaceFolder}/go"

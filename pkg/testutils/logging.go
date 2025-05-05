@@ -60,10 +60,7 @@ func RegisterRedactedLogValue(t *testing.T, key string, value string) {
 	})
 }
 
-func SetupSlog(t *testing.T, ctx context.Context) context.Context {
-
-	cached, err := host.CacheDirPrefix()
-	require.NoError(t, err)
+func SetupSlogSimple(ctx context.Context) context.Context {
 
 	tintHandler := tint.NewHandler(os.Stdout, &tint.Options{
 		Level:      slog.LevelDebug,
@@ -84,11 +81,20 @@ func SetupSlog(t *testing.T, ctx context.Context) context.Context {
 		FullTimestamp: true,
 	})
 
+	return slogctx.NewCtx(ctx, mylogger)
+}
+
+func SetupSlog(t *testing.T, ctx context.Context) context.Context {
+
+	simpctx := SetupSlogSimple(ctx)
+
+	cached, err := host.CacheDirPrefix()
+	require.NoError(t, err)
 	RegisterRedactedLogValue(t, os.TempDir()+"/", "[os-tmp-dir]")
 	RegisterRedactedLogValue(t, cached, "[vm-cache-dir]")
 	RegisterRedactedLogValue(t, filepath.Dir(t.TempDir()), "[test-tmp-dir]") // higher priority than os-tmp-dir
 
-	return slogctx.NewCtx(ctx, mylogger)
+	return simpctx
 }
 
 // LOGRUS
