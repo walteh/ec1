@@ -47,6 +47,12 @@ tasks:
         cmds:
           - cmd: open -a Terminal $(pwd)
 
+    zellij:
+        desc: opens zellij
+        platforms: [darwin]
+        cmds:
+          - cmd: zellij --config-dir .zellij
+
     options:
         desc: generates options for structs with '//go:opts' comment
         vars:

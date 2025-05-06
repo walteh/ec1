@@ -19,11 +19,11 @@
 		{
 			"name": "rund [fork]",
 			"path": "../rund"
+		},
+		{
+			"name": "containerd [fork]",
+			"path": "../containerd"
 		}
-		// {
-		// 	"name": "containerd [fork]",
-		// 	"path": "../containerd"
-		// }
 		// {
 		// 	"name": "cgroups [fork]",
 		// 	"path": "../cgroups"
