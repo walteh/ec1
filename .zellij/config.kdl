@@ -1,0 +1,32 @@
+// Zellij Configuration for Containerd Development
+
+// Default layout to use
+default_layout "containerd-dev"
+
+// Copy command for macOS
+copy_command "pbcopy"
+
+// Mouse mode enabled
+mouse_mode true
+
+// Increase scrollback for development
+scroll_buffer_size 10000
+
+// UI options to fix potential rendering issues
+theme "default"
+simplified_ui true
+pane_frames true
+
+// Shell configuration
+default_shell "zsh"
+
+// Better key bindings for navigating between panes
+keybinds {
+    normal {
+        // Quick navigation between panes
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "Alt l" { MoveFocus "Right"; }
+    }
+} 

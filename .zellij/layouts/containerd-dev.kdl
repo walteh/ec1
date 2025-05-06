@@ -1,0 +1,55 @@
+// Containerd Development Layout
+
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:tab-bar"
+    }
+    
+    // Main working area with all panes
+    pane split_direction="vertical" {
+        // Left side - containerd and development
+        pane split_direction="horizontal" size="60%" {
+            // Top - containerd daemon
+            pane name="Containerd Daemon" size="50%" command="zsh" {
+                args "-c" "echo 'Run containerd daemon here (e.g. sudo containerd)'; echo 'Press Enter to start a shell'; read; exec zsh"
+            }
+            
+            // Bottom - development environment
+            pane split_direction="horizontal" size="50%" {
+                // Go commands
+                pane name="Go Commands" command="zsh" {
+                    args "-c" "echo 'Run go commands here:'; echo '- go build'; echo '- go test'; echo 'Press Enter to start a shell'; read; exec zsh"
+                }
+                
+                // Tests output
+                pane name="Tests" command="zsh" {
+                    args "-c" "echo 'Run tests here'; echo 'Press Enter to start a shell'; read; exec zsh"
+                }
+            }
+        }
+        
+        // Right side - ctr commands and logs
+        pane split_direction="horizontal" size="40%" {
+            // CTR commands
+            pane name="CTR Commands" size="40%" command="zsh" {
+                args "-c" "echo 'Run ctr commands here:'; echo '- ctr images ls'; echo '- ctr containers ls'; echo '- ctr tasks ls'; echo '- ctr run --rm image_name container_name command'; echo 'Press Enter to start a shell'; read; exec zsh"
+            }
+            
+            // Logs/output
+            pane split_direction="horizontal" size="60%" {
+                pane name="Logs" command="zsh" {
+                    args "-c" "echo 'View logs or other output here'; echo 'Press Enter to start a shell'; read; exec zsh"
+                }
+                
+                // Help reference
+                pane name="Help" command="zsh" {
+                    args "-c" "echo 'Containerd Quick Reference:'; echo ' '; echo 'Containerd Commands:'; echo '- sudo containerd'; echo ' '; echo 'CTR Commands:'; echo '- ctr images ls'; echo '- ctr containers ls'; echo '- ctr tasks ls'; echo '- ctr run --rm image_name container_name command'; echo '- ctr images pull docker.io/library/alpine:latest'; echo ' '; echo 'Zellij Navigation:'; echo '- Alt+n: Create new pane'; echo '- Alt+h/j/k/l: Navigate between panes'; echo '- Alt+f: Toggle floating pane'; echo '- Alt+= / Alt+-: Resize pane'; echo '- Ctrl+p: Enter pane mode'; echo '- Ctrl+t: Enter tab mode'; echo '- Ctrl+o w: Open session manager'; echo ' '; echo 'Press Enter to start a shell'; read; exec zsh"
+                }
+            }
+        }
+    }
+    
+    pane size=2 borderless=true {
+        plugin location="zellij:status-bar"
+    }
+} 
