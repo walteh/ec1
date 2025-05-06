@@ -1,18 +1,18 @@
 version = 3
-root    = "/Users/dub6ix/Developer/github/walteh/ec1/tmp/var/lib/containerd"
-state   = "/Users/dub6ix/Developer/github/walteh/ec1/tmp/var/run/containerd"
+root    = "INJECT_PWD/out/var/lib/containerd"
+state   = "INJECT_PWD/out/var/run/containerd"
 
 [grpc]
-	address = "/var/run/containerd/containerd.sock"
+	address = "/tmp/kata-shim-attempt-2/var/run/containerd/containerd.sock"
 
 
-[plugins]
-	[plugins."io.containerd.cri.v1.runtime"]
-		[plugins."io.containerd.cri.v1.runtime".containerd]
-			default_runtime_name = "kata"
-			[plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
-				[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata]
-					runtime_type = "io.containerd.kata.v2"
-					runtime_path = "/Users/dub6ix/Developer/github/walteh/ec1/cmd/containerd-kata/kata-containerd-shim-v2/bin/kata-containerd-shim-v2"
-					[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata.options]
-						BinaryName = "./kata-containerd-shim-v2.sh"
+	# [plugins]
+	# 	[plugins."io.containerd.cri.v1.runtime"]
+	# 		[plugins."io.containerd.cri.v1.runtime".containerd]
+	# 			default_runtime_name = "kata"
+	# 			[plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+	# 				[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata]
+	# 					runtime_type = "io.containerd.kata.v2"
+	# 					runtime_path = "INJECT_PWD/cmd/kata-shim-attempt-2/shim.sh"
+	# 					[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata.options]
+	# 						BinaryName = "INJECT_PWD/cmd/kata-shim-attempt-2/shim.sh"

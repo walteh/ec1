@@ -243,3 +243,16 @@ tasks:
           - bun run ./clean.js ./gen/schemas/cloudinit/schema-cloud-config-v1.json ./bin/cleaned-schema-cloud-config-v1.schema2.json
           - mkdir -p bin/tmp
           - go tool github.com/ogen-go/ogen/cmd/jschemagen --target bin/tmp/me.go -package api ./bin/cleaned-schema-cloud-config-v1.schema2.json
+
+    bindfs:
+        env:
+            fuse_CFLAGS: "-I/usr/local/include/fuse -D_FILE_OFFSET_BITS=64 -D_DARWIN_C_SOURCE"
+            fuse_LIBS: "-L/usr/local/lib -lfuse-t -pthread"
+        cmds:
+          - git clone https://github.com/mpartel/bindfs.git /tmp/bindfs
+          - defer: rm -rf /tmp/bindfs
+          - cd /tmp/bindfs && ./autogen.sh
+          - cd /tmp/bindfs && ./configure --with-fuse2
+          - cd /tmp/bindfs && make
+          - cd /tmp/bindfs && sudo make install
+

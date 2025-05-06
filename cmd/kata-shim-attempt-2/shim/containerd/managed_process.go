@@ -2,22 +2,23 @@ package containerd
 
 import (
 	"context"
-	"github.com/containerd/containerd/api/types/task"
-	"github.com/creack/pty"
-	"github.com/hashicorp/go-multierror"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/containerd/containerd/api/types/task"
+	"github.com/creack/pty"
+	"github.com/hashicorp/go-multierror"
+	"github.com/opencontainers/runtime-spec/specs-go"
+	"golang.org/x/sys/unix"
 )
 
 type managedProcess struct {
 	spec       *specs.Process
-	io         stdio
+	io         *ProcessIO
 	console    *os.File
 	mu         sync.Mutex
 	cmd        *exec.Cmd
@@ -70,7 +71,7 @@ func (p *managedProcess) kill(signal syscall.Signal) error {
 func (p *managedProcess) setup(ctx context.Context, rootfs string, stdin string, stdout string, stderr string) error {
 	var err error
 
-	p.io, err = setupIO(ctx, stdin, stdout, stderr)
+	p.io, err = NewProcessIO(ctx, stdin, stdout, stderr, os.Getenv("SHIM_LOG_FILE"))
 	if err != nil {
 		return err
 	}

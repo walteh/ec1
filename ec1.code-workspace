@@ -23,6 +23,10 @@
 		{
 			"name": "containerd [fork]",
 			"path": "../containerd"
+		},
+		{
+			"name": "bindfs [fork]",
+			"path": "../bindfs"
 		}
 		// {
 		// 	"name": "cgroups [fork]",
