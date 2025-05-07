@@ -15,10 +15,13 @@ import (
 
 	shimapi "github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/log"
+	"github.com/walteh/ec1/pkg/hypervisors/kata"
+	"github.com/walteh/ec1/pkg/hypervisors/vf"
 
 	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/katautils"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/types"
+	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers"
 
 	_ "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/plugin"
 )
@@ -26,6 +29,10 @@ import (
 func shimConfig(config *shimapi.Config) {
 	config.NoReaper = true
 	config.NoSubreaper = true
+}
+
+func init() {
+	virtcontainers.RegisterHypervisor(virtcontainers.VirtframeworkHypervisor, kata.HypervisorRegistrationFunc(vf.NewHypervisor()))
 }
 
 func main() {

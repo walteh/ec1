@@ -10,7 +10,7 @@
 		},
 		{
 			"name": "kata-containers",
-			"path": "../kata-containers"
+			"path": "../kata-containers/src/runtime"
 		},
 		{
 			"name": "gvisor",
