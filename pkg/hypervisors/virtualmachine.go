@@ -32,6 +32,8 @@ type VirtualMachine interface {
 	CanResume(ctx context.Context) bool
 	CanPause(ctx context.Context) bool
 
+	Opts() *NewVMOptions
+
 	// // Resources
 	// MemoryUsage() strongunits.B
 	// VCPUsUsage() float64

@@ -3,7 +3,6 @@ package vf
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 
 	"github.com/Code-Hex/vz/v3"
@@ -149,17 +148,17 @@ func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan hypervis
 		for {
 			select {
 			case <-ctx.Done():
-				slog.DebugContext(ctx, "state change notify context done")
+				// slog.DebugContext(ctx, "state change notify context done")
 				return
 			case yep := <-vm.vzvm.StateChangedNotify():
-				slog.DebugContext(ctx, "state change notify start", "state", yep)
+				// slog.DebugContext(ctx, "state change notify start", "state", yep)
 				stateChangeNotify <- hypervisors.VirtualMachineStateChange{
 					StateType: vzStateToHypervisorState(yep),
 					Metadata: map[string]string{
 						"raw_state": yep.String(),
 					},
 				}
-				slog.DebugContext(ctx, "state change notify end", "state", yep)
+				// slog.DebugContext(ctx, "state change notify end", "state", yep)
 			}
 		}
 	}()
@@ -256,3 +255,16 @@ func (vm *VirtualMachine) SetMemoryBalloonTargetSize(ctx context.Context, target
 
 	return nil
 }
+
+func (vm *VirtualMachine) Opts() *hypervisors.NewVMOptions {
+	return vm.configuration.newVMOpts
+}
+
+// func (vm *VirtualMachine) RootVSockAddress() string {
+// 	vsockDev, err := vm.GetVSockDevice()
+// 	if err != nil {
+// 		return ""
+// 	}
+
+// 	return vsockDev.
+// }

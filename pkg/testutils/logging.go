@@ -59,16 +59,20 @@ func RegisterRedactedLogValue(t *testing.T, key string, value string) {
 		})
 	})
 }
-
 func SetupSlogSimple(ctx context.Context) context.Context {
+	return SetupSlogSimpleToWriter(ctx, os.Stdout)
+}
 
-	tintHandler := tint.NewHandler(os.Stdout, &tint.Options{
+func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer) context.Context {
+
+	tintHandler := tint.NewHandler(w, &tint.Options{
 		Level:      slog.LevelDebug,
 		TimeFormat: "2006-01-02 15:04 05.0000",
 		AddSource:  true,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			return Redact(groups, a)
 		},
+		NoColor: true,
 	})
 
 	ctxHandler := slogctx.NewHandler(tintHandler, nil)

@@ -14,7 +14,7 @@ import (
 func NewHypervisor() *Hypervisor {
 	return &Hypervisor{
 		vms:    make(map[string]*VirtualMachine),
-		notify: make(chan *VirtualMachine),
+		notify: make(chan hypervisors.VirtualMachine),
 	}
 }
 
@@ -23,7 +23,7 @@ var _ hypervisors.Hypervisor = &Hypervisor{}
 type Hypervisor struct {
 	vms    map[string]*VirtualMachine
 	mu     sync.Mutex
-	notify chan *VirtualMachine
+	notify chan hypervisors.VirtualMachine
 }
 
 func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hypervisors.NewVMOptions, bl bootloader.Bootloader) (hypervisors.VirtualMachine, error) {
@@ -57,10 +57,16 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 	hpv.mu.Unlock()
 
 	slog.DebugContext(ctx, "notifying hypervisor", "vm", vm)
-	hpv.notify <- vm
+	go func() {
+		hpv.notify <- vm
+	}()
 
 	slog.DebugContext(ctx, "returning vm", "vm", vm)
 	return vm, nil
+}
+
+func (hpv *Hypervisor) OnCreate() <-chan hypervisors.VirtualMachine {
+	return hpv.notify
 }
 
 // func (hpv *Hypervisor) ListenNetworkBlockDevices(ctx context.Context, vm hypervisors.VirtualMachine) error {

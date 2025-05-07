@@ -23,6 +23,8 @@ export fuse_LIBS="-L/usr/local/lib -lfuse-t -pthread"
 
 CGO_ENABLED=1 go build -buildvcs=false -o "$wrk_dir/shim" ./shim3
 
+go run "../codesign" "$wrk_dir/shim" || true
+
 sed "s|INJECT_PWD|$wrk_dir|g" "${this_files_dir}/kata.toml" > "$wrk_dir/kata.toml"
 
 sudo "$wrk_dir/ctr" --address="${address}" --debug "$@"

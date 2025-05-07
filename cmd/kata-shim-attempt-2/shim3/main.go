@@ -17,6 +17,7 @@ import (
 	"github.com/containerd/log"
 	"github.com/walteh/ec1/pkg/hypervisors/kata"
 	"github.com/walteh/ec1/pkg/hypervisors/vf"
+	"github.com/walteh/ec1/pkg/testutils"
 
 	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/katautils"
@@ -47,10 +48,11 @@ func main() {
 
 	wrkDir := filepath.Join(userHomeDir, "Developer", "tmp", "ksa2", "wrk")
 
-	ctx := context.Background()
 	// Shims often need the namespace from containerd args,
 	// shim.Run might handle context setup internally based on args/env.
 	// You might extract namespace from os.Args if needed here.
+
+	ctx := context.Background()
 
 	// Handle --version flag as shims usually do
 	log_file := os.Getenv("SHIM_LOG_FILE")
@@ -70,6 +72,8 @@ func main() {
 	f, err := os.OpenFile(log_file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err == nil {
 		log.L.Logger.SetOutput(io.MultiWriter(f))
+		ctx = testutils.SetupSlogSimpleToWriter(ctx, f)
+
 	} else {
 		log.L.WithField("error", err).Error("Failed to open log file")
 	}

@@ -40,7 +40,7 @@ func createTestVMWithMemory(t *testing.T, ctx context.Context, memory strongunit
 		t.Fatalf("Timed out waiting for test VM")
 		return nil
 	case vm := <-hv.notify:
-		return vm
+		return vm.(*VirtualMachine)
 	case err := <-problemch:
 		t.Fatalf("problem running vm: %v", err)
 		return nil

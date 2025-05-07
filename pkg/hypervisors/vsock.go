@@ -11,21 +11,32 @@ import (
 
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
+	"gitlab.com/tozd/go/errors"
 	"inet.af/tcpproxy"
 )
 
-func ListenVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (net.Listener, error) {
-	if proxiedDevice.SocketURL == "" {
-		return vm.VSockListen(ctx, proxiedDevice.Port)
-	}
-
+func VSockProxyUnixAddr(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (*net.UnixAddr, error) {
 	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
 	if err != nil {
 		return nil, err
 	}
 
 	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
-	return net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: vsockPath})
+
+	return &net.UnixAddr{Net: "unix", Name: vsockPath}, nil
+}
+
+func ListenVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (net.Listener, error) {
+	if proxiedDevice.SocketURL == "" {
+		return vm.VSockListen(ctx, proxiedDevice.Port)
+	}
+
+	addr, err := VSockProxyUnixAddr(ctx, vm, proxiedDevice)
+	if err != nil {
+		return nil, errors.Errorf("getting vsock proxy unix address: %w", err)
+	}
+
+	return net.ListenUnix("unix", addr)
 }
 
 func ConnectVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (net.Conn, error) {
@@ -33,13 +44,11 @@ func ConnectVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.
 		return vm.VSockConnect(ctx, proxiedDevice.Port)
 	}
 
-	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	addr, err := VSockProxyUnixAddr(ctx, vm, proxiedDevice)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting vsock proxy unix address: %w", err)
 	}
-
-	proxyPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
-	return net.DialUnix("unix", nil, &net.UnixAddr{Net: "unix", Name: proxyPath})
+	return net.DialUnix("unix", nil, addr)
 }
 
 func ExposeVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {

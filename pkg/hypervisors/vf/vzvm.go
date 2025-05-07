@@ -26,6 +26,9 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 	slog.DebugContext(ctx, "Starting virtual machine")
 	return vm.vzvm.Start()
 }
+func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
+	return hpv.vzvm
+}
 
 type VirtualMachineConfiguration struct {
 	id        string
@@ -140,6 +143,7 @@ func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *hyperv
 	if err != nil {
 		return nil, errors.Errorf("creating vsock device configuration: %w", err)
 	}
+
 	// len(cfg.socketDevicesConfiguration should be 0 or 1
 	// https://developer.apple.com/documentation/virtualization/vzvirtiosocketdeviceconfiguration?language=objc
 	vzVMConfig.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{vzdev})

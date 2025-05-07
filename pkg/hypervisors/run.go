@@ -95,11 +95,11 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	runtimeProvisioners := vmi.RuntimeProvisioners()
 
-	tapSock := tapsock.NewVFKitVMSocket("unixgram://" + filepath.Join(workingDir, "gvproxy.sock"))
+	gvnetProvisioner := NewGvproxyProvisioner(
+		tapsock.NewVFKitVMSocket("unixgram://" + filepath.Join(workingDir, "gvproxy.sock")),
+	)
 
-	runtimeProvisioners = append(runtimeProvisioners, &GvproxyProvisioner{
-		sock: tapSock,
-	})
+	runtimeProvisioners = append(runtimeProvisioners, gvnetProvisioner)
 
 	for _, runtimeProvisioner := range runtimeProvisioners {
 		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
@@ -118,6 +118,9 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		Vcpus:   vcpus,
 		Memory:  memory,
 		Devices: devices,
+		Provisioners: []Provisioner{
+			gvnetProvisioner,
+		},
 	}
 
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
