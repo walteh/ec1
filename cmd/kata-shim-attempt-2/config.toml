@@ -1,11 +1,15 @@
 version = 3
-root    = "INJECT_PWD/out/var/lib/containerd"
-state   = "INJECT_PWD/out/var/run/containerd"
+root    = "/Users/dub6ix/Developer/tmp/ksa2/wrk/var/lib/containerd"
+state   = "/Users/dub6ix/Developer/tmp/ksa2/wrk/var/run/containerd"
 
 [grpc]
-	address = "/tmp/kata-shim-attempt-2/var/run/containerd/containerd.sock"
+	address = "/Users/dub6ix/Developer/tmp/ksa2/var/run/containerd/containerd.sock"
 
+[debug]
+	level = "debug"
 
+[plugins.linux]
+	shim_debug = true
 	# [plugins]
 	# 	[plugins."io.containerd.cri.v1.runtime"]
 	# 		[plugins."io.containerd.cri.v1.runtime".containerd]

@@ -10,11 +10,11 @@ cd "${this_files_dir}"
 
 config_path="$(./config.sh)"
 
-echo ""
-echo "command:     sudo go run ./containerd/main.go --config=${config_path} -l=trace $*"
-echo "directory:   $(pwd)"
-echo ""
+# echo ""
+# echo "command:     sudo go run ./containerd/main.go --config=${config_path} -l=trace $*"
+# echo "directory:   $(pwd)"
+# echo ""
 
-go build -o out/containerd ./containerd/main.go
+go build -o /Users/dub6ix/Developer/tmp/ksa2/wrk/containerd ./containerd/main.go
 
-sudo ./out/containerd "$@" --config="${config_path}" -l=trace
+sudo /Users/dub6ix/Developer/tmp/ksa2/wrk/containerd "$@" --config="${config_path}" -l=trace

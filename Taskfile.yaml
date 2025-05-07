@@ -255,4 +255,5 @@ tasks:
           - cd /tmp/bindfs && ./configure --with-fuse2
           - cd /tmp/bindfs && make
           - cd /tmp/bindfs && sudo make install
+          - sudo install_name_tool -add_rpath /usr/local/lib /usr/local/bin/bindfs
 

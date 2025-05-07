@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"time"
 
 	shimapi "github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/log"
@@ -28,6 +30,8 @@ func shimConfig(config *shimapi.Config) {
 
 func main() {
 
+	unixtime := time.Now().Unix()
+
 	ctx := context.Background()
 	// Shims often need the namespace from containerd args,
 	// shim.Run might handle context setup internally based on args/env.
@@ -36,14 +40,15 @@ func main() {
 	// Handle --version flag as shims usually do
 	log_file := os.Getenv("SHIM_LOG_FILE")
 	if log_file == "" {
-		log_file = "/Users/dub6ix/Developer/github/walteh/ec1/cmd/kata-shim-attempt-2/out/kata-shim-1746565187.log"
+		// make the directory if it doesn't exist
+		log_file = fmt.Sprintf("/Users/dub6ix/Developer/tmp/ksa2/wrk/logs/kata-shim-%d.log", unixtime)
+		os.MkdirAll(filepath.Dir(log_file), 0755)
 	}
-	if log_file == "" {
-		for _, env := range os.Environ() {
-			log.L.WithField("env", env).Info("env")
-		}
-		log.L.WithField("error", "SHIM_LOG_FILE is not set").Error("Failed to open log file")
-		os.Exit(1)
+
+	katcfg := os.Getenv("KATA_CONF_FILE")
+	if katcfg == "" {
+		katcfg = "/Users/dub6ix/Developer/github/walteh/ec1/cmd/kata-shim-attempt-2/kata.toml"
+		os.Setenv("KATA_CONF_FILE", katcfg)
 	}
 
 	// Set up file logging
@@ -70,4 +75,8 @@ func main() {
 	}
 
 	shimapi.Run(ctx, manager.NewShimManager(types.DefaultKataRuntimeName), shimConfig)
+
+	// CURRENT PROBLEM:
+	// DEBU[0000] remote introspection plugin filters           filters="[type==io.containerd.snapshotter.v1, id==native]"
+	// ctr: failed to create shim task: Cannot find usable config file (config file "/etc/kata-containers/configuration.toml" unresolvable: file /etc/kata-containers/configuration.toml does not exist, config file "/usr/share/defaults/kata-containers/configuration.toml" unresolvable: file /usr/share/defaults/kata-containers/configuration.toml does not exist)
 }

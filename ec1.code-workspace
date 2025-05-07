@@ -5,33 +5,33 @@
 			"path": "."
 		},
 		{
-			"name": "vz [fork]",
+			"name": "vz",
 			"path": "../vz"
 		},
 		{
-			"name": "kata-containers [fork]",
-			"path": "../kata-containers/src/runtime"
+			"name": "kata-containers",
+			"path": "../kata-containers"
 		},
 		{
-			"name": "gvisor [fork]",
+			"name": "gvisor",
 			"path": "../gvisor"
 		},
 		{
-			"name": "rund [fork]",
+			"name": "rund",
 			"path": "../rund"
 		},
 		{
-			"name": "containerd [fork]",
+			"name": "containerd",
 			"path": "../containerd"
 		},
 		{
-			"name": "bindfs [fork]",
+			"name": "bindfs",
 			"path": "../bindfs"
+		},
+		{
+			"name": "wrk",
+			"path": "../../../tmp/ksa2/wrk"
 		}
-		// {
-		// 	"name": "cgroups [fork]",
-		// 	"path": "../cgroups"
-		// }
 	],
 	"extensions": {
 		"recommendations": [
