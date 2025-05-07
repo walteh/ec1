@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DISK_PATH="/Users/dub6ix/Developer/github/walteh/ec1/build/nocloud_alpine-3.21.2-aarch64-uefi-cloudinit-r0.qcow2"
+DISK_PATH="/Users/usr/Developer/github/walteh/ec1/build/nocloud_alpine-3.21.2-aarch64-uefi-cloudinit-r0.qcow2"
 EFI_PATH="./bin/vz-vs.fd" # Using OVMF instead of the custom vz EFI store
 
 # Run QEMU with similar settings to what we're using with vz

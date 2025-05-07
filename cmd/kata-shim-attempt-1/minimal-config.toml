@@ -1,8 +1,8 @@
 version = 3
-root    = "/Users/dub6ix/Developer/github/walteh/ec1/tmp/var/lib/containerd"
-state   = "/Users/dub6ix/Developer/github/walteh/ec1/tmp/var/run/containerd"
+root    = "/Users/usr/Developer/github/walteh/ec1/tmp/var/lib/containerd"
+state   = "/Users/usr/Developer/github/walteh/ec1/tmp/var/run/containerd"
 
 [grpc]
-	address = "/Users/dub6ix/Developer/github/walteh/ec1/tmp/var/run/containerd/containerd.sock"
+    address = "/Users/usr/Developer/github/walteh/ec1/tmp/var/run/containerd/containerd.sock"
 
 [plugins]

@@ -8,13 +8,15 @@ this_files_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "${this_files_dir}"
 
-config_path="$(./config.sh)"
+wrk_dir="$HOME/Developer/tmp/ksa2/wrk"
 
 # echo ""
 # echo "command:     sudo go run ./containerd/main.go --config=${config_path} -l=trace $*"
 # echo "directory:   $(pwd)"
 # echo ""
 
-go build -o /Users/dub6ix/Developer/tmp/ksa2/wrk/containerd ./containerd/main.go
+sed "s|INJECT_PWD|$wrk_dir|g" "${this_files_dir}/config.toml" > "$wrk_dir/config.toml"
 
-sudo /Users/dub6ix/Developer/tmp/ksa2/wrk/containerd "$@" --config="${config_path}" -l=trace
+go build -o "$wrk_dir/containerd" ./containerd/main.go
+
+sudo "$wrk_dir/containerd" "$@" --config="${wrk_dir}/config.toml" -l=trace

@@ -39,6 +39,14 @@ func main() {
 
 	unixtime := time.Now().Unix()
 
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.L.WithField("error", err).Error("Failed to get user home directory")
+		os.Exit(1)
+	}
+
+	wrkDir := filepath.Join(userHomeDir, "Developer", "tmp", "ksa2", "wrk")
+
 	ctx := context.Background()
 	// Shims often need the namespace from containerd args,
 	// shim.Run might handle context setup internally based on args/env.
@@ -48,13 +56,13 @@ func main() {
 	log_file := os.Getenv("SHIM_LOG_FILE")
 	if log_file == "" {
 		// make the directory if it doesn't exist
-		log_file = fmt.Sprintf("/Users/dub6ix/Developer/tmp/ksa2/wrk/logs/kata-shim-%d.log", unixtime)
+		log_file = fmt.Sprintf("%s/logs/kata-shim-%d.log", wrkDir, unixtime)
 		os.MkdirAll(filepath.Dir(log_file), 0755)
 	}
 
 	katcfg := os.Getenv("KATA_CONF_FILE")
 	if katcfg == "" {
-		katcfg = "/Users/dub6ix/Developer/github/walteh/ec1/cmd/kata-shim-attempt-2/kata.toml"
+		katcfg = fmt.Sprintf("%s/kata.toml", wrkDir)
 		os.Setenv("KATA_CONF_FILE", katcfg)
 	}
 

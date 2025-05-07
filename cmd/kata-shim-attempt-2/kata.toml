@@ -1,15 +1,9 @@
 [hypervisor.virtframework]
-	# image  = "/Users/dub6ix/Developer/github/walteh/kata-containers/guest-kernel/kata-containers.img"
-	kernel = "/Users/dub6ix/Developer/tmp/ksa2/wrk/vmlinuz-6.12.22-151"
-	initrd = "/Users/dub6ix/Developer/tmp/ksa2/wrk/kata-alpine-3.18.initrd"
+	kernel = "INJECT_PWD/vmlinuz-6.12.22-151"
+	initrd = "INJECT_PWD/kata-alpine-3.18.initrd"
 	# Path to QEMU binary (ensure this is the ARM64 QEMU for macOS, e.g. qemu-system-aarch64)
 	# path = "/opt/homebrew/bin/qemu-system-aarch64"
 
-	# # Path to ARM64 kernel image (must be built for guest VM, not macOS host)
-	# kernel = "/Users/dub6ix/Developer/github/walteh/kata-containers/guest-kernel/Image"
-
-	# # Path to guest rootfs image (must be ARM64, e.g. a Kata-provided or custom rootfs)
-	# image = "/Users/dub6ix/Developer/github/walteh/kata-containers/guest-kernel/kata-containers.img"
 
 	# # QEMU machine type for ARM64
 	# machine_type = "virt"

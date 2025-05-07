@@ -1,9 +1,9 @@
 version = 3
-root    = "/Users/dub6ix/Developer/tmp/ksa2/wrk/var/lib/containerd"
-state   = "/Users/dub6ix/Developer/tmp/ksa2/wrk/var/run/containerd"
+root    = "INJECT_PWD/var/lib/containerd"
+state   = "INJECT_PWD/var/run/containerd"
 
 [grpc]
-	address = "/Users/dub6ix/Developer/tmp/ksa2/var/run/containerd/containerd.sock"
+	address = "INJECT_PWD/var/run/containerd/containerd.sock"
 
 [debug]
 	level = "debug"

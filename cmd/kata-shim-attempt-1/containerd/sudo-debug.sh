@@ -16,7 +16,7 @@ sudo chown -R $(whoami) "${PWD}/tmp"
 # Run dlv with sudo if we want to debug
 if [ "$1" = "debug" ]; then
 	shift
-	sudo -E /Users/dub6ix/go/bin/dlv debug \
+	sudo -E /Users/usr/go/bin/dlv debug \
 		--headless \
 		--listen=:2345 \
 		--api-version=2 \
