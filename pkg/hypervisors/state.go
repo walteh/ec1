@@ -54,6 +54,10 @@ func WaitForVMState(ctx context.Context, vm VirtualMachine, state VirtualMachine
 
 	notifier := vm.StateChangeNotify(ctx)
 
+	if vm.CurrentState() == state {
+		return nil
+	}
+
 	for {
 		select {
 		case s := <-signalCh:

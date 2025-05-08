@@ -85,7 +85,7 @@
 			// 		"to": "${workspaceFolder}/go"
 			// 	}
 			// ],
-			"dlvFlags": ["--log", "--log-output=rpc,dap", "--log-dest=${workspaceFolder}/dlv-rpc.log"]
+			// "dlvFlags": ["--log", "--log-output=rpc,dap", "--log-dest=${workspaceFolder}/dlv-rpc.log"]
 		},
 
 		"go.testFlags": ["-ide", "-codesign", "-v"],

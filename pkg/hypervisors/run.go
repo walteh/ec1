@@ -95,11 +95,22 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	runtimeProvisioners := vmi.RuntimeProvisioners()
 
+	socketPath := filepath.Join(workingDir, "gvproxy.sock")
+
+	// os.Remove(socketPath)
+	// os.Create(socketPath)
+
 	gvnetProvisioner := NewGvproxyProvisioner(
-		tapsock.NewVFKitVMSocket("unixgram://" + filepath.Join(workingDir, "gvproxy.sock")),
+		tapsock.NewVFKitVMSocket("unixgram://" + socketPath),
 	)
 
-	runtimeProvisioners = append(runtimeProvisioners, gvnetProvisioner)
+	device, err := gvnetProvisioner.VirtioDevices(ctx)
+	if err != nil {
+		return errors.Errorf("getting gvproxy virtio devices: %w", err)
+	}
+	devices = append(devices, device...)
+
+	// runtimeProvisioners = append(runtimeProvisioners, gvnetProvisioner)
 
 	for _, runtimeProvisioner := range runtimeProvisioners {
 		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
@@ -123,6 +134,22 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		},
 	}
 
+	errgrp, ctx := errgroup.WithContext(ctx)
+
+	errgrp.Go(func() error {
+		return gvnetProvisioner.RunDuringRuntime(ctx, nil)
+	})
+
+	netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](devices)
+	for _, netDev := range netDevs {
+		if netDev.UnixSocketPath != "" {
+			err := netDev.ConnectUnixPath(ctx)
+			if err != nil {
+				return errors.Errorf("connecting unix socket path: %w", err)
+			}
+		}
+	}
+
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
 	if err != nil {
 		return errors.Errorf("creating virtual machine: %w", err)
@@ -139,14 +166,14 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	slog.WarnContext(ctx, "running virtual machine")
 
-	errGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
+	runErrGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
 	if err != nil {
 		return errors.Errorf("running virtual machine: %w", err)
 	}
 
 	defer func() {
 		runCancel()
-		if err := errGroup.Wait(); err != nil {
+		if err := runErrGroup.Wait(); err != nil {
 			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
 		}
 	}()
@@ -161,6 +188,12 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		} else {
 			slog.InfoContext(ctx, "VM is stopped")
 			errCh <- nil
+		}
+	}()
+
+	go func() {
+		if err := errgrp.Wait(); err != nil {
+			slog.DebugContext(ctx, "error running gvproxy", "error", err)
 		}
 	}()
 
@@ -224,10 +257,10 @@ func boot(ctx context.Context, vm VirtualMachine, vmi VMIProvider) error {
 }
 
 func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []RuntimeProvisioner) (*errgroup.Group, func(), error) {
-	bootCtx, bootCancel := context.WithCancel(ctx)
-	errGroup, ctx := errgroup.WithContext(bootCtx)
+	runCtx, bootCancel := context.WithCancel(ctx)
+	errGroup, ctx := errgroup.WithContext(runCtx)
 
-	if err := vm.ListenNetworkBlockDevices(bootCtx); err != nil {
+	if err := vm.ListenNetworkBlockDevices(runCtx); err != nil {
 		bootCancel()
 		return nil, nil, errors.Errorf("listening network block devices: %w", err)
 	}
@@ -236,7 +269,7 @@ func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []
 	for _, provisioner := range provisioners {
 		errGroup.Go(func() error {
 			slog.DebugContext(ctx, "running runtime provisioner", "provisioner", provisioner)
-			err := provisioner.RunDuringRuntime(bootCtx, vm)
+			err := provisioner.RunDuringRuntime(runCtx, vm)
 			if err != nil {
 				slog.DebugContext(ctx, "error running runtime provisioner", "error", err)
 				return errors.Errorf("running runtime provisioner: %w", err)
@@ -245,20 +278,9 @@ func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []
 		})
 	}
 
-	if err := startVSockDevices(bootCtx, vm); err != nil {
+	if err := startVSockDevices(runCtx, vm); err != nil {
 		bootCancel()
 		return nil, nil, errors.Errorf("starting vsock devices: %w", err)
-	}
-
-	netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](vm.Devices())
-	for _, netDev := range netDevs {
-		if netDev.UnixSocketPath != "" {
-			err := netDev.ConnectUnixPath(ctx)
-			if err != nil {
-				bootCancel()
-				return nil, nil, errors.Errorf("connecting unix socket path: %w", err)
-			}
-		}
 	}
 
 	gpuDevs := virtio.VirtioDevicesOfType[*virtio.VirtioGPU](vm.Devices())
@@ -275,6 +297,10 @@ func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []
 		} else {
 			slog.DebugContext(ctx, "not starting GUI")
 		}
+	}
+
+	for _, provisioner := range provisioners {
+		<-provisioner.ReadyChan()
 	}
 
 	return errGroup, bootCancel, nil

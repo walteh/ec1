@@ -17,6 +17,7 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
 	"github.com/crc-org/vfkit/pkg/config"
+	"github.com/k0kubun/pp/v3"
 	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
 	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
@@ -300,9 +301,12 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		require.NoError(t, err)
 
 		devz, err := config.VirtioNetNew(devd.MacAddress.String())
+
 		require.NoError(t, err)
 		devz.SetUnixSocketPath(devd.UnixSocketPath)
 		dev = devz
+
+		pp.Println(dev)
 		require.NoError(t, err)
 
 		go func() {

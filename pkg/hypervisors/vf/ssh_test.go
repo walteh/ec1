@@ -100,7 +100,11 @@ func TestSSH(t *testing.T) {
 		t.Fatalf("error getting port: %v", err)
 	}
 
-	sshClient, err := hypervisors.ObtainSSHConnectionWithGuest(ctx, port, vmi.SSHConfig(), time.After(10*time.Second))
+	if err := hypervisors.WaitForVMState(ctx, vm, hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
+		t.Fatalf("timeout waiting for vm to be running: %v", err)
+	}
+
+	sshClient, err := hypervisors.ObtainSSHConnectionWithGuest(ctx, port, vmi.SSHConfig(), time.After(30*time.Second))
 	if err != nil {
 		t.Fatalf("error obtaining ssh connection: %v", err)
 	}

@@ -67,6 +67,12 @@ func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Contex
 	return nil
 }
 
+func (me *QemuGuestAgentTimesyncProvisioner) ReadyChan() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 func (me *QemuGuestAgentTimesyncProvisioner) VirtioDevices(ctx context.Context) ([]virtio.VirtioDevice, error) {
 	return []virtio.VirtioDevice{me.device()}, nil
 }

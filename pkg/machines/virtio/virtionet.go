@@ -12,8 +12,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/apex/log"
 	"github.com/crc-org/vfkit/pkg/util"
+	"gitlab.com/tozd/go/errors"
 )
 
 // TODO: Add BridgedNetwork support
@@ -191,9 +191,14 @@ func (dev *VirtioNet) ConnectUnixPath(ctx context.Context) error {
 		<-dev.ReadyChan
 		slog.DebugContext(ctx, "virtio-net ready")
 	}
+
+	// // create both ends of the socket
+	// os.Remove(localSocketPath)
+	// os.Create(localSocketPath)
+
 	conn, err := net.DialUnix("unixgram", &localAddr, &remoteAddr)
 	if err != nil {
-		return err
+		return errors.Errorf("dialing unix socket: %w", err)
 	}
 	defer conn.Close()
 
@@ -219,7 +224,7 @@ func (dev *VirtioNet) ConnectUnixPath(ctx context.Context) error {
 	if _, err := conn.Write([]byte("VFKT")); err != nil {
 		return err
 	}
-	log.Infof("local: %v remote: %v", conn.LocalAddr(), conn.RemoteAddr())
+	slog.InfoContext(ctx, "connected to unix socket", "local", conn.LocalAddr(), "remote", conn.RemoteAddr())
 
 	fd, err := conn.File()
 	if err != nil {

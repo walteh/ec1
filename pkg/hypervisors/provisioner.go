@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/k0kubun/pp/v3"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
@@ -26,6 +27,7 @@ type BootProvisioner interface {
 type RuntimeProvisioner interface {
 	Provisioner
 	RunDuringRuntime(ctx context.Context, vm VirtualMachine) error
+	ReadyChan() <-chan struct{}
 }
 
 type GvproxyProvisioner struct {
@@ -71,6 +73,10 @@ func (me *GvproxyProvisioner) SSHURL(ctx context.Context) (string, error) {
 	return fmt.Sprintf("tcp://127.0.0.1:%d", port), nil
 }
 
+func (me *GvproxyProvisioner) ReadyChan() <-chan struct{} {
+	return me.chans
+}
+
 func (me *GvproxyProvisioner) device() *virtio.VirtioNet {
 	if me.dev != nil {
 		return me.dev
@@ -97,7 +103,7 @@ func (me *GvproxyProvisioner) device() *virtio.VirtioNet {
 	return netdev
 }
 
-func (me *GvproxyProvisioner) RunDuringRuntime(ctx context.Context, vm VirtualMachine) error {
+func (me *GvproxyProvisioner) RunDuringRuntime(ctx context.Context, _ VirtualMachine) error {
 	// allocate a random port
 	ss, err := me.SSHURL(ctx)
 	if err != nil {
@@ -119,7 +125,11 @@ func (me *GvproxyProvisioner) RunDuringRuntime(ctx context.Context, vm VirtualMa
 }
 
 func (me *GvproxyProvisioner) VirtioDevices(ctx context.Context) ([]virtio.VirtioDevice, error) {
+
+	dev := me.device()
+	pp.Println(dev)
+
 	return []virtio.VirtioDevice{
-		me.device(),
+		dev,
 	}, nil
 }
