@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -17,7 +18,16 @@ var entitlements = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`
 
+var skipRun = false
+var fileToSign = ""
+
 func main() {
+	flag.BoolVar(&skipRun, "skip-run", false, "skip running the command")
+	flag.StringVar(&fileToSign, "file", "", "file to sign")
+	flag.Parse()
+
+	fmt.Println("skipRun", skipRun)
+	fmt.Println("fileToSign", fileToSign)
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -39,13 +49,17 @@ func run() error {
 		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
-	cmd := exec.Command("codesign", "--entitlements", f.Name(), "-s", "-", os.Args[1])
+	if fileToSign == "" {
+		return fmt.Errorf("fileToSign is required (use -file flag)")
+	}
+
+	cmd := exec.Command("codesign", "--entitlements", f.Name(), "-s", "-", fileToSign)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to do codesign(%q): %w",
 			strings.Join(
 				[]string{
-					"codesign", "--entitlements", f.Name(), "-s", "-", os.Args[1],
+					"codesign", "--entitlements", f.Name(), "-s", "-", fileToSign,
 				},
 				" ",
 			),
@@ -53,10 +67,14 @@ func run() error {
 		)
 	}
 
-	testcmd := exec.Command(os.Args[1], os.Args[2:]...)
-	testcmd.Stdout = os.Stdout
-	testcmd.Stderr = os.Stderr
-	testcmd.Stdin = os.Stdin
+	if !skipRun {
+		testcmd := exec.Command(os.Args[1], os.Args[2:]...)
+		testcmd.Stdout = os.Stdout
+		testcmd.Stderr = os.Stderr
+		testcmd.Stdin = os.Stdin
 
-	return testcmd.Run()
+		return testcmd.Run()
+	}
+
+	return nil
 }

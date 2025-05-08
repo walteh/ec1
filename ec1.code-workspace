@@ -71,10 +71,23 @@
 			"CGO_ENABLED": "1"
 		},
 		"go.alternateTools": {
-			"go": "${workspaceFolder}/go"
+			"go": "${workspaceFolder}/go",
+			"dlv": "${workspaceFolder}/go"
 		},
 		"go.testExplorer.packageDisplayMode": "nested",
 		"go.testExplorer.showOutput": true,
+		// "go.gopath": "${workspaceFolder}/go",
+
+		"go.delveConfig": {
+			// "substitutePath": [
+			// 	{
+			// 		"from": "go",
+			// 		"to": "${workspaceFolder}/go"
+			// 	}
+			// ],
+			"dlvFlags": ["--log", "--log-output=rpc,dap", "--log-dest=${workspaceFolder}/dlv-rpc.log"]
+		},
+
 		"go.testFlags": ["-ide", "-codesign", "-v"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,

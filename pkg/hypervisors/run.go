@@ -128,10 +128,16 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		return errors.Errorf("creating virtual machine: %w", err)
 	}
 
+	slog.WarnContext(ctx, "booting virtual machine")
+
 	err = boot(ctx, vm, vmi)
 	if err != nil {
 		return errors.Errorf("booting virtual machine: %w", err)
 	}
+
+	<-gvnetProvisioner.dev.ReadyChan
+
+	slog.WarnContext(ctx, "running virtual machine")
 
 	errGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
 	if err != nil {
@@ -226,8 +232,10 @@ func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []
 		return nil, nil, errors.Errorf("listening network block devices: %w", err)
 	}
 
+	slog.WarnContext(ctx, "running runtime provisioners")
 	for _, provisioner := range provisioners {
 		errGroup.Go(func() error {
+			slog.DebugContext(ctx, "running runtime provisioner", "provisioner", provisioner)
 			err := provisioner.RunDuringRuntime(bootCtx, vm)
 			if err != nil {
 				slog.DebugContext(ctx, "error running runtime provisioner", "error", err)

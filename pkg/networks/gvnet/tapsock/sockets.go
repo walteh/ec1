@@ -52,6 +52,7 @@ func (s *VFKitSocket) Validate() error {
 	if uri.Scheme != "unixgram" {
 		return errors.New("listen-vfkit must be unixgram:// address")
 	}
+
 	if _, err := os.Stat(uri.Path); err == nil {
 		return errors.Errorf("%q already exists", uri.Path)
 	}

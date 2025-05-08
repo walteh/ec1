@@ -24,6 +24,7 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/dustin/go-humanize"
+	"github.com/k0kubun/pp/v3"
 	"github.com/soheilhy/cmux"
 	slogctx "github.com/veqryn/slog-context"
 	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
@@ -97,6 +98,7 @@ func GvproxyVersion() string {
 }
 
 func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
+	pp.Println("yoooooo", cfg)
 
 	defer func() {
 		slog.DebugContext(ctx, "gvproxy defer")

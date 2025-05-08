@@ -14,6 +14,7 @@ tool (
 	github.com/atombender/go-jsonschema
 	github.com/bufbuild/buf/cmd/buf
 	github.com/bufbuild/plugins/cmd/download-plugins
+	github.com/go-delve/delve/cmd/dlv
 	github.com/go-task/task/v3/cmd/task
 	github.com/golangci/golangci-lint/cmd/golangci-lint
 	github.com/google/go-containerregistry/cmd/crane
@@ -192,11 +193,13 @@ require (
 	github.com/chavacava/garif v0.1.0 // indirect
 	github.com/chigopher/pathlib v0.19.1 // indirect
 	github.com/chrismellard/docker-credential-acr-env v0.0.0-20230304212654-82a0ddb27589 // indirect
+	github.com/cilium/ebpf v0.11.0 // indirect
 	github.com/ckaznocha/intrange v0.3.0 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
+	github.com/cosiner/argv v0.1.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20231011164504-785e29786b46 // indirect
@@ -205,6 +208,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
+	github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d // indirect
 	github.com/dghubble/go-twitter v0.0.0-20211115160449-93a8679adecb // indirect
 	github.com/dghubble/oauth1 v0.7.3 // indirect
 	github.com/dghubble/sling v1.4.0 // indirect
@@ -247,6 +251,8 @@ require (
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/chi/v5 v5.2.1 // indirect
 	github.com/go-critic/go-critic v0.12.0 // indirect
+	github.com/go-delve/delve v1.24.2 // indirect
+	github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-faster/jx v1.1.0 // indirect
 	github.com/go-faster/yaml v0.4.6 // indirect
@@ -299,6 +305,7 @@ require (
 	github.com/google/cel-go v0.24.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.3 // indirect
+	github.com/google/go-dap v0.12.0 // indirect
 	github.com/google/go-github/v66 v66.0.0 // indirect
 	github.com/google/go-github/v70 v70.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -572,6 +579,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
+	go.starlark.net v0.0.0-20231101134539-556fd59b42f6 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/mock v0.5.1 // indirect
@@ -579,6 +587,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	gocloud.dev v0.40.0 // indirect
+	golang.org/x/arch v0.11.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
@@ -587,6 +596,7 @@ require (
 	golang.org/x/oauth2 v0.29.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
