@@ -212,17 +212,17 @@ if [ "${1:-}" == "test" ]; then
 	fmt="pkgname"
 	fmt_icon="hivis"
 
-	raw_args="${real_go_binary} test -v -vet=all -json -cover $extra_args ${real_args[*]} $target_dir ${adjusted_runtime_args[*]}"
+	if [[ "$codesign" == "1" ]]; then
+		extra_args+="-exec='go run $my_absolute_dir/cmd/codesign run-after-signing' "
+	fi
 
 	if [[ "$is_dap" == "1" ]]; then
 		export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" # dap will fail otherwise
 
 		raw_args="${real_go_binary} test -o '$output_file' -gcflags='${gcflags_arg}' ${real_args[*]} "
-		# raw_args+=" && ls -laR $output_file && [ -f \"$output_file\" ] "
 		if [[ "$codesign" == "1" ]]; then
-			raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign -skip-run -file=$output_file "
+			raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign just-sign $output_file "
 		fi
-		# raw_args+=" && dlv exec --listen=:2347 --api-version=2 --continue=false $output_file.test"
 
 	elif [[ "$debug" == "1" ]]; then
 
@@ -232,11 +232,7 @@ if [ "${1:-}" == "test" ]; then
 			echo "Error: more than one item in target directory"
 			exit 1
 		fi
-		# item="$items"
 
-		# go test -c -o /tmp/test.test "$item"
-
-		# project_root_dir="$(dirname -- "${BASH_SOURCE[0]}")"
 		raw_args=""
 		tmpdir=$(mktemp -d)
 		remove_tmpdir() {
@@ -250,46 +246,21 @@ if [ "${1:-}" == "test" ]; then
 			raw_args+="${real_go_binary} test -c -o $tmpdir -gcflags=\"all=-N -l\" $extra_args ${real_args[*]} $module"
 			raw_args+=" && [ -f \"$tmpdir/$file_name.test\" ] "
 			if [[ "$codesign" == "1" ]]; then
-				# raw_args+=" && codesign --entitlements $entitlements_file --verbose=0 -s - $tmpdir/$file_name.test "
-				raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign -skip-run -file=$tmpdir/$file_name.test "
+				raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign just-sign $tmpdir/$file_name.test "
 			fi
-			# 		launchConfig := map[string]interface{}{
-			#     "type":    "go",
-			#     "request": "launch",
-			#     "name":    "Debug VF Tests",
-			#     // “exec” mode makes the Go extension invoke dlv exec under the hood
-			#     "mode":    "exec",
-			#     "program": fmt.Sprintf("%s/%s", getCwd(), bin),
-			#     "args": []string{
-			#         "--headless",
-			#         "--listen=:2347",
-			#         "--api-version=2",
-			#         "--accept-multiclient",
-			#         "--continue=false",
-			#     },
-			# }
-			# raw_args+=" && go tool test2json -t -p $module -- $tmpdir/$file_name.test -test.v ${adjusted_runtime_args[*]} || true; "
-			# start the delv server
-			# dlv dap --headless --listen=:2347 --api-version=2 &
-			# run debugger (continue? or -- )
-			# add this file to path for the dlv command
-			# export PATH="$PATH:$my_absolute_dir"
-			# uri='cursor://fabiospampinato.vscode-debug-launcher/launch?args={"type":"go","request":"attach","name":"Debug VF Tests","mode":"remote","host":"127.0.0.1","port":2347,"program":"'"$tmpdir/$file_name.test"'"}'
 			raw_args+=" && dlv exec  --listen=:2347 --api-version=2 --continue=false $tmpdir/$file_name.test"
-			# raw_args+=" && open $uri"
 		done
-	elif [[ "$codesign" == "1" ]]; then
-		extra_args+="-exec 'go run $my_absolute_dir/cmd/codesign'"
+	else
+		raw_args="${real_go_binary} test -vet=all  -cover $extra_args ${real_args[*]}  ${runtime_args[*]} $target_dir"
 	fi
-	if [[ "$vv" == "1" || "$debug" == "1" ]]; then
-		# if ! [[ "$is_dap" == "1" ]]; then
-		echo -e "calling: $raw_args"
-		# fi
-	fi
+
+	# if [[ "$vv" == "1" || "$debug" == "1" ]]; then
+	# 	echo -e "calling: $raw_args ${extra_args[*]}"
+	# fi
 
 	if [[ "$ide" == "1" || "$debug" == "1" || "$is_dap" == "1" ]]; then
 		echo "running: $raw_args"
-		bash -c "$raw_args"
+		bash -c "$raw_args "
 	else
 		truncate_logs "$max_lines" -- go tool gotest.tools/gotestsum \
 			--format "$fmt" \

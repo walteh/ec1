@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -18,16 +17,23 @@ var entitlements = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`
 
-var skipRun = false
 var fileToSign = ""
+var mode = ""
 
 func main() {
-	flag.BoolVar(&skipRun, "skip-run", false, "skip running the command")
-	flag.StringVar(&fileToSign, "file", "", "file to sign")
-	flag.Parse()
 
-	fmt.Println("skipRun", skipRun)
-	fmt.Println("fileToSign", fileToSign)
+	// flag.StringVar(&mode, "mode", "", "mode")
+	// flag.Parse()
+
+	mode = os.Args[1]
+	fileToSign = os.Args[2]
+
+	if mode == "run-after-signing" || mode == "just-sign" {
+
+	} else {
+		log.Fatal("invalid mode (use run-after-signing or just-sign)")
+	}
+
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -67,8 +73,8 @@ func run() error {
 		)
 	}
 
-	if !skipRun {
-		testcmd := exec.Command(os.Args[1], os.Args[2:]...)
+	if mode == "run-after-signing" {
+		testcmd := exec.Command(os.Args[2], os.Args[3:]...)
 		testcmd.Stdout = os.Stdout
 		testcmd.Stderr = os.Stderr
 		testcmd.Stdin = os.Stdin

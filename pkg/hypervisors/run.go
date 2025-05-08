@@ -135,7 +135,7 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		return errors.Errorf("booting virtual machine: %w", err)
 	}
 
-	<-gvnetProvisioner.dev.ReadyChan
+	// <-gvnetProvisioner.dev.ReadyChan
 
 	slog.WarnContext(ctx, "running virtual machine")
 
