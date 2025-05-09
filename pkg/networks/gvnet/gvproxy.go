@@ -215,9 +215,7 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 			slog.DebugContext(ctx, "gvproxy exiting")
 			if cfg.ReadyChan != nil {
 				slog.DebugContext(ctx, "signaling gvproxy ready")
-				go func() {
-					cfg.ReadyChan <- struct{}{}
-				}()
+				close(cfg.ReadyChan)
 			}
 		}()
 		slog.DebugContext(ctx, "running gvproxy")
@@ -225,6 +223,9 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 	})
 
 	if err := groupErrs.Wait(); err != nil {
+		if err == context.Canceled {
+			return nil
+		}
 		return errors.Errorf("gvnet exiting: %v", err)
 	}
 	return nil
@@ -463,7 +464,10 @@ func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.
 func httpServe(ctx context.Context, g *errgroup.Group, ln net.Listener, mux http.Handler) {
 	g.Go(func() error {
 		<-ctx.Done()
-		return errors.Errorf("http serve: %w", ln.Close())
+		if err := ln.Close(); err != nil {
+			return errors.Errorf("closing listener: %w", err)
+		}
+		return nil
 	})
 	g.Go(func() error {
 		s := &http.Server{

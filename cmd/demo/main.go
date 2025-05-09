@@ -152,7 +152,7 @@ func main() {
 	})
 
 	// Wait for all of the go funcs to finish up
-	if err := groupErrs.Wait(); err != nil {
+	if err := groupErrs.Wait(); err != nil && err != context.Canceled {
 		log.Errorf("gvnet exiting: %v", err)
 		// exitCode = 1
 		os.Exit(1)

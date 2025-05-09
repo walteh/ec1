@@ -182,7 +182,6 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	errCh := make(chan error, 1)
 	go func() {
-
 		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
 			errCh <- fmt.Errorf("virtualization error: %v", err)
 		} else {
@@ -192,8 +191,8 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 	}()
 
 	go func() {
-		if err := errgrp.Wait(); err != nil {
-			slog.DebugContext(ctx, "error running gvproxy", "error", err)
+		if err := errgrp.Wait(); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
 		}
 	}()
 

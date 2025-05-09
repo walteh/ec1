@@ -40,6 +40,7 @@ func createTestVMWithSSH(t *testing.T, ctx context.Context) (*vf.VirtualMachine,
 	case vm := <-hv.OnCreate():
 
 		t.Cleanup(func() {
+			slog.DebugContext(ctx, "hard stopping vm")
 			err := vm.HardStop(ctx)
 			if err != nil {
 				t.Logf("problem hard stopping vm: %v", err)
