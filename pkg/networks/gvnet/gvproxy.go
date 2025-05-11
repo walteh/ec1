@@ -332,14 +332,14 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/services/forwarder/all", vn.Mux())
-	mux.Handle("/services/forwarder/expose", vn.Mux())
-	mux.Handle("/services/forwarder/unexpose", vn.Mux())
+	mux.Handle("/services/forwarder/all", vn.Mux(ctx))
+	mux.Handle("/services/forwarder/expose", vn.Mux(ctx))
+	mux.Handle("/services/forwarder/unexpose", vn.Mux(ctx))
 
 	group.AddWithID(NewHTTPServer("gateway-forwarder", mux, vml))
 	// cmuxId.MarkDependsOn(group, gatewayForwarderId)
 
-	mux = vn.Mux()
+	mux = vn.Mux(ctx)
 	if cfg.EnableDebug {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -353,9 +353,9 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 	if cfg.EnableNoConnectAPI {
 		slog.InfoContext(ctx, "enabling raw no connect API at /no-connect")
 		mux := http.NewServeMux()
-		mux.Handle("/no-connect", vn.Mux())
+		mux.Handle("/no-connect", vn.Mux(ctx))
 
-		group.AddWithID(NewHTTPServer("no-connect", vn.Mux(), cmuxl.Match(cmux.Any())))
+		group.AddWithID(NewHTTPServer("no-connect", vn.Mux(ctx), cmuxl.Match(cmux.Any())))
 		// cmuxId.MarkDependsOn(group, noConnectId)
 	}
 

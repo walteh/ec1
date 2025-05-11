@@ -17,8 +17,8 @@
 			"path": "../gvisor"
 		},
 		{
-			"name": "rund",
-			"path": "../rund"
+			"name": "gvisor-tap-vsock",
+			"path": "../gvisor-tap-vsock"
 		},
 		{
 			"name": "containerd",

@@ -1,4 +1,4 @@
-package tapsock
+package tapsocklegacy
 
 import (
 	"context"

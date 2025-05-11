@@ -7,7 +7,7 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
+	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock/tapsocklegacy"
 )
 
 type Provisioner interface {
@@ -26,7 +26,7 @@ type RuntimeProvisioner interface {
 }
 
 type GvproxyProvisioner struct {
-	sock  tapsock.VMSocket
+	sock  tapsocklegacy.VMSocket
 	chans chan struct{}
 	dev   *virtio.VirtioNet
 	portz int
