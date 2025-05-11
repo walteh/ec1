@@ -1,15 +1,17 @@
-package vf
+package vf_test
 
 import (
 	"context"
 	"log/slog"
 	"testing"
-	"time"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
+	"github.com/walteh/ec1/pkg/hypervisors/vf"
 	"github.com/walteh/ec1/pkg/machines/images/puipui"
 	"github.com/walteh/ec1/pkg/testutils"
 )
@@ -17,34 +19,35 @@ import (
 // MockObjcRuntime allows mocking of objc interactions
 
 // Create a real VM for testing
-func createTestVMWithMemory(t *testing.T, ctx context.Context, memory strongunits.MiB) *VirtualMachine {
-	hv := NewHypervisor()
+func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*hypervisors.RunningVM[*vf.VirtualMachine], hypervisors.VMIProvider) {
+	hv := vf.NewHypervisor()
 	pp := puipui.NewPuipuiProvider()
-
-	problemch := make(chan error)
 
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 
+	rvm, err := hypervisors.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
+	require.NoError(t, err)
+
 	go func() {
-		err := hypervisors.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
-		if err != nil {
-			problemch <- err
-			return
-		}
+		t.Logf("vm running,waiting for vm to stop")
+		err := rvm.Wait()
+		assert.NoError(t, err)
 	}()
 
-	timeout := time.After(30 * time.Second)
-	slog.DebugContext(ctx, "waiting for test VM")
-	select {
-	case <-timeout:
-		t.Fatalf("Timed out waiting for test VM")
-		return nil
-	case vm := <-hv.notify:
-		return vm.(*VirtualMachine)
-	case err := <-problemch:
-		t.Fatalf("problem running vm: %v", err)
-		return nil
-	}
+	return rvm, pp
+
+	// timeout := time.After(30 * time.Second)
+	// slog.DebugContext(ctx, "waiting for test VM")
+	// select {
+	// case <-timeout:
+	// 	t.Fatalf("Timed out waiting for test VM")
+	// 	return nil
+	// case vm := <-hv.notify:
+	// 	return rvm.VM()
+	// case err := <-problemch:
+	// 	t.Fatalf("problem running vm: %v", err)
+	// 	return nil
+	// }
 }
 
 // Mock bootloader for testing
@@ -72,20 +75,23 @@ func TestMemoryBalloonDevices(t *testing.T) {
 	// }
 
 	// Create a real VM for testing
-	vm := createTestVMWithMemory(t, ctx, 1024)
-	if vm == nil {
+	rvm, pp := setupPuipuiVM(t, ctx, 1024)
+	require.NotNil(t, rvm)
+	require.NotNil(t, pp)
+
+	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return
 	}
 
 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	if err := hypervisors.WaitForVMState(ctx, vm, hypervisors.VirtualMachineStateTypeRunning, nil); err != nil {
+	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, nil); err != nil {
 		t.Fatalf("virtualization error: %v", err)
 	}
 
 	// Now we can call the actual method
-	devices := vm.vzvm.MemoryBalloonDevices()
+	devices := rvm.VM().VZ().MemoryBalloonDevices()
 
 	// Just check that the call completes - results will depend on the actual environment
 	if len(devices) == 0 {
@@ -108,10 +114,11 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 	targetMemory := strongunits.MiB(300)
 
 	// Create a real VM for testing
-	vm := createTestVMWithMemory(t, ctx, startingMemory)
-	require.NotNil(t, vm)
+	rvm, pp := setupPuipuiVM(t, ctx, startingMemory)
+	require.NotNil(t, rvm)
+	require.NotNil(t, pp)
 	// Get devices
-	devices := vm.vzvm.MemoryBalloonDevices()
+	devices := rvm.VM().VZ().MemoryBalloonDevices()
 
 	require.NotNil(t, devices)
 	require.Equal(t, len(devices), 1)

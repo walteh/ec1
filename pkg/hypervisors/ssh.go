@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
+
+	"gitlab.com/tozd/go/errors"
 )
 
 func ObtainSSHConnectionWithGuest(ctx context.Context, address string, cfg *ssh.ClientConfig, timeout <-chan time.Time) (*ssh.Client, error) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/containers/common/pkg/strongunits"
+
 	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 

@@ -9,15 +9,18 @@ import (
 	"runtime"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/rs/xid"
+	"gitlab.com/tozd/go/errors"
+
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
-	"gitlab.com/tozd/go/errors"
-	"golang.org/x/sync/errgroup"
+	"github.com/walteh/ec1/pkg/networks/gvnet"
+	"github.com/walteh/ec1/pkg/port"
 )
 
 func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider, bootCacheDir string) (bootloader.Bootloader, error) {
@@ -39,25 +42,28 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 	}
 }
 
-func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcpus uint, memory strongunits.B) error {
+func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
+
+	startTime := time.Now()
 
 	workingDir, err := host.EmphiricalVMCacheDir(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	devices := []virtio.VirtioDevice{}
+	provisioners := []Provisioner{}
 
 	err = host.DownloadAndExtractVMI(ctx, vmi.DiskImageURL(), workingDir)
 	if err != nil {
-		return errors.Errorf("downloading and extracting VMI: %w", err)
+		return nil, errors.Errorf("downloading and extracting VMI: %w", err)
 	}
 
 	if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
 		err = customExtractor.CustomExtraction(ctx, workingDir)
 		if err != nil {
-			return errors.Errorf("custom extraction: %w", err)
+			return nil, errors.Errorf("custom extraction: %w", err)
 		}
 	}
 
@@ -65,12 +71,12 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
 
 		if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
-			return errors.Errorf("disk image does not exist: %s", diskImageToRun)
+			return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
 		}
 
 		blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
 		if err != nil {
-			return errors.Errorf("creating virtio block device: %w", err)
+			return nil, errors.Errorf("creating virtio block device: %w", err)
 		}
 
 		devices = append(devices, blkDev)
@@ -87,79 +93,79 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 	bootProvisioners := vmi.BootProvisioners()
 	for _, bootProvisioner := range bootProvisioners {
 		if bootProvisionerVirtioDevices, err := bootProvisioner.VirtioDevices(ctx); err != nil {
-			return errors.Errorf("getting boot provisioner virtio devices: %w", err)
+			return nil, errors.Errorf("getting boot provisioner virtio devices: %w", err)
 		} else {
 			devices = append(devices, bootProvisionerVirtioDevices...)
 		}
+		provisioners = append(provisioners, bootProvisioner)
 	}
 
 	runtimeProvisioners := vmi.RuntimeProvisioners()
 
-	socketPath := filepath.Join(workingDir, "gvproxy.sock")
+	errgrp, ctx := errgroup.WithContext(ctx)
+
+	// socketPath := filepath.Join(workingDir, "gvproxy.sock")
 
 	// os.Remove(socketPath)
 	// os.Create(socketPath)
 
-	gvnetProvisioner := NewGvproxyProvisioner(
-		tapsock.NewVFKitVMSocket("unixgram://" + socketPath),
-	)
+	// gvnetProvisioner := NewGvproxyProvisioner(
+	// 	tapsock.NewVFKitVMSocket("unixgram://" + socketPath),
+	// )
 
-	device, err := gvnetProvisioner.VirtioDevices(ctx)
+	netdev, hostIPPort, err := NewNetDevice(ctx, errgrp)
 	if err != nil {
-		return errors.Errorf("getting gvproxy virtio devices: %w", err)
+		return nil, errors.Errorf("creating net device: %w", err)
 	}
-	devices = append(devices, device...)
+	devices = append(devices, netdev)
 
 	// runtimeProvisioners = append(runtimeProvisioners, gvnetProvisioner)
 
 	for _, runtimeProvisioner := range runtimeProvisioners {
 		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
-			return errors.Errorf("getting runtime provisioner virtio devices: %w", err)
+			return nil, errors.Errorf("getting runtime provisioner virtio devices: %w", err)
 		} else {
 			devices = append(devices, runtimeProvisionerVirtioDevices...)
 		}
+		provisioners = append(provisioners, runtimeProvisioner)
 	}
 
 	bl, err := EmphericalBootLoaderConfigForGuest(ctx, vmi, workingDir)
 	if err != nil {
-		return errors.Errorf("getting boot loader config: %w", err)
+		return nil, errors.Errorf("getting boot loader config: %w", err)
 	}
 
 	opts := NewVMOptions{
-		Vcpus:   vcpus,
-		Memory:  memory,
-		Devices: devices,
-		Provisioners: []Provisioner{
-			gvnetProvisioner,
-		},
+		Vcpus:        vcpus,
+		Memory:       memory,
+		Devices:      devices,
+		Provisioners: provisioners,
 	}
 
-	errgrp, ctx := errgroup.WithContext(ctx)
+	// errgrp.Go(func() error {
+	// 	return gvnetProvisioner.RunDuringRuntime(ctx, nil)
+	// })
 
-	errgrp.Go(func() error {
-		return gvnetProvisioner.RunDuringRuntime(ctx, nil)
-	})
-
-	netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](devices)
-	for _, netDev := range netDevs {
-		if netDev.UnixSocketPath != "" {
-			err := netDev.ConnectUnixPath(ctx)
-			if err != nil {
-				return errors.Errorf("connecting unix socket path: %w", err)
-			}
-		}
-	}
+	// netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](devices)
+	// for _, netDev := range netDevs {
+	// 	if netDev.UnixSocketPath != "" {
+	// 		err := netDev.ConnectUnixPath(ctx)
+	// 		if err != nil {
+	// 			return errors.Errorf("connecting unix socket path: %w", err)
+	// 		}
+	// 	}
+	// }
 
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
 	if err != nil {
-		return errors.Errorf("creating virtual machine: %w", err)
+		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
 
 	slog.WarnContext(ctx, "booting virtual machine")
 
 	err = boot(ctx, vm, vmi)
 	if err != nil {
-		return errors.Errorf("booting virtual machine: %w", err)
+		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
 
 	// <-gvnetProvisioner.dev.ReadyChan
@@ -168,7 +174,7 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 
 	runErrGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
 	if err != nil {
-		return errors.Errorf("running virtual machine: %w", err)
+		return nil, errors.Errorf("running virtual machine: %w", err)
 	}
 
 	defer func() {
@@ -196,7 +202,41 @@ func RunVirtualMachine(ctx context.Context, hpv Hypervisor, vmi VMIProvider, vcp
 		}
 	}()
 
-	return <-errCh
+	runtimeInfo := &RunningVM[VM]{
+		portOnHostIP: hostIPPort,
+		vm:           vm,
+		wait:         errCh,
+		start:        startTime,
+	}
+
+	return runtimeInfo, nil
+}
+
+func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.VirtioNet, uint16, error) {
+	port, err := port.ReservePort(ctx)
+	if err != nil {
+		return nil, 0, errors.Errorf("reserving port: %w", err)
+	}
+	cfg := &gvnet.GvproxyConfig{
+		// VMSocket:           me.sock,
+		VMHostPort:         fmt.Sprintf("tcp://127.0.0.1:%d", port),
+		EnableDebug:        false,
+		EnableStdioSocket:  false,
+		EnableNoConnectAPI: true,
+		// ReadyChan:          me.chans,
+	}
+
+	dev, waiter, err := gvnet.NewProxy(ctx, cfg)
+	if err != nil {
+		return nil, 0, errors.Errorf("creating gvproxy: %w", err)
+	}
+
+	groupErrs.Go(func() error {
+		return waiter(ctx)
+	})
+
+	return dev, port, nil
+
 }
 
 func startVSockDevices(ctx context.Context, vm VirtualMachine) error {
@@ -255,7 +295,7 @@ func boot(ctx context.Context, vm VirtualMachine, vmi VMIProvider) error {
 	return nil
 }
 
-func run(ctx context.Context, hpv Hypervisor, vm VirtualMachine, provisioners []RuntimeProvisioner) (*errgroup.Group, func(), error) {
+func run[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vm VM, provisioners []RuntimeProvisioner) (*errgroup.Group, func(), error) {
 	runCtx, bootCancel := context.WithCancel(ctx)
 	errGroup, ctx := errgroup.WithContext(runCtx)
 

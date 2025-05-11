@@ -6,27 +6,28 @@ import (
 	"sync"
 
 	"github.com/Code-Hex/vz/v3"
+	"gitlab.com/tozd/go/errors"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
-	"gitlab.com/tozd/go/errors"
 )
 
-func NewHypervisor() *Hypervisor {
+func NewHypervisor() hypervisors.Hypervisor[*VirtualMachine] {
 	return &Hypervisor{
 		vms:    make(map[string]*VirtualMachine),
-		notify: make(chan hypervisors.VirtualMachine),
+		notify: make(chan *VirtualMachine),
 	}
 }
 
-var _ hypervisors.Hypervisor = &Hypervisor{}
+var _ hypervisors.Hypervisor[*VirtualMachine] = &Hypervisor{}
 
 type Hypervisor struct {
 	vms    map[string]*VirtualMachine
 	mu     sync.Mutex
-	notify chan hypervisors.VirtualMachine
+	notify chan *VirtualMachine
 }
 
-func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hypervisors.NewVMOptions, bl bootloader.Bootloader) (hypervisors.VirtualMachine, error) {
+func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hypervisors.NewVMOptions, bl bootloader.Bootloader) (*VirtualMachine, error) {
 	vfConfig, err := NewVirtualMachineConfiguration(ctx, id, &opts, bl)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,7 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 	return vm, nil
 }
 
-func (hpv *Hypervisor) OnCreate() <-chan hypervisors.VirtualMachine {
+func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 	return hpv.notify
 }
 

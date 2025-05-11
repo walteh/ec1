@@ -3,20 +3,27 @@ package tapsock
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/containers/gvisor-tap-vsock/pkg/tap"
 	"github.com/containers/gvisor-tap-vsock/pkg/transport"
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"gitlab.com/tozd/go/errors"
-	"golang.org/x/sync/errgroup"
 )
+
+// this package should be creating the remote address too.
+// im pretty sure we just need to dial instead of listen here and it will work.
+// then pass the file descriptor to the vm and boom
+// gvproxy listens on the socket,
 
 type VMSocket interface {
 	Protocol() types.Protocol
 	Validate() error
-	Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error
+	Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) (net.Addr, error)
 	URL() string
 }
 
@@ -59,10 +66,10 @@ func (s *VFKitSocket) Validate() error {
 	return nil
 }
 
-func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
+func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) (net.Addr, error) {
 	conn, err := transport.ListenUnixgram(s.Path)
 	if err != nil {
-		return errors.Errorf("vfkit listen error %w", err)
+		return nil, errors.Errorf("vfkit listen error %w", err)
 	}
 
 	g.Go(func() error {
@@ -82,7 +89,7 @@ func (s *VFKitSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Swi
 		return vn.Accept(ctx, vfkitConn, types.VfkitProtocol)
 	})
 
-	return nil
+	return conn.LocalAddr(), nil
 }
 
 type QEMUSocket struct {
@@ -108,7 +115,7 @@ func (s *QEMUSocket) Validate() error {
 	return nil
 }
 
-func (s *QEMUSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
+func (s *QEMUSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) (net.Addr, error) {
 	return commonListen(ctx, g, "qemu", s.Path, vn, types.QemuProtocol)
 }
 
@@ -138,14 +145,14 @@ func (s *BessSocket) Validate() error {
 	return nil
 }
 
-func (s *BessSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) error {
+func (s *BessSocket) Listen(ctx context.Context, g *errgroup.Group, vn *tap.Switch) (net.Addr, error) {
 	return commonListen(ctx, g, "bess", s.Path, vn, types.BessProtocol)
 }
 
-func commonListen(ctx context.Context, g *errgroup.Group, name, path string, swtch *tap.Switch, protocol types.Protocol) error {
-	listener, err := transport.Listen(path)
+func commonListen(ctx context.Context, g *errgroup.Group, name, path string, swtch *tap.Switch, protocol types.Protocol) (net.Addr, error) {
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
 	if err != nil {
-		return errors.Wrap(err, "listen error")
+		return nil, errors.Wrap(err, "listen error")
 	}
 
 	g.Go(func() error {
@@ -164,5 +171,5 @@ func commonListen(ctx context.Context, g *errgroup.Group, name, path string, swt
 		return swtch.Accept(ctx, conn, protocol)
 	})
 
-	return nil
+	return listener.Addr(), nil
 }

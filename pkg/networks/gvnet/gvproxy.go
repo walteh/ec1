@@ -17,6 +17,8 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/containers/gvisor-tap-vsock/pkg/net/stdio"
 	"github.com/containers/gvisor-tap-vsock/pkg/sshclient"
 	"github.com/containers/gvisor-tap-vsock/pkg/tap"
@@ -24,13 +26,15 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/dustin/go-humanize"
-	"github.com/k0kubun/pp/v3"
 	"github.com/soheilhy/cmux"
+	"github.com/walteh/run"
+	"gitlab.com/tozd/go/errors"
+
 	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/pkg/machines/virtio"
 	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
 	"github.com/walteh/ec1/pkg/port"
-	"gitlab.com/tozd/go/errors"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -78,8 +82,8 @@ type GvproxyConfig struct {
 	// restEndpoint               string // control endpoint
 	// restEndpointWithoutConnect string // Exposes the same HTTP API as the --listen flag, without the /connect endpoint
 
-	MTU      int // set the MTU, default is 1500
-	VMSocket tapsock.VMSocket
+	MTU int // set the MTU, default is 1500
+	// VMSocket tapsock.VMSocket
 
 	// GuestSSHPort int    // port to access the guest virtual machine, must be between 1024 and 65535
 	VMHostPort string // host port to access the guest virtual machine, must be between 1024 and 65535
@@ -88,7 +92,10 @@ type GvproxyConfig struct {
 	// workingDir string // working directory
 
 	WorkingDir string // working directory
-	ReadyChan  chan struct{}
+	// ReadyChan  chan struct{}
+
+	device *virtio.VirtioNet
+	runner func(ctx context.Context, swit *tap.Switch) error
 
 	sshConnections []Forward // unix socket to be forwarded to the guest virtual machine over SSH
 }
@@ -97,8 +104,7 @@ func GvproxyVersion() string {
 	return types.NewVersion("gvnet").String()
 }
 
-func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
-	pp.Println("yoooooo", cfg)
+func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(ctx context.Context) error, error) {
 
 	defer func() {
 		slog.DebugContext(ctx, "gvproxy defer")
@@ -106,55 +112,42 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 
 	ctx = slogctx.WithGroup(ctx, "gvnet")
 
-	// if cfg.GuestSSHPort == 0 {
-	// 	cfg.GuestSSHPort = 22
-	// }
-
-	// log.Info(version.String())
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// Make this the last defer statement in the stack
-	// defer os.Exit(exitCode)
 
 	groupErrs, ctx := errgroup.WithContext(ctx)
 
 	for _, socket := range cfg.sshConnections {
 		if err := socket.Validate(); err != nil {
-			return errors.Errorf("ssh connection validation: %w", err)
+			return nil, nil, errors.Errorf("ssh connection validation: %w", err)
 		}
 	}
 
-	slog.DebugContext(ctx, "validating vmFileSocket")
-
-	if cfg.VMSocket == nil {
-		return errors.New("vmFileSocket is required")
-	}
-
-	// validate the vmFileSocket
-	if err := cfg.VMSocket.Validate(); err != nil {
-		return errors.Errorf("vmFileSocket validation: %w", err)
-	}
+	group := run.New(run.WithLogger(slog.Default()))
 
 	if cfg.MTU == 0 {
 		cfg.MTU = 1500
 	}
 
 	if cfg.VMHostPort == "" {
-		return errors.New("vmHostPort is required")
+		return nil, nil, errors.New("vmHostPort is required")
 	}
-
-	slog.DebugContext(ctx, "searching domains")
 	dnss, err := searchDomains(ctx)
 	if err != nil {
-		return errors.Errorf("searching domains: %w", err)
+		return nil, nil, errors.Errorf("searching domains: %w", err)
 	}
 
-	slog.DebugContext(ctx, "building forwards")
 	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{
 		22: cmux.PrefixMatcher("SSH-"),
 	})
 	if err != nil {
-		return errors.Errorf("building forwards: %w", err)
+		return nil, nil, errors.Errorf("building forwards: %w", err)
+	}
+
+	// start the vmFileSocket
+	device, runner, err := tapsock.NewDgramVirtioNet(ctx, VIRTUAL_GUEST_MAC)
+	if err != nil {
+		return nil, nil, errors.Errorf("vmFileSocket listen: %w", err)
 	}
 
 	slog.InfoContext(ctx, "forwarders", slog.Any("virtualPortMap", virtualPortMap))
@@ -207,28 +200,41 @@ func Proxy(ctx context.Context, cfg *GvproxyConfig) error {
 		VpnKitUUIDMacAddresses: map[string]string{
 			"c3d68012-0208-11ea-9fd7-f2189899ab08": VIRTUAL_GUEST_MAC,
 		},
-		Protocol: cfg.VMSocket.Protocol(),
+		Protocol: types.VfkitProtocol, // this is the exact same as 'bess', basically just means "not streaming"
+	}
+
+	vn, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
+	if err != nil {
+		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+	}
+
+	if err := runner.ApplyVirtualNetwork(vn); err != nil {
+		return nil, nil, errors.Errorf("applying virtual network: %w", err)
+	}
+
+	// group.Always(runner)
+
+	if err := runner.Run(ctx); err != nil {
+		return nil, nil, errors.Errorf("running runner: %w", err)
 	}
 
 	groupErrs.Go(func() error {
-		defer func() {
-			slog.DebugContext(ctx, "gvproxy exiting")
-			if cfg.ReadyChan != nil {
-				slog.DebugContext(ctx, "signaling gvproxy ready")
-				close(cfg.ReadyChan)
-			}
-		}()
-		slog.DebugContext(ctx, "running gvproxy")
-		return run(ctx, groupErrs, &config, cfg, m, virtualPortMap)
+		slog.InfoContext(ctx, "listening on gvproxy network")
+		if err := group.RunContext(ctx); err != nil {
+			return errors.Errorf("listening on gvproxy network: %w", err)
+		}
+		return nil
 	})
 
-	if err := groupErrs.Wait(); err != nil {
-		if err == context.Canceled {
-			return nil
+	return device, func(ctx context.Context) error {
+		if err := groupErrs.Wait(); err != nil {
+			if err == context.Canceled {
+				return nil
+			}
+			return errors.Errorf("gvnet exiting: %v", err)
 		}
-		return errors.Errorf("gvnet exiting: %v", err)
-	}
-	return nil
+		return nil
+	}, nil
 }
 
 func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgroup.Group, forwards map[int]cmux.Matcher) (cmux.CMux, map[string]string, error) {
@@ -291,10 +297,10 @@ func captureFile(cfg *GvproxyConfig) string {
 	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func run(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string) error {
+func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
 	vn, err := virtualnetwork.New(configuration)
 	if err != nil {
-		return err
+		return nil, errors.Errorf("creating virtual network: %w", err)
 	}
 
 	slog.InfoContext(ctx, "waiting for clients... listening...", "endpoint", cfg.VMHostPort)
@@ -305,37 +311,35 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
+		group.Always(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
 	}
-	httpServe(ctx, g, cmuxl.Match(cmux.Any()), mux)
 
 	if cfg.EnableNoConnectAPI {
 		slog.InfoContext(ctx, "enabling raw no connect API at /no-connect")
 		mux := http.NewServeMux()
 		mux.Handle("/no-connect", vn.Mux())
-		httpServe(ctx, g, cmuxl.Match(cmux.Any()), mux)
+
+		group.Always(NewHTTPServer("no-connect", vn.Mux(), cmuxl.Match(cmux.Any())))
 	}
 
 	// setup the gateway cmuxl
 	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", VIRTUAL_GATEWAY_IP))
 	if err != nil {
-		return err
+		return nil, errors.Errorf("listening on gateway: %w", err)
 	}
 
 	mux = http.NewServeMux()
 	mux.Handle("/services/forwarder/all", vn.Mux())
 	mux.Handle("/services/forwarder/expose", vn.Mux())
 	mux.Handle("/services/forwarder/unexpose", vn.Mux())
-	httpServe(ctx, g, vml, mux)
 
-	g.Go(func() error {
-		if err := cmuxl.Serve(); err != nil {
-			return errors.Errorf("serving cmux: %w", err)
-		}
-		return nil
-	})
+	group.Always(NewHTTPServer("gateway-forwarder", mux, vml))
+
+	group.Always(NewCmuxServer("gvproxy-http-manager", cmuxl))
 
 	if cfg.EnableDebug {
-		g.Go(func() error {
+		go func() {
 		debugLog:
 			for {
 				select {
@@ -345,16 +349,16 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 					break debugLog
 				}
 			}
-			return nil
-		})
+		}()
 	}
 
-	swtch := GetUnexportedField(reflect.ValueOf(vn).Elem().FieldByName("networkSwitch")).(*tap.Switch)
+	// // start the vmFileSocket
+	// addr, err := tapsock.NewDgramVirtioNet(cfg.VMSocket.URL()).Listen(ctx, g, swtch)
+	// if err != nil {
+	// 	return errors.Errorf("vmFileSocket listen: %w", err)
+	// }
 
-	// start the vmFileSocket
-	if err := cfg.VMSocket.Listen(ctx, g, swtch); err != nil {
-		return errors.Errorf("vmFileSocket listen: %w", err)
-	}
+	// slog.InfoContext(ctx, "vmFileSocket listening", "addr", addr)
 
 	if cfg.EnableStdioSocket {
 		g.Go(func() error {
@@ -365,7 +369,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 
 	if len(cfg.sshConnections) > 0 {
 		// i am still not quite sure if we will need this funcitonality, leaving just in case for now
-		return errors.New("ssh connections are not supported yet")
+		return nil, errors.New("ssh connections are not supported yet")
 	}
 
 	for _, socket := range cfg.sshConnections {
@@ -376,7 +380,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		if strings.Contains(socket.Socket, "://") {
 			src, err = url.Parse(socket.Socket)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else {
 			src = &url.URL{
@@ -395,18 +399,18 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 			defer os.Remove(socket.Socket)
 			publicKey, err := makeTmpFileForPublicKey(ctx, socket.PublicKey, g)
 			if err != nil {
-				return err
+				return errors.Errorf("making tmp file for public key: %w", err)
 			}
 			var forward *sshclient.SSHForward
 			if socket.Password == "" {
 				forward, err = sshclient.CreateSSHForward(ctx, src, dest, publicKey, vn)
 				if err != nil {
-					return err
+					return errors.Errorf("creating ssh forward: %w", err)
 				}
 			} else {
 				forward, err = sshclient.CreateSSHForwardPassphrase(ctx, src, dest, publicKey, socket.Password, vn)
 				if err != nil {
-					return err
+					return errors.Errorf("creating ssh forward passphrase: %w", err)
 				}
 			}
 			go func() {
@@ -433,7 +437,7 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 		})
 	}
 
-	return nil
+	return vn, nil
 }
 
 func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.Group) (string, error) {
@@ -461,30 +465,30 @@ func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.
 	return tempFile.Name(), nil
 }
 
-func httpServe(ctx context.Context, g *errgroup.Group, ln net.Listener, mux http.Handler) {
-	g.Go(func() error {
-		<-ctx.Done()
-		if err := ln.Close(); err != nil {
-			return errors.Errorf("closing listener: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		s := &http.Server{
-			Handler:      mux,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-		}
-		err := s.Serve(ln)
-		if err != nil {
-			// if err != http.ErrServerClosed {
-			// 	return errors.Errorf("http serve: %w", err)
-			// }
-			return errors.Errorf("http serve: %w", err)
-		}
-		return nil
-	})
-}
+// func httpServe(ctx context.Context, g *errgroup.Group, ln net.Listener, mux http.Handler) {
+// 	g.Go(func() error {
+// 		<-ctx.Done()
+// 		if err := ln.Close(); err != nil {
+// 			return errors.Errorf("closing listener: %w", err)
+// 		}
+// 		return nil
+// 	})
+// 	g.Go(func() error {
+// 		s := &http.Server{
+// 			Handler:      mux,
+// 			ReadTimeout:  10 * time.Second,
+// 			WriteTimeout: 10 * time.Second,
+// 		}
+// 		err := s.Serve(ln)
+// 		if err != nil {
+// 			// if err != http.ErrServerClosed {
+// 			// 	return errors.Errorf("http serve: %w", err)
+// 			// }
+// 			return errors.Errorf("http serve: %w", err)
+// 		}
+// 		return nil
+// 	})
+// }
 
 func searchDomains(ctx context.Context) ([]string, error) {
 	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {

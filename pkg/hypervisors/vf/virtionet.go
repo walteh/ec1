@@ -3,10 +3,12 @@ package vf
 import (
 	"net"
 
-	"github.com/walteh/ec1/pkg/machines/virtio"
-
 	"github.com/Code-Hex/vz/v3"
+	"gitlab.com/tozd/go/errors"
+
 	log "github.com/sirupsen/logrus"
+
+	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
 type VirtioNet struct {
@@ -26,20 +28,24 @@ func (dev *VirtioNet) toVz() (*vz.VirtioNetworkDeviceConfiguration, error) {
 		mac, err = vz.NewMACAddress(dev.MacAddress)
 	}
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("creating mac address: %w", err)
 	}
 	var attachment vz.NetworkDeviceAttachment
 	if dev.Socket != nil {
 		attachment, err = vz.NewFileHandleNetworkDeviceAttachment(dev.Socket)
+		if err != nil {
+			return nil, errors.Errorf("creating file handle network attachment: %w", err)
+		}
 	} else {
 		attachment, err = vz.NewNATNetworkDeviceAttachment()
+		if err != nil {
+			return nil, errors.Errorf("creating nat network attachment: %w", err)
+		}
 	}
-	if err != nil {
-		return nil, err
-	}
+
 	networkConfig, err := vz.NewVirtioNetworkDeviceConfiguration(attachment)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("creating network config: %w", err)
 	}
 	networkConfig.SetMACAddress(mac)
 
@@ -59,7 +65,7 @@ func (dev *VirtioNet) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigu
 	// }
 	netConfig, err := dev.toVz()
 	if err != nil {
-		return err
+		return errors.Errorf("converting virtio-net to vz: %w", err)
 	}
 
 	vmConfig.networkDevicesConfiguration = append(vmConfig.networkDevicesConfiguration, netConfig)

@@ -15,30 +15,32 @@ import (
 	"strings"
 
 	"github.com/containers/common/pkg/strongunits"
-	hv "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers/types"
+
+	hv "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 )
 
 // This line is a compile-time check. If this file compiles, kataHypervisor implements virtcontainers.Hypervisor.
-var _ virtcontainers.Hypervisor = (*kataHypervisor)(nil)
+var _ virtcontainers.Hypervisor = (*kataHypervisor[hypervisors.VirtualMachine])(nil)
 
-type kataHypervisor struct {
-	hypervisor      hypervisors.Hypervisor
-	managedVm       hypervisors.VirtualMachine
+type kataHypervisor[VM hypervisors.VirtualMachine] struct {
+	hypervisor      hypervisors.Hypervisor[VM]
+	managedVm       VM
 	config          *virtcontainers.HypervisorConfig
 	creationContext context.Context
 	vsockProxy      *virtio.VirtioVsock
 }
 
-func WrapHypervisorForKata(ctx context.Context, parentHypervisor hypervisors.Hypervisor) (virtcontainers.Hypervisor, error) {
+func WrapHypervisorForKata[VM hypervisors.VirtualMachine](ctx context.Context, parentHypervisor hypervisors.Hypervisor[VM]) (virtcontainers.Hypervisor, error) {
 	if parentHypervisor == nil {
 		return nil, fmt.Errorf("parentHypervisor cannot be nil")
 	}
-	return &kataHypervisor{hypervisor: parentHypervisor}, nil
+	return &kataHypervisor[VM]{hypervisor: parentHypervisor}, nil
 }
 
 func unimplemented() error {
@@ -62,7 +64,7 @@ func unimplemented() error {
 
 // virtcontainers.Hypervisor interface implementation
 
-func (vfw *kataHypervisor) CreateVM(ctx context.Context, id string, network virtcontainers.Network, hypervisorConfig *virtcontainers.HypervisorConfig) error {
+func (vfw *kataHypervisor[VM]) CreateVM(ctx context.Context, id string, network virtcontainers.Network, hypervisorConfig *virtcontainers.HypervisorConfig) error {
 	vfw.creationContext = ctx
 	if vfw.hypervisor == nil {
 		return fmt.Errorf("underlying hypervisor is not initialized")
@@ -159,15 +161,15 @@ func (vfw *kataHypervisor) CreateVM(ctx context.Context, id string, network virt
 	return nil
 }
 
-func (vfw *kataHypervisor) StartVM(ctx context.Context, timeout int) error {
-	if vfw.managedVm == nil {
+func (vfw *kataHypervisor[VM]) StartVM(ctx context.Context, timeout int) error {
+	if any(vfw.managedVm) == nil {
 		return fmt.Errorf("VM not created yet, cannot start")
 	}
 	return vfw.managedVm.Start(ctx)
 }
 
-func (vfw *kataHypervisor) StopVM(ctx context.Context, waitOnly bool) error {
-	if vfw.managedVm == nil {
+func (vfw *kataHypervisor[VM]) StopVM(ctx context.Context, waitOnly bool) error {
+	if any(vfw.managedVm) == nil {
 		return fmt.Errorf("VM not created yet, cannot stop")
 	}
 	if waitOnly {
@@ -177,8 +179,8 @@ func (vfw *kataHypervisor) StopVM(ctx context.Context, waitOnly bool) error {
 	return vfw.managedVm.HardStop(ctx)
 }
 
-func (vfw *kataHypervisor) PauseVM(ctx context.Context) error {
-	if vfw.managedVm == nil {
+func (vfw *kataHypervisor[VM]) PauseVM(ctx context.Context) error {
+	if any(vfw.managedVm) == nil {
 		return fmt.Errorf("VM not created yet, cannot pause")
 	}
 	if !vfw.managedVm.CanPause(ctx) {
@@ -187,12 +189,12 @@ func (vfw *kataHypervisor) PauseVM(ctx context.Context) error {
 	return vfw.managedVm.Pause(ctx)
 }
 
-func (vfw *kataHypervisor) SaveVM() error {
+func (vfw *kataHypervisor[VM]) SaveVM() error {
 	return unimplemented()
 }
 
-func (vfw *kataHypervisor) ResumeVM(ctx context.Context) error {
-	if vfw.managedVm == nil {
+func (vfw *kataHypervisor[VM]) ResumeVM(ctx context.Context) error {
+	if any(vfw.managedVm) == nil {
 		return fmt.Errorf("VM not created yet, cannot resume")
 	}
 	if !vfw.managedVm.CanResume(ctx) {
@@ -201,20 +203,20 @@ func (vfw *kataHypervisor) ResumeVM(ctx context.Context) error {
 	return vfw.managedVm.Resume(ctx)
 }
 
-func (vfw *kataHypervisor) AddDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) error {
+func (vfw *kataHypervisor[VM]) AddDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) error {
 	return unimplemented()
 }
 
-func (vfw *kataHypervisor) HotplugAddDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) (interface{}, error) {
+func (vfw *kataHypervisor[VM]) HotplugAddDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) (interface{}, error) {
 	return nil, unimplemented()
 }
 
-func (vfw *kataHypervisor) HotplugRemoveDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) (interface{}, error) {
+func (vfw *kataHypervisor[VM]) HotplugRemoveDevice(ctx context.Context, devInfo interface{}, devType virtcontainers.DeviceType) (interface{}, error) {
 	return nil, unimplemented()
 }
 
-func (vfw *kataHypervisor) ResizeMemory(ctx context.Context, memMB uint32, memoryBlockSizeMB uint32, probe bool) (uint32, virtcontainers.MemoryDevice, error) {
-	if vfw.managedVm == nil {
+func (vfw *kataHypervisor[VM]) ResizeMemory(ctx context.Context, memMB uint32, memoryBlockSizeMB uint32, probe bool) (uint32, virtcontainers.MemoryDevice, error) {
+	if any(vfw.managedVm) == nil {
 		return 0, virtcontainers.MemoryDevice{}, fmt.Errorf("VM not created or running")
 	}
 	targetBytes := strongunits.B(uint64(memMB) * 1024 * 1024)
@@ -237,89 +239,90 @@ func (vfw *kataHypervisor) ResizeMemory(ctx context.Context, memMB uint32, memor
 	return actualSizeMB, memDevice, nil
 }
 
-func (vfw *kataHypervisor) ResizeVCPUs(ctx context.Context, vcpus uint32) (uint32, uint32, error) {
+func (vfw *kataHypervisor[VM]) ResizeVCPUs(ctx context.Context, vcpus uint32) (uint32, uint32, error) {
 	return 0, 0, unimplemented()
 }
 
-func (vfw *kataHypervisor) GetVMConsole(ctx context.Context, sandboxID string) (string, string, error) {
+func (vfw *kataHypervisor[VM]) GetVMConsole(ctx context.Context, sandboxID string) (string, string, error) {
 	return "", "", unimplemented()
 }
 
-func (vfw *kataHypervisor) Disconnect(ctx context.Context) {
+func (vfw *kataHypervisor[VM]) Disconnect(ctx context.Context) {
 }
 
-func (vfw *kataHypervisor) Capabilities(ctx context.Context) types.Capabilities {
+func (vfw *kataHypervisor[VM]) Capabilities(ctx context.Context) types.Capabilities {
 	var caps types.Capabilities
 	caps.SetMultiQueueSupport()
 	return caps
 }
 
-func (vfw *kataHypervisor) HypervisorConfig() virtcontainers.HypervisorConfig {
+func (vfw *kataHypervisor[VM]) HypervisorConfig() virtcontainers.HypervisorConfig {
 	if vfw.config != nil {
 		return *vfw.config
 	}
 	return virtcontainers.HypervisorConfig{}
 }
 
-func (vfw *kataHypervisor) GetThreadIDs(ctx context.Context) (virtcontainers.VcpuThreadIDs, error) {
+func (vfw *kataHypervisor[VM]) GetThreadIDs(ctx context.Context) (virtcontainers.VcpuThreadIDs, error) {
 	return virtcontainers.NewVcpuThreadIds(make(map[int]int)), unimplemented()
 }
 
-func (vfw *kataHypervisor) Cleanup(ctx context.Context) error {
-	if vfw.managedVm != nil {
+func (vfw *kataHypervisor[VM]) Cleanup(ctx context.Context) error {
+	if any(vfw.managedVm) != nil {
 		currentState := vfw.managedVm.CurrentState()
 		if currentState == hypervisors.VirtualMachineStateTypeRunning || currentState == hypervisors.VirtualMachineStateTypePaused {
 			vfw.managedVm.HardStop(ctx)
 		}
 	}
-	vfw.managedVm = nil
+	var zero VM
+	vfw.managedVm = zero
 	vfw.config = nil
 	return nil
 }
 
-func (vfw *kataHypervisor) GetTotalMemoryMB(ctx context.Context) uint32 {
+func (vfw *kataHypervisor[VM]) GetTotalMemoryMB(ctx context.Context) uint32 {
 	if vfw.config != nil {
 		return vfw.config.MemorySize
 	}
 	return 0
 }
 
-func (vfw *kataHypervisor) SetConfig(config *virtcontainers.HypervisorConfig) error {
+func (vfw *kataHypervisor[VM]) SetConfig(config *virtcontainers.HypervisorConfig) error {
 	vfw.config = config
 	return nil
 }
 
-func (vfw *kataHypervisor) GetPids() []int {
+func (vfw *kataHypervisor[VM]) GetPids() []int {
 	return []int{}
 }
 
-func (vfw *kataHypervisor) GetVirtioFsPid() *int {
+func (vfw *kataHypervisor[VM]) GetVirtioFsPid() *int {
 	return nil
 }
 
-func (vfw *kataHypervisor) FromGrpc(ctx context.Context, hypervisorConfig *virtcontainers.HypervisorConfig, j []byte) error {
+func (vfw *kataHypervisor[VM]) FromGrpc(ctx context.Context, hypervisorConfig *virtcontainers.HypervisorConfig, j []byte) error {
 	return unimplemented()
 }
 
-func (vfw *kataHypervisor) ToGrpc(ctx context.Context) ([]byte, error) {
+func (vfw *kataHypervisor[VM]) ToGrpc(ctx context.Context) ([]byte, error) {
 	return nil, unimplemented()
 }
 
-func (vfw *kataHypervisor) Check() error {
+func (vfw *kataHypervisor[VM]) Check() error {
 	if vfw.hypervisor == nil {
 		return fmt.Errorf("underlying hypervisor not set")
 	}
 	return nil
 }
 
-func (vfw *kataHypervisor) Save() hv.HypervisorState {
+func (vfw *kataHypervisor[VM]) Save() hv.HypervisorState {
 	return hv.HypervisorState{}
 }
 
-func (vfw *kataHypervisor) Load(s hv.HypervisorState) {
+func (vfw *kataHypervisor[VM]) Load(s hv.HypervisorState) {
 }
 
-func (vfw *kataHypervisor) GenerateSocket(id string) (interface{}, error) {
+func (vfw *kataHypervisor[VM]) GenerateSocket(id string) (interface{}, error) {
 
 	vsock := vfw.vsockProxy
 
@@ -339,26 +342,26 @@ func (vfw *kataHypervisor) GenerateSocket(id string) (interface{}, error) {
 	}, nil
 }
 
-func (vfw *kataHypervisor) IsRateLimiterBuiltin() bool {
+func (vfw *kataHypervisor[VM]) IsRateLimiterBuiltin() bool {
 	return false
 }
 
-// func (vfw *kataHypervisor) AddDeviceFtrace(ctx context.Context, ID string, eventStr string, path string) (string, error) {
+// func (vfw *kataHypervisor[VM]) AddDeviceFtrace(ctx context.Context, ID string, eventStr string, path string) (string, error) {
 // 	return "", unimplemented()
 // }
 
-// func (vfw *kataHypervisor) GetHypervisorMetrics(ctx context.Context, groupID string, metricsConfig interface{}) (string, error) {
+// func (vfw *kataHypervisor[VM]) GetHypervisorMetrics(ctx context.Context, groupID string, metricsConfig interface{}) (string, error) {
 // 	return "", unimplemented()
 // }
 
-// func (vfw *kataHypervisor) ListBlockDevices(ctx context.Context) ([]*types.BlockDrive, error) {
+// func (vfw *kataHypervisor[VM]) ListBlockDevices(ctx context.Context) ([]*types.BlockDrive, error) {
 // 	return nil, unimplemented()
 // }
 
-// func (vfw *kataHypervisor) GetIPTables(ctx context.Context, isIPv6 bool) ([]byte, error) {
+// func (vfw *kataHypervisor[VM]) GetIPTables(ctx context.Context, isIPv6 bool) ([]byte, error) {
 // 	return nil, unimplemented()
 // }
 
-// func (vfw *kataHypervisor) SetIPTables(ctx context.Context, isIPv6 bool, data []byte) error {
+// func (vfw *kataHypervisor[VM]) SetIPTables(ctx context.Context, isIPv6 bool, data []byte) error {
 // 	return unimplemented()
 // }

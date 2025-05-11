@@ -7,26 +7,25 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Code-Hex/vz/v3"
 	"github.com/crc-org/vfkit/pkg/cmdline"
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/k0kubun/pp/v3"
-	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
-	"github.com/walteh/ec1/pkg/networks/gvnet"
-	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
-	"github.com/walteh/ec1/pkg/port"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/tozd/go/errors"
 
 	vfkithelpers "github.com/crc-org/crc/v2/pkg/drivers/vfkit"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/ssh"
+
+	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
+	"github.com/walteh/ec1/pkg/networks/gvnet"
+	"github.com/walteh/ec1/pkg/port"
 )
 
 func init() {
@@ -280,49 +279,60 @@ func (vm *testVM) AddSSH(t *testing.T, ctx context.Context, network string) {
 		vm.sshAddress = fmt.Sprintf("127.0.0.1:%d", vm.gvnetPort)
 		vm.sshNetwork = "gvnet"
 
-		socketPath := "unixgram://" + filepath.Join(vm.tmpDir, "vf.sock")
-		readyChan := make(chan struct{})
+		// socketPath := "unixgram://" + filepath.Join(vm.tmpDir, "vf.sock")
+		// readyChan := make(chan struct{})
 
 		cfg := &gvnet.GvproxyConfig{
-			VMSocket: tapsock.NewVFKitVMSocket(socketPath),
+			// VMSocket: tapsock.NewVFKitVMSocket(socketPath),
 			// GuestSSHPort:       VSOCK_PORT,
 			VMHostPort:         fmt.Sprintf("tcp://%s", vm.sshAddress),
 			EnableDebug:        false,
 			EnableStdioSocket:  false,
 			EnableNoConnectAPI: true,
-			ReadyChan:          readyChan,
+			// ReadyChan:          readyChan,
 		}
 
-		// // create the socket
-		os.Remove(socketPath)
-		os.Create(socketPath)
+		// // // create the socket
+		// os.Remove(socketPath)
+		// os.Create(socketPath)
 
-		devd, err := cfg.VirtioNetDevice(ctx)
+		// devd, err := cfg.VirtioNetDevice(ctx)
+		// require.NoError(t, err)
+
+		// devz, err := config.VirtioNetNew(devd.MacAddress.String())
+
+		// require.NoError(t, err)
+		// devz.SetUnixSocketPath(devd.UnixSocketPath)
+		// dev = devz
+
+		// pp.Println(dev)
+		// require.NoError(t, err)
+
+		devc, waiter, err := gvnet.NewProxy(ctx, cfg)
+		if err != nil {
+			slog.ErrorContext(ctx, "gvnet start failed", "error", err)
+		}
+
+		devz, err := config.VirtioNetNew(devc.MacAddress.String())
 		require.NoError(t, err)
-
-		devz, err := config.VirtioNetNew(devd.MacAddress.String())
-
-		require.NoError(t, err)
-		devz.SetUnixSocketPath(devd.UnixSocketPath)
+		devz.Nat = devc.Nat
+		devz.MacAddress = devc.MacAddress
+		devz.UnixSocketPath = ""
+		devz.Socket = devc.Socket
 		dev = devz
 
-		pp.Println(dev)
-		require.NoError(t, err)
-
 		go func() {
-			err := gvnet.Proxy(ctx, cfg)
-			if err != nil {
+
+			if err := waiter(ctx); err != nil {
 				slog.ErrorContext(ctx, "gvnet failed", "error", err)
 			}
 		}()
 
-		// vm.port = 8822
-
-		select {
-		case <-readyChan:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("timeout waiting for gvnet to be ready ")
-		}
+		// select {
+		// // case <-readyChan:
+		// case <-time.After(10 * time.Second):
+		// 	t.Fatalf("timeout waiting for gvnet to be ready ")
+		// }
 
 	default:
 		t.Fatalf("unknown SSH network: %s", network)

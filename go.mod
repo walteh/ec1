@@ -1,20 +1,18 @@
 module github.com/walteh/ec1
 
-go 1.24.2
+go 1.24.3
 
 replace (
 	github.com/Code-Hex/vz/v3 => ../vz
 	github.com/containerd/containerd/api => ../containerd/api
 	// github.com/containerd/containerd/runtime/v2 => ../containerd/runtime
 	github.com/containerd/containerd/v2 => ../containerd
-
+	// github.com/pkg/errors => gitlab.com/tozd/go/errors v0.10.0
 	github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
 // gvisor.dev/gvisor => ../gvisor
 )
 
-// replace github.com/containerd/containerd/v2 => github.com/darwin-containers/containerd/v2 v2.0.0-20241214113315-4850a67a9a04
-
-// replace github.com/containerd/containerd/api => github.com/darwin-containers/containerd/api v0.0.0-20241214113315-4850a67a9a04
+replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 
 require (
 	connectrpc.com/connect v1.18.1
@@ -30,19 +28,18 @@ require (
 	github.com/containerd/plugin v1.0.0
 	github.com/containerd/ttrpc v1.2.7
 	github.com/containerd/typeurl/v2 v2.2.3
-	github.com/containers/common v0.62.3
-	github.com/containers/gvisor-tap-vsock v0.8.6-0.20250429105741-1fb2439ca41b
+	github.com/containers/common v0.63.0
+	github.com/containers/gvisor-tap-vsock v0.8.6
 	github.com/containers/winquit v1.1.0
 	github.com/coreos/ignition/v2 v2.21.0
-	github.com/crc-org/crc/v2 v2.49.0
+	github.com/crc-org/crc/v2 v2.50.0
 	github.com/crc-org/vfkit v0.6.2-0.20250415145558-4b7cae94e86a
-	github.com/creack/pty v1.1.18
+	github.com/creack/pty v1.1.24
 	github.com/digitalocean/go-libvirt v0.0.0-20250417173424-a6a66ef779d6
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gin-gonic/gin v1.10.0
-	github.com/google/cel-go v0.24.1
+	github.com/google/cel-go v0.25.0
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/k0kubun/pp/v3 v3.4.1
 	github.com/kata-containers/kata-containers/src/runtime v0.0.0-00010101000000-000000000000
 	github.com/kdomanski/iso9660 v0.4.0
 	github.com/lima-vm/go-qcow2reader v0.6.0
@@ -56,25 +53,27 @@ require (
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
+	github.com/superblocksteam/run v0.0.7
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/veqryn/slog-context v0.8.0
+	github.com/walteh/run v0.0.0-20250510150917-6f8074766f03
 	gitlab.com/tozd/go/errors v0.10.0
-	golang.org/x/crypto v0.37.0
+	golang.org/x/crypto v0.38.0
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.39.0
-	golang.org/x/sync v0.13.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sync v0.14.0
+	golang.org/x/sys v0.33.0
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
-	gvisor.dev/gvisor v0.0.0-20240916094835-a174eb65023f
+	gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 )
 
 require (
-	cel.dev/expr v0.20.0 // indirect
+	cel.dev/expr v0.23.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
-	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -139,14 +138,14 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
-	github.com/go-openapi/errors v0.22.0 // indirect
+	github.com/go-openapi/errors v0.22.1 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/loads v0.22.0 // indirect
 	github.com/go-openapi/runtime v0.28.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/strfmt v0.23.0 // indirect
-	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/go-openapi/validate v0.24.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -154,7 +153,7 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.1-0.20230522191255-76236955d466 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -180,7 +179,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/linuxkit/virtsock v0.0.0-20220523201153-1a23e78aa7a2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -208,7 +207,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.3.0 // indirect
-	github.com/opencontainers/runtime-tools v0.9.1-0.20241108202711-f7e3563b0271 // indirect
+	github.com/opencontainers/runtime-tools v0.9.1-0.20250303011046-260e151b8552 // indirect
 	github.com/opencontainers/selinux v1.12.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
@@ -267,8 +266,8 @@ require (
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250425173222-7b384671a197 // indirect

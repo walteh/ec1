@@ -29,6 +29,10 @@
 			"path": "../bindfs"
 		},
 		{
+			"name": "run",
+			"path": "../run"
+		},
+		{
 			"name": "wrk",
 			"path": "../../../tmp/ksa2/wrk"
 		}
@@ -70,10 +74,19 @@
 		"go.toolsEnvVars": {
 			"CGO_ENABLED": "1"
 		},
+		"gopls": {
+			"formatting.local": "github.com/walteh/ec1"
+		},
+		"go.formatFlags": ["retab"],
+		"go.formatTool": "custom",
 		"go.alternateTools": {
 			"go": "${workspaceFolder}/go",
-			"dlv": "${workspaceFolder}/go"
+			"dlv": "${workspaceFolder}/go",
+			"customFormatter": "${workspaceFolder}/go"
 		},
+		// "[go]": {
+		// 	"editor.formatOnSave": false
+		// },
 		"go.testExplorer.packageDisplayMode": "nested",
 		"go.testExplorer.showOutput": true,
 		// "go.gopath": "${workspaceFolder}/go",
@@ -117,7 +130,8 @@
 			"editor.defaultFormatter": "foxundermoon.shell-format"
 		},
 		"[go]": {
-			"editor.defaultFormatter": "golang.go"
+			"editor.defaultFormatter": "golang.go",
+			"editor.formatOnSave": true
 		},
 		"[ignore]": {
 			"editor.defaultFormatter": "foxundermoon.shell-format"

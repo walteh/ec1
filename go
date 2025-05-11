@@ -79,6 +79,18 @@ test_build_keys=("-gcflags" "-o")
 
 real_go_binary=$(safe_go_path)
 
+if [ "${1:-}" == "retab" ]; then
+
+	cd "$my_absolute_dir"
+	safe_go tool github.com/walteh/retab/v2/cmd/retab \
+		--stdin \
+		--stdout \
+		--editorconfig-content="$(cat "$my_absolute_dir"/.editorconfig)" \
+		--formatter=go fmt - < /dev/stdin > /dev/stdout
+
+	exit $?
+fi
+
 if [ "${1:-}" == "dap" ]; then
 	shift
 	export PATH="$my_absolute_dir:$PATH"

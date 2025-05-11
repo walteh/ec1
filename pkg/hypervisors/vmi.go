@@ -3,9 +3,10 @@ package hypervisors
 import (
 	"context"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
-	"golang.org/x/crypto/ssh"
 )
 
 type VMIProvider interface {
