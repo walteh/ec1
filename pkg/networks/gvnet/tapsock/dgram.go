@@ -439,8 +439,6 @@ func (conn *bidirectionalDgramNetConn) Read(b []byte) (int, error) {
 		return 0, errors.New("use of closed network connection")
 	}
 
-	slog.Info("bidirectionalDgramNetConn.Read attempt", "buffer_size", len(b))
-
 	// // Set a read deadline to prevent blocking forever
 	// err := conn.host.SetReadDeadline(time.Now().Add(1 * time.Second))
 	// if err != nil {
@@ -449,6 +447,16 @@ func (conn *bidirectionalDgramNetConn) Read(b []byte) (int, error) {
 
 	n, err := conn.host.Read(b)
 
+	if err != nil {
+		slog.Error("bidirectionalDgramNetConn.Read error", "error", err)
+		if isClosedConnError(err) {
+			conn.mu.Lock()
+			conn.closed = true
+			conn.mu.Unlock()
+		}
+	} else {
+		slog.Info("bidirectionalDgramNetConn.Read success", "bytes", n)
+	}
 	// Clear the deadline
 	// conn.host.SetReadDeadline(time.Time{})
 

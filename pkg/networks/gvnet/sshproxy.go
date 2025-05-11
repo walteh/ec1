@@ -44,11 +44,13 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port stri
 			// Use proper copying with context cancellation
 			done := make(chan struct{}, 2)
 			go func() {
-				CopyWithLoggingData(ctx, "client", clientConn, backend)
+				// CopyWithLoggingData(ctx, "client", clientConn, backend)
+				io.Copy(backend, clientConn)
 				done <- struct{}{}
 			}()
 			go func() {
-				CopyWithLoggingData(ctx, "backend", backend, clientConn)
+				// CopyWithLoggingData(ctx, "backend", backend, clientConn)
+				io.Copy(clientConn, backend)
 				done <- struct{}{}
 			}()
 
