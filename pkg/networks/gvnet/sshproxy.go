@@ -1,13 +1,16 @@
 package gvnet
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 
-	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sync/errgroup"
+
+	"gitlab.com/tozd/go/errors"
 )
 
 func ForwardListenerToPort(ctx context.Context, listener net.Listener, port string, errgroup *errgroup.Group) error {
@@ -24,7 +27,10 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port stri
 		// Handle each client in a separate goroutine
 		errgroup.Go(func() error {
 			defer clientConn.Close()
-			slog.InfoContext(ctx, "forwarding connection", "client", clientConn.RemoteAddr(), "backend", port)
+
+			// muxconn := clientConn.(*cmux.MuxConn)
+
+			slog.InfoContext(ctx, "forwarding connection", "client", clientConn.RemoteAddr(), "backend", port, "conntype", fmt.Sprintf("%T", clientConn))
 			// Connect to the backend FOR THIS CLIENT
 			backend, err := net.Dial("tcp", port)
 			if err != nil {
@@ -38,11 +44,11 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port stri
 			// Use proper copying with context cancellation
 			done := make(chan struct{}, 2)
 			go func() {
-				io.Copy(backend, clientConn)
+				CopyWithLoggingData(ctx, "client", clientConn, backend)
 				done <- struct{}{}
 			}()
 			go func() {
-				io.Copy(clientConn, backend)
+				CopyWithLoggingData(ctx, "backend", backend, clientConn)
 				done <- struct{}{}
 			}()
 
@@ -51,8 +57,38 @@ func ForwardListenerToPort(ctx context.Context, listener net.Listener, port stri
 			case <-done:
 				return nil
 			case <-ctx.Done():
+
 				return ctx.Err()
 			}
 		})
 	}
+}
+
+func CopyWithLoggingData(ctx context.Context, name string, src io.Reader, dst io.Writer) error {
+
+	done := make(chan struct{}, 1)
+
+	pr, pw := io.Pipe()
+
+	tee := io.TeeReader(src, pw)
+
+	go func() {
+		io.Copy(dst, tee)
+		done <- struct{}{}
+	}()
+
+	go func() {
+		bufreader := bufio.NewScanner(pr)
+		bufreader.Split(bufio.ScanBytes)
+		slog.InfoContext(ctx, "starting to read from pipe")
+		// log all content from the pw
+		for bufreader.Scan() {
+			// read each datagram from the pipe
+			datagram := bufreader.Text()
+			slog.InfoContext(ctx, "data", "name", name, "data", datagram)
+		}
+	}()
+
+	<-done
+	return nil
 }

@@ -33,7 +33,7 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 		return nil, err
 	}
 
-	// pp.Println(vfConfig)
+	slog.InfoContext(ctx, "validating vz virtual machine configuration")
 
 	valid, err := vfConfig.internal.Validate()
 	if err != nil {
@@ -43,10 +43,13 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hy
 		return nil, errors.New("invalid vz virtual machine configuration")
 	}
 
+	slog.InfoContext(ctx, "creating vz virtual machine")
+
 	vzVM, err := vz.NewVirtualMachine(vfConfig.internal)
 	if err != nil {
 		return nil, errors.Errorf("creating vz virtual machine: %w", err)
 	}
+
 
 	vm := &VirtualMachine{
 		configuration: vfConfig,

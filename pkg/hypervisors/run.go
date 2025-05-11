@@ -156,10 +156,14 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 	// 	}
 	// }
 
+	slog.InfoContext(ctx, "creating virtual machine")
+
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
+
+	slog.InfoContext(ctx, "virtual machine created")
 
 	slog.WarnContext(ctx, "booting virtual machine")
 
@@ -232,6 +236,7 @@ func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.Virti
 	}
 
 	groupErrs.Go(func() error {
+		slog.InfoContext(ctx, "waiting on error from gvproxy")
 		return waiter(ctx)
 	})
 

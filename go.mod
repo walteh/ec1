@@ -10,6 +10,7 @@ replace (
 	// github.com/pkg/errors => gitlab.com/tozd/go/errors v0.10.0
 	github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
 // gvisor.dev/gvisor => ../gvisor
+	github.com/walteh/run => ../run
 )
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840

@@ -15,7 +15,9 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+
 	slogctx "github.com/veqryn/slog-context"
+
 	"github.com/walteh/ec1/pkg/machines/host"
 )
 
@@ -83,6 +85,8 @@ func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool) conte
 
 	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)
+
+	logrus.SetLevel(logrus.DebugLevel)
 
 	// point logrus at our slog
 	logrus.SetFormatter(&logrus.TextFormatter{

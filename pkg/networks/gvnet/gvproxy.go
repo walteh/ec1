@@ -106,14 +106,18 @@ func GvproxyVersion() string {
 
 func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(ctx context.Context) error, error) {
 
+	if ctx.Err() != nil {
+		return nil, nil, errors.Errorf("cant start gvproxy, context cancelled: %w", ctx.Err())
+	}
+
 	defer func() {
 		slog.DebugContext(ctx, "gvproxy defer")
 	}()
 
 	ctx = slogctx.WithGroup(ctx, "gvnet")
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// ctx, cancel := context.WithCancel(ctx)
+	// defer cancel()
 
 	groupErrs, ctx := errgroup.WithContext(ctx)
 
@@ -203,7 +207,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		Protocol: types.VfkitProtocol, // this is the exact same as 'bess', basically just means "not streaming"
 	}
 
-	vn, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
+	vn, _, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
 	if err != nil {
 		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
 	}
@@ -212,13 +216,29 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		return nil, nil, errors.Errorf("applying virtual network: %w", err)
 	}
 
-	// group.Always(runner)
+	// funnerId := group.AddWithID(runner)
 
-	if err := runner.Run(ctx); err != nil {
-		return nil, nil, errors.Errorf("running runner: %w", err)
-	}
+	// cmuxId.MarkDependsOn(group, funnerId)
 
 	groupErrs.Go(func() error {
+		if ctx.Err() != nil {
+			slog.InfoContext(ctx, "context cancelled, not running runner")
+			return nil
+		}
+
+		slog.InfoContext(ctx, "running runner")
+		if err := runner.Run(ctx); err != nil {
+			slog.ErrorContext(ctx, "running runner", "error", err)
+		}
+		return nil
+	})
+
+	groupErrs.Go(func() error {
+		if ctx.Err() != nil {
+			slog.InfoContext(ctx, "context cancelled, not running group")
+			return nil
+		}
+
 		slog.InfoContext(ctx, "listening on gvproxy network")
 		if err := group.RunContext(ctx); err != nil {
 			return errors.Errorf("listening on gvproxy network: %w", err)
@@ -297,22 +317,37 @@ func captureFile(cfg *GvproxyConfig) string {
 	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
+func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, run.ID, error) {
 	vn, err := virtualnetwork.New(configuration)
 	if err != nil {
-		return nil, errors.Errorf("creating virtual network: %w", err)
+		return nil, "", errors.Errorf("creating virtual network: %w", err)
 	}
 
 	slog.InfoContext(ctx, "waiting for clients... listening...", "endpoint", cfg.VMHostPort)
 
-	mux := vn.Mux()
+	// setup the gateway cmuxl
+	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", VIRTUAL_GATEWAY_IP))
+	if err != nil {
+		return nil, "", errors.Errorf("listening on gateway: %w", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/services/forwarder/all", vn.Mux())
+	mux.Handle("/services/forwarder/expose", vn.Mux())
+	mux.Handle("/services/forwarder/unexpose", vn.Mux())
+
+	group.AddWithID(NewHTTPServer("gateway-forwarder", mux, vml))
+	// cmuxId.MarkDependsOn(group, gatewayForwarderId)
+
+	mux = vn.Mux()
 	if cfg.EnableDebug {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 
-		group.Always(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
+		group.AddWithID(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
+		// cmuxId.MarkDependsOn(group, debugPprofId)
 	}
 
 	if cfg.EnableNoConnectAPI {
@@ -320,23 +355,11 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		mux := http.NewServeMux()
 		mux.Handle("/no-connect", vn.Mux())
 
-		group.Always(NewHTTPServer("no-connect", vn.Mux(), cmuxl.Match(cmux.Any())))
+		group.AddWithID(NewHTTPServer("no-connect", vn.Mux(), cmuxl.Match(cmux.Any())))
+		// cmuxId.MarkDependsOn(group, noConnectId)
 	}
 
-	// setup the gateway cmuxl
-	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", VIRTUAL_GATEWAY_IP))
-	if err != nil {
-		return nil, errors.Errorf("listening on gateway: %w", err)
-	}
-
-	mux = http.NewServeMux()
-	mux.Handle("/services/forwarder/all", vn.Mux())
-	mux.Handle("/services/forwarder/expose", vn.Mux())
-	mux.Handle("/services/forwarder/unexpose", vn.Mux())
-
-	group.Always(NewHTTPServer("gateway-forwarder", mux, vml))
-
-	group.Always(NewCmuxServer("gvproxy-http-manager", cmuxl))
+	group.AddWithID(NewCmuxServer("cmux-server", cmuxl))
 
 	if cfg.EnableDebug {
 		go func() {
@@ -369,7 +392,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 
 	if len(cfg.sshConnections) > 0 {
 		// i am still not quite sure if we will need this funcitonality, leaving just in case for now
-		return nil, errors.New("ssh connections are not supported yet")
+		return nil, "", errors.New("ssh connections are not supported yet")
 	}
 
 	for _, socket := range cfg.sshConnections {
@@ -380,7 +403,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		if strings.Contains(socket.Socket, "://") {
 			src, err = url.Parse(socket.Socket)
 			if err != nil {
-				return nil, err
+				return nil, "", errors.Errorf("parsing socket: %w", err)
 			}
 		} else {
 			src = &url.URL{
@@ -437,7 +460,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		})
 	}
 
-	return vn, nil
+	return vn, "", nil
 }
 
 func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.Group) (string, error) {
