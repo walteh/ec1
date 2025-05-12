@@ -207,7 +207,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		Protocol: types.VfkitProtocol, // this is the exact same as 'bess', basically just means "not streaming"
 	}
 
-	vn, _, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
+	vn, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
 	if err != nil {
 		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
 	}
@@ -317,10 +317,10 @@ func captureFile(cfg *GvproxyConfig) string {
 	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, run.ID, error) {
+func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
 	vn, err := virtualnetwork.New(configuration)
 	if err != nil {
-		return nil, "", errors.Errorf("creating virtual network: %w", err)
+		return nil, errors.Errorf("creating virtual network: %w", err)
 	}
 
 	slog.InfoContext(ctx, "waiting for clients... listening...", "endpoint", cfg.VMHostPort)
@@ -328,7 +328,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 	// setup the gateway cmuxl
 	vml, err := vn.Listen("tcp", fmt.Sprintf("%s:80", VIRTUAL_GATEWAY_IP))
 	if err != nil {
-		return nil, "", errors.Errorf("listening on gateway: %w", err)
+		return nil, errors.Errorf("listening on gateway: %w", err)
 	}
 
 	mux := http.NewServeMux()
@@ -336,7 +336,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 	mux.Handle("/services/forwarder/expose", vn.Mux(ctx))
 	mux.Handle("/services/forwarder/unexpose", vn.Mux(ctx))
 
-	group.AddWithID(NewHTTPServer("gateway-forwarder", mux, vml))
+	group.Always(NewHTTPServer("gateway-forwarder", mux, vml))
 	// cmuxId.MarkDependsOn(group, gatewayForwarderId)
 
 	mux = vn.Mux(ctx)
@@ -346,7 +346,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 
-		group.AddWithID(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
+		group.Always(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
 		// cmuxId.MarkDependsOn(group, debugPprofId)
 	}
 
@@ -355,11 +355,11 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		mux := http.NewServeMux()
 		mux.Handle("/no-connect", vn.Mux(ctx))
 
-		group.AddWithID(NewHTTPServer("no-connect", vn.Mux(ctx), cmuxl.Match(cmux.Any())))
+		group.Always(NewHTTPServer("no-connect", vn.Mux(ctx), cmuxl.Match(cmux.Any())))
 		// cmuxId.MarkDependsOn(group, noConnectId)
 	}
 
-	group.AddWithID(NewCmuxServer("cmux-server", cmuxl))
+	group.Always(NewCmuxServer("cmux-server", cmuxl))
 
 	if cfg.EnableDebug {
 		go func() {
@@ -392,7 +392,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 
 	if len(cfg.sshConnections) > 0 {
 		// i am still not quite sure if we will need this funcitonality, leaving just in case for now
-		return nil, "", errors.New("ssh connections are not supported yet")
+		return nil, errors.New("ssh connections are not supported yet")
 	}
 
 	for _, socket := range cfg.sshConnections {
@@ -403,7 +403,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		if strings.Contains(socket.Socket, "://") {
 			src, err = url.Parse(socket.Socket)
 			if err != nil {
-				return nil, "", errors.Errorf("parsing socket: %w", err)
+				return nil, errors.Errorf("parsing socket: %w", err)
 			}
 		} else {
 			src = &url.URL{
@@ -460,7 +460,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		})
 	}
 
-	return vn, "", nil
+	return vn, nil
 }
 
 func makeTmpFileForPublicKey(ctx context.Context, publicKey string, g *errgroup.Group) (string, error) {

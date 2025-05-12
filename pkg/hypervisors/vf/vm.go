@@ -7,9 +7,10 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
+	"gitlab.com/tozd/go/errors"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"gitlab.com/tozd/go/errors"
 )
 
 type MemoryBalloonDevice struct {
@@ -131,6 +132,14 @@ func (vm *VirtualMachine) GetVSockDevice() (*vz.VirtioSocketDevice, error) {
 	devices := vm.vzvm.SocketDevices()
 	if len(devices) == 0 {
 		return nil, fmt.Errorf("no socket device found")
+	}
+	return devices[0], nil
+}
+
+func (vm *VirtualMachine) GetConsoleDevice() (vz.ConsoleDevice, error) {
+	devices := vm.vzvm.ConsoleDevices()
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("no console device found")
 	}
 	return devices[0], nil
 }

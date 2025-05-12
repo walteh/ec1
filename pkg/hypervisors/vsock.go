@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
+	"os"
 	"path/filepath"
-	"strconv"
+
+	"golang.org/x/sys/unix"
+
+	"gitlab.com/tozd/go/errors"
+	"inet.af/tcpproxy"
 
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"gitlab.com/tozd/go/errors"
-	"inet.af/tcpproxy"
 )
 
 func VSockProxyUnixAddr(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (*net.UnixAddr, error) {
@@ -51,106 +53,77 @@ func ConnectVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.
 	return net.DialUnix("unix", nil, addr)
 }
 
-func ExposeVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
-	if proxiedDevice.Direction == virtio.VirtioVsockDirectionGuestListensAsServer {
-		return exposeConnectVsockProxy(ctx, vm, proxiedDevice)
+func ExposeVsock(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
+	if direction == virtio.VirtioVsockDirectionGuestListensAsServer {
+		return exposeConnectVsockProxy(ctx, vm, port, direction)
 	}
-	return exposeListenVsockProxy(ctx, vm, proxiedDevice)
+	return exposeListenVsockProxy(ctx, vm, port, direction)
 }
 
 // connectVsock proxies connections from a host unix socket to a vsock port
 // This allows the host to initiate connections to the guest over vsock
-func exposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
+func exposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
 	var proxy tcpproxy.Proxy
 
-	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, errors.Errorf("creating unix socket: %w", err)
 	}
 
-	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+	vsockFile := os.NewFile(uintptr(fd), "vsock.socket")
+
+	// vsockConn, err := net.FileConn(vsockFile)
+	// if err != nil {
+	// 	return nil, errors.Errorf("creating vsock conn: %w", err)
+	// }
+
+	// unixVsockConn := vsockConn.(*net.UnixConn)
 
 	// listen for connections on the host unix socket
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
-		parsed, err := url.Parse(laddr)
-		if err != nil {
-			return nil, err
-		}
-		switch parsed.Scheme {
-		case "unix":
-			addr := net.UnixAddr{Net: "unix", Name: parsed.EscapedPath()}
-			return net.ListenUnix("unix", &addr)
-		default:
-			return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
-		}
+		return net.FileListener(vsockFile)
 	}
 
-	proxy.AddRoute(fmt.Sprintf("unix://:%s", vsockPath), &tcpproxy.DialProxy{
-		Addr: fmt.Sprintf("vsock:%d", proxiedDevice.Port),
+	proxy.AddRoute(fmt.Sprintf("unix://:%s", vsockFile.Name()), &tcpproxy.DialProxy{
+		Addr: fmt.Sprintf("vsock:%d", port),
 		// when there's a connection to the unix socket listener, connect to the specified vsock port
 		DialContext: func(_ context.Context, _, addr string) (conn net.Conn, e error) {
-			parsed, err := url.Parse(addr)
-			if err != nil {
-				return nil, err
-			}
-			switch parsed.Scheme {
-			case "vsock":
-				return vm.VSockConnect(ctx, proxiedDevice.Port)
-			default:
-				return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
-			}
+			return vm.VSockConnect(ctx, port)
 		},
 	})
-	return &proxy, proxy.Start()
+
+	err = proxy.Start()
+	if err != nil {
+		return nil, nil, errors.Errorf("starting proxy: %w", err)
+	}
+
+	return conn, nil, nil
 }
 
 // listenVsock proxies connections from a vsock port to a host unix socket.
 // This allows the guest to initiate connections to the host over vsock
-func exposeListenVsockProxy(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (io.Closer, error) {
+func exposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
 	var proxy tcpproxy.Proxy
 
-	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())
+	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, errors.Errorf("creating unix socket: %w", err)
 	}
 
-	vsockPath := filepath.Join(empathicalCacheDir, proxiedDevice.SocketURL)
+	vsockFile := os.NewFile(uintptr(fd), "vsock.socket")
 
 	// listen for connections on the vsock port
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
-		parsed, err := url.Parse(laddr)
-		if err != nil {
-			return nil, err
-		}
-		switch parsed.Scheme {
-		case "vsock":
-			port, err := strconv.ParseUint(parsed.Port(), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-			return vm.VSockListen(ctx, uint32(port)) //#nosec G115 -- strconv.ParseUint(_, _, 32) guarantees no overflow
-		default:
-			return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
-		}
+		return vm.VSockListen(ctx, uint32(port))
 	}
 
-	proxy.AddRoute(fmt.Sprintf("vsock://:%d", proxiedDevice.Port), &tcpproxy.DialProxy{
-		Addr: fmt.Sprintf("unix:%s", vsockPath),
+	proxy.AddRoute(fmt.Sprintf("vsock://:%d", port), &tcpproxy.DialProxy{
+		Addr: fmt.Sprintf("unix:%s", vsockFile.Name()),
 		// when there's a connection to the vsock listener, connect to the provided unix socket
 		DialContext: func(ctx context.Context, _, addr string) (conn net.Conn, e error) {
-			parsed, err := url.Parse(addr)
-			if err != nil {
-				return nil, err
-			}
-			switch parsed.Scheme {
-			case "unix":
-				var d net.Dialer
-				return d.DialContext(ctx, parsed.Scheme, parsed.Path)
-			default:
-				return nil, fmt.Errorf("unexpected scheme '%s'", parsed.Scheme)
-			}
+			return net.FileConn(vsockFile)
 		},
 	})
 
-	return &proxy, proxy.Start()
+	return proxy.Start()
 }

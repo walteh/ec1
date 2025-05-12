@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/mod/semver"
+
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/provisioner/ignition"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/mod/semver"
 )
 
 const fedoraVersion = "42"
@@ -77,5 +79,4 @@ func (fedora *FedoraProvider) SSHConfig() *ssh.ClientConfig {
 		// #nosec 106 -- the host SSH key of the VM will change each time it boots
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-
 }

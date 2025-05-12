@@ -10,7 +10,6 @@ import (
 )
 
 type VMIProvider interface {
-	DiskImageURL() string
 	BootProvisioners() []BootProvisioner
 	RuntimeProvisioners() []RuntimeProvisioner
 	SSHConfig() *ssh.ClientConfig
@@ -19,6 +18,10 @@ type VMIProvider interface {
 	Version() string
 	SupportsEFI() bool
 	GuestKernelType() guest.GuestKernelType
+}
+
+type DiskImageURLVMIProvider interface {
+	DiskImageURL() string
 }
 
 type CustomExtractorVMIProvider interface {

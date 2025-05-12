@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/virtio"
 )

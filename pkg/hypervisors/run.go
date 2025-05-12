@@ -55,37 +55,40 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 	devices := []virtio.VirtioDevice{}
 	provisioners := []Provisioner{}
 
-	err = host.DownloadAndExtractVMI(ctx, vmi.DiskImageURL(), workingDir)
-	if err != nil {
-		return nil, errors.Errorf("downloading and extracting VMI: %w", err)
-	}
-
-	if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
-		err = customExtractor.CustomExtraction(ctx, workingDir)
+	if diskImageURLVMIProvider, ok := vmi.(DiskImageURLVMIProvider); ok {
+		err = host.DownloadAndExtractVMI(ctx, diskImageURLVMIProvider.DiskImageURL(), workingDir)
 		if err != nil {
-			return nil, errors.Errorf("custom extraction: %w", err)
+			return nil, errors.Errorf("downloading and extracting VMI: %w", err)
 		}
+
+		if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
+			err = customExtractor.CustomExtraction(ctx, workingDir)
+			if err != nil {
+				return nil, errors.Errorf("custom extraction: %w", err)
+			}
+		}
+
+		if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
+			diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
+
+			if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
+				return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
+			}
+
+			blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
+			if err != nil {
+				return nil, errors.Errorf("creating virtio block device: %w", err)
+			}
+
+			devices = append(devices, blkDev)
+		}
+
 	}
 
-	if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
-		diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
-
-		if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
-			return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
-		}
-
-		blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
-		if err != nil {
-			return nil, errors.Errorf("creating virtio block device: %w", err)
-		}
-
-		devices = append(devices, blkDev)
-	}
-
-	// add memory balloon device
+	// // add memory balloon device
 	// memoryBalloonDev, err := virtio.VirtioBalloonNew()
 	// if err != nil {
-	// 	return errors.Errorf("creating memory balloon device: %w", err)
+	// 	return nil, errors.Errorf("creating memory balloon device: %w", err)
 	// }
 	// devices = append(devices, memoryBalloonDev)
 
@@ -104,22 +107,11 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 	errgrp, ctx := errgroup.WithContext(ctx)
 
-	// socketPath := filepath.Join(workingDir, "gvproxy.sock")
-
-	// os.Remove(socketPath)
-	// os.Create(socketPath)
-
-	// gvnetProvisioner := NewGvproxyProvisioner(
-	// 	tapsock.NewVFKitVMSocket("unixgram://" + socketPath),
-	// )
-
 	netdev, hostIPPort, err := NewNetDevice(ctx, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
 	}
 	devices = append(devices, netdev)
-
-	// runtimeProvisioners = append(runtimeProvisioners, gvnetProvisioner)
 
 	for _, runtimeProvisioner := range runtimeProvisioners {
 		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
@@ -142,20 +134,6 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		Provisioners: provisioners,
 	}
 
-	// errgrp.Go(func() error {
-	// 	return gvnetProvisioner.RunDuringRuntime(ctx, nil)
-	// })
-
-	// netDevs := virtio.VirtioDevicesOfType[*virtio.VirtioNet](devices)
-	// for _, netDev := range netDevs {
-	// 	if netDev.UnixSocketPath != "" {
-	// 		err := netDev.ConnectUnixPath(ctx)
-	// 		if err != nil {
-	// 			return errors.Errorf("connecting unix socket path: %w", err)
-	// 		}
-	// 	}
-	// }
-
 	slog.InfoContext(ctx, "creating virtual machine")
 
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
@@ -163,16 +141,12 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
 
-	slog.InfoContext(ctx, "virtual machine created")
-
 	slog.WarnContext(ctx, "booting virtual machine")
 
 	err = boot(ctx, vm, vmi)
 	if err != nil {
 		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
-
-	// <-gvnetProvisioner.dev.ReadyChan
 
 	slog.WarnContext(ctx, "running virtual machine")
 
@@ -222,12 +196,10 @@ func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.Virti
 		return nil, 0, errors.Errorf("reserving port: %w", err)
 	}
 	cfg := &gvnet.GvproxyConfig{
-		// VMSocket:           me.sock,
 		VMHostPort:         fmt.Sprintf("tcp://127.0.0.1:%d", port),
 		EnableDebug:        false,
 		EnableStdioSocket:  false,
 		EnableNoConnectAPI: true,
-		// ReadyChan:          me.chans,
 	}
 
 	dev, waiter, err := gvnet.NewProxy(ctx, cfg)
@@ -259,7 +231,7 @@ func startVSockDevices(ctx context.Context, vm VirtualMachine) error {
 			listenStr = " (listening)"
 		}
 		slog.InfoContext(ctx, "Exposing vsock port", "port", port, "socketURL", socketURL, "listenStr", listenStr)
-		closer, err := ExposeVsock(ctx, vm, vsock)
+		_, _, closer, err := ExposeVsock(ctx, vm, vsock.Port, vsock.Direction)
 		if err != nil {
 			slog.WarnContext(ctx, "error exposing vsock port", "port", port, "error", err)
 			continue

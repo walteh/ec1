@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -194,6 +195,30 @@ func saveArchivesFileToDir(ctx context.Context, info archives.FileInfo, dir stri
 	}
 
 	return nil
+}
+
+func DecompressUnknown(ctx context.Context, rdr io.Reader) (io.Reader, error) {
+
+	compressed, err := io.ReadAll(rdr)
+	if err != nil {
+		return nil, errors.Errorf("reading data: %w", err)
+	}
+
+	format, rdr, err := archives.Identify(ctx, "", bytes.NewReader(compressed))
+	if err != nil {
+		return nil, errors.Errorf("identifying data: %w", err)
+	}
+
+	if compression, ok := format.(archives.Compression); ok {
+		rdrz, err := compression.OpenReader(rdr)
+		if err != nil {
+			return nil, errors.Errorf("opening compression: %w", err)
+		}
+		defer rdrz.Close()
+		rdr = rdrz
+	}
+
+	return rdr, nil
 }
 
 func extractIntoDir(ctx context.Context, file string, dir string) error {

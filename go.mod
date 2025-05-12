@@ -7,11 +7,11 @@ replace (
 	github.com/containerd/containerd/api => ../containerd/api
 	// github.com/containerd/containerd/runtime/v2 => ../containerd/runtime
 	github.com/containerd/containerd/v2 => ../containerd
+	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 	// github.com/pkg/errors => gitlab.com/tozd/go/errors v0.10.0
 	github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
-// gvisor.dev/gvisor => ../gvisor
+	// gvisor.dev/gvisor => ../gvisor
 	github.com/walteh/run => ../run
-	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 )
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840

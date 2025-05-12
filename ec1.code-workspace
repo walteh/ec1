@@ -12,26 +12,18 @@
 			"name": "kata-containers",
 			"path": "../kata-containers/src/runtime"
 		},
-		{
-			"name": "gvisor",
-			"path": "../gvisor"
-		},
+		// {
+		// 	"name": "gvisor",
+		// 	"path": "../gvisor"
+		// },
 		{
 			"name": "gvisor-tap-vsock",
 			"path": "../gvisor-tap-vsock"
 		},
-		{
-			"name": "containerd",
-			"path": "../containerd"
-		},
-		{
-			"name": "bindfs",
-			"path": "../bindfs"
-		},
-		{
-			"name": "run",
-			"path": "../run"
-		},
+		// {
+		// 	"name": "containerd",
+		// 	"path": "../containerd"
+		// },
 		{
 			"name": "wrk",
 			"path": "../../../tmp/ksa2/wrk"

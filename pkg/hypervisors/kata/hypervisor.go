@@ -281,10 +281,11 @@ func (vfw *kataHypervisor[VM]) Cleanup(ctx context.Context) error {
 }
 
 func (vfw *kataHypervisor[VM]) GetTotalMemoryMB(ctx context.Context) uint32 {
-	if vfw.config != nil {
-		return vfw.config.MemorySize
+	total, err := vfw.managedVm.GetMemoryBalloonTargetSize(ctx)
+	if err != nil {
+		return 0
 	}
-	return 0
+	return uint32(strongunits.ToMib(total))
 }
 
 func (vfw *kataHypervisor[VM]) SetConfig(config *virtcontainers.HypervisorConfig) error {
@@ -293,6 +294,7 @@ func (vfw *kataHypervisor[VM]) SetConfig(config *virtcontainers.HypervisorConfig
 }
 
 func (vfw *kataHypervisor[VM]) GetPids() []int {
+
 	return []int{}
 }
 
@@ -316,6 +318,7 @@ func (vfw *kataHypervisor[VM]) Check() error {
 }
 
 func (vfw *kataHypervisor[VM]) Save() hv.HypervisorState {
+
 	return hv.HypervisorState{}
 }
 
@@ -324,21 +327,23 @@ func (vfw *kataHypervisor[VM]) Load(s hv.HypervisorState) {
 
 func (vfw *kataHypervisor[VM]) GenerateSocket(id string) (interface{}, error) {
 
-	vsock := vfw.vsockProxy
+	// needs  to grab the socket fid somehow and create a new proxy to the it and return it
 
-	addr, err := hypervisors.VSockProxyUnixAddr(vfw.creationContext, vfw.managedVm, vsock)
+	// can the proxy be a fd iteself that we return?
+
+	fd, _, _, err := hypervisors.ExposeVsock(vfw.creationContext, vfw.managedVm, vfw.vsockProxy.Port, vfw.vsockProxy.Direction)
 	if err != nil {
 		return nil, err
 	}
 
-	fl, err := os.OpenFile(addr.Name, os.O_RDWR, 0644)
-	if err != nil {
-		return nil, err
-	}
+	fle := os.NewFile(uintptr(fd), "vsock")
 
 	return &types.VSock{
-		VhostFd: fl,
-		Port:    vsock.Port,
+		VhostFd: fle,
+		Port:    vfw.vsockProxy.Port,
+		// 3 for guests, 2 for hosts
+		// https://developer.apple.com/forums/thread/772288
+		ContextID: 3,
 	}, nil
 }
 
