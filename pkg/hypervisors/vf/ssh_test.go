@@ -2,6 +2,7 @@ package vf_test
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -9,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/machines/virtio"
 	"github.com/walteh/ec1/pkg/testutils"
 )
 
@@ -131,16 +131,6 @@ func TestVSock(t *testing.T) {
 	// --- Test Vsock ---
 	guestListenPort := uint32(7890) // Arbitrary vsock port for the guest to listen on
 
-	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
-	// Expose the guest's vsock port. The host will connect to the guest's server.
-	fd, hostConn, closer, err := hypervisors.ExposeVsock(ctx, rvm.VM(), guestListenPort, virtio.VirtioVsockDirectionGuestListensAsServer)
-	require.NoError(t, err, "Failed to expose vsock port")
-	require.NotNil(t, hostConn, "Host connection should not be nil")
-	require.NotNil(t, closer, "Closer should not be nil")
-	defer closer.Close()
-	defer hostConn.Close()
-	slog.DebugContext(ctx, "Vsock exposed", "hostFd", fd)
-
 	// Start a vsock echo server in the guest via SSH
 	// Using socat: listens on VSOCK port guestListenPort, forks a new process for each connection,
 	// and echoes input (STDIO) back to the client.
@@ -172,16 +162,26 @@ func TestVSock(t *testing.T) {
 	// A more robust way would be to try connecting in a loop.
 	time.Sleep(2 * time.Second)
 
+	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
+	// Expose the guest's vsock port. The host will connect to the guest's server.
+	conn, listener, closer, err := hypervisors.ExposeListenVsockProxy(ctx, rvm.VM(), guestListenPort)
+	require.NoError(t, err, "Failed to expose vsock port")
+	require.NotNil(t, conn, "Host connection should not be nil")
+	require.NotNil(t, closer, "Closer should not be nil")
+	defer closer()
+	defer listener.Close()
+	// slog.DebugContext(ctx, "Vsock exposed", "hostFd", fd)
+
 	// Send data from host to guest via the proxied connection
 	message := "hello vsock from host"
 	slog.DebugContext(ctx, "Writing to host connection", "message", message)
-	_, err = hostConn.Write([]byte(message))
+	_, err = conn.Write([]byte(message))
 	require.NoError(t, err, "Failed to write to host connection")
 
 	// Read the echoed data back from the guest
 	buffer := make([]byte, 1024)
 	slog.DebugContext(ctx, "Reading from host connection")
-	n, err := hostConn.Read(buffer)
+	n, err := io.ReadFull(conn, buffer)
 	require.NoError(t, err, "Failed to read from host connection")
 
 	receivedMessage := string(buffer[:n])

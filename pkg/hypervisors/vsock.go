@@ -3,7 +3,6 @@ package hypervisors
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -53,24 +52,29 @@ func ConnectVsock(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.
 	return net.DialUnix("unix", nil, addr)
 }
 
-func ExposeVsock(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
+func ExposeVsock(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, net.Listener, func(), error) {
 	if direction == virtio.VirtioVsockDirectionGuestListensAsServer {
-		return exposeConnectVsockProxy(ctx, vm, port, direction)
+		return ExposeConnectVsockProxy(ctx, vm, port)
 	}
-	return exposeListenVsockProxy(ctx, vm, port, direction)
+	return ExposeListenVsockProxy(ctx, vm, port)
 }
 
 // connectVsock proxies connections from a host unix socket to a vsock port
 // This allows the host to initiate connections to the guest over vsock
-func exposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
+func ExposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32) (net.Conn, net.Listener, func(), error) {
 	var proxy tcpproxy.Proxy
 
 	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
-		return nil, nil, errors.Errorf("creating unix socket: %w", err)
+		return nil, nil, nil, errors.Errorf("creating unix socket: %w", err)
 	}
 
 	vsockFile := os.NewFile(uintptr(fd), "vsock.socket")
+
+	listener, err := net.FileListener(vsockFile)
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("creating vsock listener: %w", err)
+	}
 
 	// vsockConn, err := net.FileConn(vsockFile)
 	// if err != nil {
@@ -81,49 +85,79 @@ func exposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32
 
 	// listen for connections on the host unix socket
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
-		return net.FileListener(vsockFile)
+		return listener, nil
+	}
+
+	connz, err := vm.VSockConnect(ctx, port)
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("connecting to vsock: %w", err)
 	}
 
 	proxy.AddRoute(fmt.Sprintf("unix://:%s", vsockFile.Name()), &tcpproxy.DialProxy{
 		Addr: fmt.Sprintf("vsock:%d", port),
 		// when there's a connection to the unix socket listener, connect to the specified vsock port
 		DialContext: func(_ context.Context, _, addr string) (conn net.Conn, e error) {
-			return vm.VSockConnect(ctx, port)
+			return connz, nil
 		},
 	})
 
 	err = proxy.Start()
 	if err != nil {
-		return nil, nil, errors.Errorf("starting proxy: %w", err)
+		return nil, nil, nil, errors.Errorf("starting proxy: %w", err)
 	}
 
-	return conn, nil, nil
+	return connz, listener, func() {
+		proxy.Close()
+		vsockFile.Close()
+		listener.Close()
+		connz.Close()
+	}, nil
 }
 
 // listenVsock proxies connections from a vsock port to a host unix socket.
 // This allows the guest to initiate connections to the host over vsock
-func exposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32, direction virtio.VirtioVsockDirection) (net.Conn, io.Closer, error) {
+func ExposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32) (net.Conn, net.Listener, func(), error) {
 	var proxy tcpproxy.Proxy
 
 	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
-		return nil, nil, errors.Errorf("creating unix socket: %w", err)
+		return nil, nil, nil, errors.Errorf("creating unix socket: %w", err)
 	}
 
 	vsockFile := os.NewFile(uintptr(fd), "vsock.socket")
 
+	listener, err := vm.VSockListen(ctx, uint32(port))
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("listening to vsock: %w", err)
+	}
+
 	// listen for connections on the vsock port
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
-		return vm.VSockListen(ctx, uint32(port))
+		return listener, nil
+	}
+
+	connz, err := vm.VSockConnect(ctx, port)
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("connecting to vsock: %w", err)
 	}
 
 	proxy.AddRoute(fmt.Sprintf("vsock://:%d", port), &tcpproxy.DialProxy{
 		Addr: fmt.Sprintf("unix:%s", vsockFile.Name()),
 		// when there's a connection to the vsock listener, connect to the provided unix socket
 		DialContext: func(ctx context.Context, _, addr string) (conn net.Conn, e error) {
-			return net.FileConn(vsockFile)
+			return connz, nil
 		},
 	})
 
-	return proxy.Start()
+	err = proxy.Start()
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("starting proxy: %w", err)
+	}
+
+	return connz, listener, func() {
+		proxy.Close()
+		vsockFile.Close()
+		listener.Close()
+		connz.Close()
+	}, nil
 }

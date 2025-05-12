@@ -236,7 +236,7 @@ func startVSockDevices(ctx context.Context, vm VirtualMachine) error {
 			slog.WarnContext(ctx, "error exposing vsock port", "port", port, "error", err)
 			continue
 		}
-		defer closer.Close()
+		defer closer()
 	}
 	return nil
 }

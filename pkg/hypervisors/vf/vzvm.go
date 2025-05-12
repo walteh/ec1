@@ -12,9 +12,10 @@ import (
 	"log/slog"
 
 	"github.com/Code-Hex/vz/v3"
+	"gitlab.com/tozd/go/errors"
+
 	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
-	"gitlab.com/tozd/go/errors"
 )
 
 // var PlatformType string
