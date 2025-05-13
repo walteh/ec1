@@ -10,10 +10,76 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/containers/gvisor-tap-vsock/pkg/tcpproxy"
 	"gitlab.com/tozd/go/errors"
 )
 
-func ForwardListenerToPort(ctx context.Context, listener net.Listener, port string, errgroup *errgroup.Group) error {
+// func ForwardListenerToPort(ctx context.Context, listener net.Listener, port string, errgroup *errgroup.Group) error {
+// 	var proxy tcpproxy.Proxy
+
+// 	proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
+// 		return listener, nil
+// 	}
+
+// 	proxy.AddRoute(":", &tcpproxy.DialProxy{
+// 		Addr: fmt.Sprintf("tcp://127.0.0.1:%s", port),
+// 		// when there's a connection to the vsock listener, connect to the provided unix socket
+// 		DialContext: func(ctx context.Context, _, addr string) (conn net.Conn, e error) {
+// 			slog.InfoContext(ctx, "accepting connection", "addr", addr)
+// 			return listener.Accept()
+// 		},
+// 	})
+
+// 	err := proxy.Start()
+// 	if err != nil {
+// 		return errors.Errorf("failed to start proxy: %w", err)
+// 	}
+
+// 	return nil
+// }
+
+func ForwardListenerToPort(ctx context.Context, listener net.Listener, port string) error {
+	p := new(tcpproxy.Proxy)
+
+	addr := listener.Addr().String()
+
+	p.ListenFunc = func(network, laddr string) (net.Listener, error) {
+		return listener, nil
+	}
+
+	var dp *tcpproxy.DialProxy
+
+	dp = &tcpproxy.DialProxy{
+		Addr: port,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			slog.InfoContext(ctx, "dialing backend", "address", address)
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		},
+		OnDialError: func(src net.Conn, err error) {
+			slog.Error("backend dial error", "err", err)
+			_ = src.Close()
+		},
+	}
+
+	// this is effectivly the same as
+	// dp = tcpproxy.To(port)
+	// but we get better logging
+
+	p.AddRoute(addr, dp)
+
+	// 4) Run and wait for shutdown (blocks until ctx is canceled or an error occurs)
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+		_ = p.Close() // stops all proxy listeners
+	}()
+	if err := p.Run(); err != nil {
+		return fmt.Errorf("tcp proxy failed: %w", err)
+	}
+	return nil
+}
+
+func ForwardListenerToPortOld(ctx context.Context, listener net.Listener, port string, errgroup *errgroup.Group) error {
 	for {
 		// Accept connection with timeout
 		clientConn, err := listener.Accept()

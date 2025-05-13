@@ -280,7 +280,7 @@ func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgro
 		guestPortTargetStr := fmt.Sprintf("%s:%d", VIRTUAL_GUEST_IP, guestPortTarget)
 
 		groupErrs.Go(func() error {
-			return ForwardListenerToPort(ctx, listener, hostProxyPortStr, groupErrs)
+			return ForwardListenerToPort(ctx, listener, hostProxyPortStr)
 		})
 
 		virtualPortMap[hostProxyPortStr] = guestPortTargetStr
