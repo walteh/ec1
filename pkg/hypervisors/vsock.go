@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -76,13 +77,6 @@ func ExposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32
 		return nil, nil, nil, errors.Errorf("creating vsock listener: %w", err)
 	}
 
-	// vsockConn, err := net.FileConn(vsockFile)
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating vsock conn: %w", err)
-	// }
-
-	// unixVsockConn := vsockConn.(*net.UnixConn)
-
 	// listen for connections on the host unix socket
 	proxy.ListenFunc = func(_, laddr string) (net.Listener, error) {
 		return listener, nil
@@ -97,7 +91,7 @@ func ExposeConnectVsockProxy(ctx context.Context, vm VirtualMachine, port uint32
 		Addr: fmt.Sprintf("vsock:%d", port),
 		// when there's a connection to the unix socket listener, connect to the specified vsock port
 		DialContext: func(_ context.Context, _, addr string) (conn net.Conn, e error) {
-			return connz, nil
+			return vm.VSockConnect(ctx, port)
 		},
 	})
 
@@ -126,6 +120,11 @@ func ExposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32)
 
 	vsockFile := os.NewFile(uintptr(fd), "vsock.socket")
 
+	connz, err := vm.VSockConnect(ctx, port)
+	if err != nil {
+		return nil, nil, nil, errors.Errorf("connecting to vsock: %w", err)
+	}
+
 	listener, err := vm.VSockListen(ctx, uint32(port))
 	if err != nil {
 		return nil, nil, nil, errors.Errorf("listening to vsock: %w", err)
@@ -136,16 +135,11 @@ func ExposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32)
 		return listener, nil
 	}
 
-	connz, err := vm.VSockConnect(ctx, port)
-	if err != nil {
-		return nil, nil, nil, errors.Errorf("connecting to vsock: %w", err)
-	}
-
 	proxy.AddRoute(fmt.Sprintf("vsock://:%d", port), &tcpproxy.DialProxy{
 		Addr: fmt.Sprintf("unix:%s", vsockFile.Name()),
 		// when there's a connection to the vsock listener, connect to the provided unix socket
 		DialContext: func(ctx context.Context, _, addr string) (conn net.Conn, e error) {
-			return connz, nil
+			return vm.VSockConnect(ctx, port)
 		},
 	})
 
@@ -161,3 +155,42 @@ func ExposeListenVsockProxy(ctx context.Context, vm VirtualMachine, port uint32)
 		connz.Close()
 	}, nil
 }
+
+type VsockClientConnection struct {
+	// client connections can be
+	// - unix file socket
+	// - internal unix socket
+	// - tcp
+	// - udp
+	// dgram or stream
+	port         uint32
+	conn         net.Conn
+	startTime    time.Time
+	connType     VsockClientConnectionType
+	transferType VsockTransferType
+}
+
+type VsockServerListener struct {
+	// server listeners are always internal unix sockets, either
+	// dgram or stream
+	port         uint32
+	listener     net.Listener
+	startTime    time.Time
+	transferType VsockTransferType
+}
+
+type VsockClientConnectionType string
+
+const (
+	VsockClientConnectionTypeUnixFileSocket VsockClientConnectionType = "unix_file_socket"
+	VsockClientConnectionTypeUnixSocket     VsockClientConnectionType = "unix_socket"
+	VsockClientConnectionTypeTCP            VsockClientConnectionType = "tcp"
+	VsockClientConnectionTypeUDP            VsockClientConnectionType = "udp"
+)
+
+type VsockTransferType string
+
+const (
+	VsockTransferTypeDgram  VsockTransferType = "dgram"
+	VsockTransferTypeStream VsockTransferType = "stream"
+)

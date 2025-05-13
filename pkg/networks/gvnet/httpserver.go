@@ -9,6 +9,7 @@ import (
 
 	"github.com/soheilhy/cmux"
 	"github.com/superblocksteam/run"
+	"gitlab.com/tozd/go/errors"
 )
 
 type httpServer struct {
@@ -67,6 +68,7 @@ type cmuxServer struct {
 }
 
 func NewCmuxServer(name string, mux cmux.CMux) *cmuxServer {
+
 	return &cmuxServer{
 		mux:  mux,
 		name: name,
@@ -80,7 +82,11 @@ func (me *cmuxServer) Run(ctx context.Context) error {
 	defer func() {
 		me.running = false
 	}()
-	return me.mux.Serve()
+	err := me.mux.Serve()
+	if err != nil {
+		return errors.Errorf("serving cmux: %w", err)
+	}
+	return nil
 }
 
 func (me *cmuxServer) Close(ctx context.Context) error {

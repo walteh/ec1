@@ -22,7 +22,6 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/net/stdio"
 	"github.com/containers/gvisor-tap-vsock/pkg/sshclient"
 	"github.com/containers/gvisor-tap-vsock/pkg/tap"
-	"github.com/containers/gvisor-tap-vsock/pkg/transport"
 	"github.com/containers/gvisor-tap-vsock/pkg/types"
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/dustin/go-humanize"
@@ -34,7 +33,6 @@ import (
 
 	"github.com/walteh/ec1/pkg/machines/virtio"
 	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
-	"github.com/walteh/ec1/pkg/port"
 )
 
 const (
@@ -148,13 +146,24 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		return nil, nil, errors.Errorf("building forwards: %w", err)
 	}
 
+	group.Always(NewCmuxServer("cmux", m))
+
+	// globHostPort, err := NewGlobalHostPortStream(ctx, cfg.VMHostPort)
+	// if err != nil {
+	// 	return nil, nil, errors.Errorf("creating global host port: %w", err)
+	// }
+
+	// group.Always(globHostPort)
+
 	// start the vmFileSocket
 	device, runner, err := tapsock.NewDgramVirtioNet(ctx, VIRTUAL_GUEST_MAC)
 	if err != nil {
 		return nil, nil, errors.Errorf("vmFileSocket listen: %w", err)
 	}
 
-	slog.InfoContext(ctx, "forwarders", slog.Any("virtualPortMap", virtualPortMap))
+	// group.Always(runner)
+
+	// slog.InfoContext(ctx, "forwarders", slog.Any("virtualPortMap", virtualPortMap))
 
 	config := types.Configuration{
 		Debug:             cfg.EnableDebug,
@@ -196,7 +205,8 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 			},
 		},
 		DNSSearchDomains: dnss,
-		Forwards:         virtualPortMap,
+		// Forwards:         virtualPortMap,
+		RawForwards: virtualPortMap,
 		NAT: map[string]string{
 			VIRUTAL_HOST_IP: LOCAL_HOST_IP,
 		},
@@ -207,7 +217,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		Protocol: types.VfkitProtocol, // this is the exact same as 'bess', basically just means "not streaming"
 	}
 
-	vn, err := start(ctx, groupErrs, &config, cfg, m, virtualPortMap, group)
+	vn, err := start(ctx, groupErrs, &config, m, cfg, group)
 	if err != nil {
 		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
 	}
@@ -215,6 +225,13 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 	if err := runner.ApplyVirtualNetwork(vn); err != nil {
 		return nil, nil, errors.Errorf("applying virtual network: %w", err)
 	}
+
+	// stack, err := tapsock.IsolateNetworkStack(vn)
+	// if err != nil {
+	// 	return nil, nil, errors.Errorf("isolating network stack: %w", err)
+	// }
+
+	// globHostPort.ForwardCMUXMatchToGuestPort(ctx, stack, 22, cmux.PrefixMatcher("SSH-"))
 
 	// funnerId := group.AddWithID(runner)
 
@@ -257,39 +274,6 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 	}, nil
 }
 
-func buildForwards(ctx context.Context, globalHostPort string, groupErrs *errgroup.Group, forwards map[int]cmux.Matcher) (cmux.CMux, map[string]string, error) {
-	l, err := transport.Listen(globalHostPort)
-	if err != nil {
-		return nil, nil, errors.Errorf("listen: %w", err)
-	}
-
-	virtualPortMap := make(map[string]string)
-
-	m := cmux.New(l)
-
-	for guestPortTarget, matcher := range forwards {
-
-		listener := m.Match(matcher)
-
-		hostProxyPort, err := port.ReservePort(ctx)
-		if err != nil {
-			return nil, nil, errors.Errorf("reserving ssh port: %w", err)
-		}
-
-		hostProxyPortStr := fmt.Sprintf("%s:%d", LOCAL_HOST_IP, hostProxyPort)
-		guestPortTargetStr := fmt.Sprintf("%s:%d", VIRTUAL_GUEST_IP, guestPortTarget)
-
-		groupErrs.Go(func() error {
-			return ForwardListenerToPort(ctx, listener, hostProxyPortStr)
-		})
-
-		virtualPortMap[hostProxyPortStr] = guestPortTargetStr
-
-	}
-
-	return m, virtualPortMap, nil
-}
-
 // func getSSHForwarders(guestSSHPort int, guestSSHPortOnHost string) (map[string]string, error) {
 // 	if guestSSHPort < 1024 || guestSSHPort > 65535 {
 // 		return nil, errors.New("ssh-port value must be between 1024 and 65535")
@@ -317,7 +301,7 @@ func captureFile(cfg *GvproxyConfig) string {
 	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, cfg *GvproxyConfig, cmuxl cmux.CMux, virtualPortMap map[string]string, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
+func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, globHostPort cmux.CMux, cfg *GvproxyConfig, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
 	vn, err := virtualnetwork.New(configuration)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual network: %w", err)
@@ -336,7 +320,7 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 	mux.Handle("/services/forwarder/expose", vn.Mux(ctx))
 	mux.Handle("/services/forwarder/unexpose", vn.Mux(ctx))
 
-	group.Always(NewHTTPServer("gateway-forwarder", mux, vml))
+	group.Always(NewHTTPServer("gateway", mux, vml))
 	// cmuxId.MarkDependsOn(group, gatewayForwarderId)
 
 	mux = vn.Mux(ctx)
@@ -346,7 +330,8 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 
-		group.Always(NewHTTPServer("debug-pprof", mux, cmuxl.Match(cmux.Any())))
+		group.Always(NewHTTPServer("debug-pprof", mux, globHostPort.Match(cmux.Any())))
+
 		// cmuxId.MarkDependsOn(group, debugPprofId)
 	}
 
@@ -355,11 +340,12 @@ func start(ctx context.Context, g *errgroup.Group, configuration *types.Configur
 		mux := http.NewServeMux()
 		mux.Handle("/no-connect", vn.Mux(ctx))
 
-		group.Always(NewHTTPServer("no-connect", vn.Mux(ctx), cmuxl.Match(cmux.Any())))
+		group.Always(NewHTTPServer("no-connect", mux, globHostPort.Match(cmux.Any())))
+
+		// globHostPort.ApplyRestMux("no-connect", mux)
+
 		// cmuxId.MarkDependsOn(group, noConnectId)
 	}
-
-	group.Always(NewCmuxServer("cmux-server", cmuxl))
 
 	if cfg.EnableDebug {
 		go func() {

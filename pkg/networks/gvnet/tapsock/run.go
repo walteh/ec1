@@ -11,6 +11,7 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/walteh/run"
 	"gitlab.com/tozd/go/errors"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
 	"github.com/walteh/ec1/pkg/hack"
 )
@@ -31,18 +32,40 @@ type VirtualNetworkRunner struct {
 	// proxyErrChans []<-chan error
 }
 
-func (me *VirtualNetworkRunner) ApplyVirtualNetwork(vn *virtualnetwork.VirtualNetwork) error {
-
+func IsolateNetworkSwitch(vn *virtualnetwork.VirtualNetwork) (*tap.Switch, error) {
 	val := hack.GetUnexportedField(reflect.ValueOf(vn).Elem().FieldByName("networkSwitch"))
 	if val == nil {
-		return errors.New("invalid virtual network")
+		return nil, errors.New("invalid virtual network, networkSwitch is nil")
 	}
 
 	if swtch, ok := val.(*tap.Switch); ok {
-		me.swich = swtch
+		return swtch, nil
 	} else {
-		return errors.Errorf("invalid virtual network: expected *tap.Switch, got %T", val)
+		return nil, errors.Errorf("invalid virtual network: expected *tap.Switch, got %T", val)
 	}
+}
+
+func IsolateNetworkStack(vn *virtualnetwork.VirtualNetwork) (*stack.Stack, error) {
+	val := hack.GetUnexportedField(reflect.ValueOf(vn).Elem().FieldByName("stack"))
+	if val == nil {
+		return nil, errors.New("invalid virtual network, stack is nil")
+	}
+
+	if stack, ok := val.(*stack.Stack); ok {
+		return stack, nil
+	} else {
+		return nil, errors.Errorf("invalid virtual network: expected *stack.Stack, got %T", val)
+	}
+}
+
+func (me *VirtualNetworkRunner) ApplyVirtualNetwork(vn *virtualnetwork.VirtualNetwork) error {
+
+	swtch, err := IsolateNetworkSwitch(vn)
+	if err != nil {
+		return errors.Errorf("isolating network switch: %w", err)
+	}
+
+	me.swich = swtch
 
 	return nil
 }
