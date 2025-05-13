@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/pprof"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -231,14 +230,19 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		return nil, nil, errors.Errorf("isolating network stack: %w", err)
 	}
 
+	_, err = start(ctx, groupErrs, vn, m.mux, cfg, group)
+	if err != nil {
+		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+	}
+
 	err = m.ForwardCMUXMatchToGuestPort(ctx, stack, 22, cmux.PrefixMatcher("SSH-"))
 	if err != nil {
 		return nil, nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
 	}
 
-	_, err = start(ctx, groupErrs, vn, m.mux, cfg, group)
+	err = m.ForwardCMUXMatchToGuestPort(ctx, stack, 80, cmux.Any())
 	if err != nil {
-		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+		return nil, nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
 	}
 
 	groupErrs.Go(func() error {
@@ -321,31 +325,30 @@ func start(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNet
 	mux.Handle("/services/forwarder/unexpose", vn.Mux(ctx))
 
 	group.Always(NewHTTPServer("gateway", mux, vml))
-	// cmuxId.MarkDependsOn(group, gatewayForwarderId)
 
-	mux = vn.Mux(ctx)
-	if cfg.EnableDebug {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	// // cmuxId.MarkDependsOn(group, gatewayForwarderId)
 
-		group.Always(NewHTTPServer("debug-pprof", mux, globHostPort.Match(cmux.Any())))
+	// mux = vn.Mux(ctx)
+	// if cfg.EnableDebug {
+	// 	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	// 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	// 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	// 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	// }
 
-		// cmuxId.MarkDependsOn(group, debugPprofId)
-	}
+	// group.Always(NewHTTPServer("gateway", mux, vml))
 
-	if cfg.EnableNoConnectAPI {
-		slog.InfoContext(ctx, "enabling raw no connect API at /no-connect")
-		mux := http.NewServeMux()
-		mux.Handle("/no-connect", vn.Mux(ctx))
+	// if cfg.EnableNoConnectAPI {
+	// 	slog.InfoContext(ctx, "enabling raw no connect API at /no-connect")
+	// 	mux := http.NewServeMux()
+	// 	mux.Handle("/no-connect", vn.ServicesMux())
 
-		group.Always(NewHTTPServer("no-connect", mux, globHostPort.Match(cmux.Any())))
+	// 	group.Always(NewHTTPServer("no-connect", mux, globHostPort.Match(cmux.Any())))
 
-		// globHostPort.ApplyRestMux("no-connect", mux)
+	// 	// globHostPort.ApplyRestMux("no-connect", mux)
 
-		// cmuxId.MarkDependsOn(group, noConnectId)
-	}
+	// 	// cmuxId.MarkDependsOn(group, noConnectId)
+	// }
 
 	if cfg.EnableDebug {
 		go func() {

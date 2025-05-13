@@ -43,49 +43,7 @@ func NewGlobalHostPortStream(ctx context.Context, globalHostPort string) (*Globa
 		return true
 	})
 
-	// var proxy tcpproxy.Proxy
-
-	// proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
-	// 	slog.InfoContext(ctx, "listening", slog.Group("ignored",
-	// 		slog.String("network", network),
-	// 		slog.String("address", laddr),
-	// 	))
-	// 	return l, nil
-	// }
-
-	// proxy.AddRoute(l.Addr().String(), &tcpproxy.DialProxy{
-	// 	// Addr: l.Addr().String(),
-	// 	DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-	// 		slog.InfoContext(ctx, "dialing", slog.Group("ignored",
-	// 			slog.String("network", network),
-	// 			slog.String("address", address),
-	// 		))
-	// 		conn, err := l.Accept()
-	// 		if err != nil {
-	// 			slog.ErrorContext(ctx, "accept", "error", err)
-	// 			return nil, err
-	// 		}
-	// 		slog.InfoContext(ctx, "accepted", slog.Group("ignored",
-	// 			slog.String("network", network),
-	// 			slog.String("address", address),
-	// 		))
-	// 		return conn, nil
-	// 	},
-	// 	OnDialError: func(src net.Conn, dstDialErr error) {
-	// 		slog.ErrorContext(ctx, "failed to dial", "error", dstDialErr)
-	// 		src.Close()
-	// 	},
-	// })
-
-	// go func() {
-	// 	err := proxy.Run()
-	// 	if err != nil {
-	// 		slog.ErrorContext(ctx, "proxy run", "error", err)
-	// 	}
-	// }()
-
-	// cmux.MatchWithWriters(cmux.HTTP1MatchHeaderField("Connection", "close"))
-	grp.Always(NewCmuxServer("globalhostport_cmux", cmux))
+	grp.Always(NewCmuxServer(fmt.Sprintf("globalhostport_cmux(%s)", globalHostPort), cmux))
 
 	return &GlobalHostPort{mux: cmux, addr: l.Addr(), grp: grp, toClose: []io.Closer{l}, listener: l}, nil
 }
@@ -134,7 +92,7 @@ func (g *GlobalHostPort) Name() string {
 func (g *GlobalHostPort) ForwardCMUXMatchToGuestPort(ctx context.Context, switc *stack.Stack, guestPortTarget uint16, matcher cmux.Matcher) error {
 	listener := g.mux.Match(matcher)
 
-	hostAddress := listener.Addr().String()
+	hostAddress := fmt.Sprintf("cmux_match:%d", guestPortTarget)
 
 	guestPortTargetStr := fmt.Sprintf("%s:%d", VIRTUAL_GUEST_IP, guestPortTarget)
 
@@ -152,20 +110,20 @@ func (g *GlobalHostPort) ForwardCMUXMatchToGuestPort(ctx context.Context, switc 
 
 	var proxy tcpproxy.Proxy
 	proxy.ListenFunc = func(network, laddr string) (net.Listener, error) {
-		slog.InfoContext(ctx, "listening", slog.Group("ignored",
-			slog.String("network", network),
-			slog.String("address", laddr),
-		), "hostAddress", hostAddress)
+		// slog.InfoContext(ctx, "listening", slog.Group("ignored",
+		// 	slog.String("network", network),
+		// 	slog.String("address", laddr),
+		// ), "hostAddress", hostAddress)
 		return listener, nil
 	}
 
 	proxy.AddRoute(hostAddress, &tcpproxy.DialProxy{
 		Addr: guestPortTargetStr,
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			slog.InfoContext(ctx, "dialing", slog.Group("ignored",
-				slog.String("network", network),
-				slog.String("address", address),
-			), "guestAddress", guestAddress.Addr.String(), "hostAddress", hostAddress)
+			// slog.InfoContext(ctx, "dialing", slog.Group("ignored",
+			// 	slog.String("network", network),
+			// 	slog.String("address", address),
+			// ), "guestAddress", guestAddress.Addr.String(), "hostAddress", hostAddress)
 			return gonet.DialContextTCP(ctx, switc, guestAddress, ipv4.ProtocolNumber)
 		},
 		OnDialError: func(src net.Conn, dstDialErr error) {
