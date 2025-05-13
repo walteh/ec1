@@ -139,21 +139,21 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		return nil, nil, errors.Errorf("searching domains: %w", err)
 	}
 
-	m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{
-		22: cmux.PrefixMatcher("SSH-"),
-	})
-	if err != nil {
-		return nil, nil, errors.Errorf("building forwards: %w", err)
-	}
-
-	group.Always(NewCmuxServer("cmux", m))
-
-	// globHostPort, err := NewGlobalHostPortStream(ctx, cfg.VMHostPort)
+	// m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{
+	// 	22: cmux.PrefixMatcher("SSH-"),
+	// })
 	// if err != nil {
-	// 	return nil, nil, errors.Errorf("creating global host port: %w", err)
+	// 	return nil, nil, errors.Errorf("building forwards: %w", err)
 	// }
 
-	// group.Always(globHostPort)
+	// group.Always(NewCmuxServer("cmux", m))
+
+	m, err := NewGlobalHostPortStream(ctx, cfg.VMHostPort)
+	if err != nil {
+		return nil, nil, errors.Errorf("creating global host port: %w", err)
+	}
+
+	group.Always(m)
 
 	// start the vmFileSocket
 	device, runner, err := tapsock.NewDgramVirtioNet(ctx, VIRTUAL_GUEST_MAC)
@@ -206,7 +206,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		},
 		DNSSearchDomains: dnss,
 		// Forwards:         virtualPortMap,
-		RawForwards: virtualPortMap,
+		// RawForwards: virtualPortMap,
 		NAT: map[string]string{
 			VIRUTAL_HOST_IP: LOCAL_HOST_IP,
 		},
@@ -217,25 +217,29 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		Protocol: types.VfkitProtocol, // this is the exact same as 'bess', basically just means "not streaming"
 	}
 
-	vn, err := start(ctx, groupErrs, &config, m, cfg, group)
+	vn, err := virtualnetwork.New(&config)
 	if err != nil {
-		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+		return nil, nil, errors.Errorf("creating virtual network: %w", err)
 	}
 
 	if err := runner.ApplyVirtualNetwork(vn); err != nil {
 		return nil, nil, errors.Errorf("applying virtual network: %w", err)
 	}
 
-	// stack, err := tapsock.IsolateNetworkStack(vn)
-	// if err != nil {
-	// 	return nil, nil, errors.Errorf("isolating network stack: %w", err)
-	// }
+	stack, err := tapsock.IsolateNetworkStack(vn)
+	if err != nil {
+		return nil, nil, errors.Errorf("isolating network stack: %w", err)
+	}
 
-	// globHostPort.ForwardCMUXMatchToGuestPort(ctx, stack, 22, cmux.PrefixMatcher("SSH-"))
+	err = m.ForwardCMUXMatchToGuestPort(ctx, stack, 22, cmux.PrefixMatcher("SSH-"))
+	if err != nil {
+		return nil, nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
+	}
 
-	// funnerId := group.AddWithID(runner)
-
-	// cmuxId.MarkDependsOn(group, funnerId)
+	_, err = start(ctx, groupErrs, vn, m.mux, cfg, group)
+	if err != nil {
+		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+	}
 
 	groupErrs.Go(func() error {
 		if ctx.Err() != nil {
@@ -301,11 +305,7 @@ func captureFile(cfg *GvproxyConfig) string {
 	return filepath.Join(cfg.WorkingDir, "capture.pcap")
 }
 
-func start(ctx context.Context, g *errgroup.Group, configuration *types.Configuration, globHostPort cmux.CMux, cfg *GvproxyConfig, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
-	vn, err := virtualnetwork.New(configuration)
-	if err != nil {
-		return nil, errors.Errorf("creating virtual network: %w", err)
-	}
+func start(ctx context.Context, g *errgroup.Group, vn *virtualnetwork.VirtualNetwork, globHostPort cmux.CMux, cfg *GvproxyConfig, group *run.Group) (*virtualnetwork.VirtualNetwork, error) {
 
 	slog.InfoContext(ctx, "waiting for clients... listening...", "endpoint", cfg.VMHostPort)
 

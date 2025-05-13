@@ -174,7 +174,12 @@ func (g *GlobalHostPort) ForwardCMUXMatchToGuestPort(ctx context.Context, switc 
 		},
 	})
 
-	g.grp.Always(NewTCPProxyRunner(hostAddress, guestPortTargetStr, &proxy))
+	tcpproxyRunner, err := NewTCPProxyRunner(hostAddress, guestPortTargetStr, &proxy)
+	if err != nil {
+		return errors.Errorf("failed to create tcpproxy runner: %w", err)
+	}
+
+	g.grp.Always(tcpproxyRunner)
 	g.toClose = append(g.toClose, listener)
 
 	return nil

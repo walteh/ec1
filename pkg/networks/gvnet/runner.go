@@ -18,13 +18,17 @@ type TCPProxyRunner struct {
 	alive  bool
 }
 
-func NewTCPProxyRunner(source, target string, proxy *tcpproxy.Proxy) *TCPProxyRunner {
+func NewTCPProxyRunner(source, target string, proxy *tcpproxy.Proxy) (*TCPProxyRunner, error) {
+	err := proxy.Start()
+	if err != nil {
+		return nil, errors.Errorf("running tcpproxy [%s -> %s]: %w", source, target, err)
+	}
 	return &TCPProxyRunner{
 		source: source,
 		target: target,
 		proxy:  proxy,
 		alive:  false,
-	}
+	}, nil
 }
 
 func (p *TCPProxyRunner) Run(ctx context.Context) error {
@@ -32,7 +36,7 @@ func (p *TCPProxyRunner) Run(ctx context.Context) error {
 	defer func() {
 		p.alive = false
 	}()
-	err := p.proxy.Run()
+	err := p.proxy.Wait()
 	if err != nil {
 		return errors.Errorf("running tcpproxy [%s -> %s]: %w", p.source, p.target, err)
 	}
