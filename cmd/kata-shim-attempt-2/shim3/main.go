@@ -6,6 +6,8 @@ package main
 //
 
 import (
+	_ "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/plugin"
+
 	"context"
 	"fmt"
 	"io"
@@ -13,18 +15,17 @@ import (
 	"path/filepath"
 	"time"
 
-	shimapi "github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/log"
-	"github.com/walteh/ec1/pkg/hypervisors/kata"
-	"github.com/walteh/ec1/pkg/hypervisors/vf"
-	"github.com/walteh/ec1/pkg/testutils"
-
-	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/katautils"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/types"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers"
 
-	_ "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/plugin"
+	shimapi "github.com/containerd/containerd/v2/pkg/shim"
+	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
+
+	"github.com/walteh/ec1/pkg/hypervisors/kata"
+	"github.com/walteh/ec1/pkg/hypervisors/vf"
+	"github.com/walteh/ec1/pkg/testutils"
 )
 
 func shimConfig(config *shimapi.Config) {
@@ -72,7 +73,7 @@ func main() {
 	f, err := os.OpenFile(log_file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err == nil {
 		log.L.Logger.SetOutput(io.MultiWriter(f))
-		ctx = testutils.SetupSlogSimpleToWriter(ctx, f)
+		ctx = testutils.SetupSlogSimpleToWriter(ctx, f, true)
 
 	} else {
 		log.L.WithField("error", err).Error("Failed to open log file")

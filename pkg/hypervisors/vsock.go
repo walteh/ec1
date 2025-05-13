@@ -197,11 +197,28 @@ const (
 	VsockTransferTypeStream VsockTransferType = "stream"
 )
 
+func NewVSockStreamConnection(ctx context.Context, vm VirtualMachine, guestVSockPort uint32) (hostSideConn net.Conn, closerFunc func(), err error) {
+	fd, closerFunc, err := NewVSockStreamFileProxy(ctx, vm, guestVSockPort)
+	if err != nil {
+		return nil, nil, errors.Errorf("creating unix socket stream connection: %w", err)
+	}
+
+	hostSideConn, err = net.FileConn(fd)
+	if err != nil {
+		return nil, nil, errors.Errorf("creating host side connection: %w", err)
+	}
+
+	return hostSideConn, func() {
+		fd.Close()
+		closerFunc()
+	}, nil
+}
+
 // NewUnixSocketStreamConnection sets up a Unix socket pair.
 // Data written to the returned 'hostSideConn' by the host application
 // will be forwarded to the guest's VSock port.
 // Data sent by the guest on that VSock port will be readable from 'hostSideConn'.
-func NewUnixSocketStreamConnection(ctx context.Context, vm VirtualMachine, guestVSockPort uint32) (hostSideConn net.Conn, closerFunc func(), err error) {
+func NewVSockStreamFileProxy(ctx context.Context, vm VirtualMachine, guestVSockPort uint32) (hostSideConn *os.File, closerFunc func(), err error) {
 	slog.InfoContext(ctx, "setting up unix socket pair to bridge to guest VSock port", "guestVSockPort", guestVSockPort)
 
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0) // SOCK_STREAM is important
@@ -215,16 +232,16 @@ func NewUnixSocketStreamConnection(ctx context.Context, vm VirtualMachine, guest
 	hostFile := os.NewFile(uintptr(fds[0]), fmt.Sprintf("host-to-vsock-port-%d.sock", guestVSockPort))
 	vmFile := os.NewFile(uintptr(fds[1]), fmt.Sprintf("internal-link-to-vsock-port-%d.sock", guestVSockPort))
 
-	hostConn, err := net.FileConn(hostFile)
-	if err != nil {
-		_ = hostFile.Close()
-		_ = vmFile.Close()
-		return nil, nil, errors.Errorf("creating hostConn from file: %w", err)
-	}
+	// hostConn, err := net.FileConn(hostFile)
+	// if err != nil {
+	// 	_ = hostFile.Close()
+	// 	_ = vmFile.Close()
+	// 	return nil, nil, errors.Errorf("creating hostConn from file: %w", err)
+	// }
 
 	internalConnToVmFile, err := net.FileConn(vmFile)
 	if err != nil {
-		_ = hostConn.Close() // also closes hostFile
+		// _ = hostConn.Close() // also closes hostFile
 		_ = vmFile.Close()
 		return nil, nil, errors.Errorf("creating internalConnToVmFile from file: %w", err)
 	}
@@ -233,7 +250,7 @@ func NewUnixSocketStreamConnection(ctx context.Context, vm VirtualMachine, guest
 	slog.InfoContext(ctx, "dialing actual guest VSock port from internal link", "guestVSockPort", guestVSockPort)
 	guestVSockConn, err := vm.VSockConnect(ctx, guestVSockPort)
 	if err != nil {
-		_ = hostConn.Close()
+		// _ = hostConn.Close()
 		_ = internalConnToVmFile.Close() // also closes vmFile
 		return nil, nil, errors.Errorf("connecting to guest VSock port %d: %w", guestVSockPort, err)
 	}
@@ -282,12 +299,12 @@ func NewUnixSocketStreamConnection(ctx context.Context, vm VirtualMachine, guest
 		cancelProxy()
 		// Order of closing here can be important to ensure graceful shutdown.
 		// Closing hostConn signals to internalConnToVmFile if its io.Copy is blocked on read.
-		_ = hostConn.Close()
+		// _ = hostConn.Close()
 		// Closing internalConnToVmFile signals to guestVSockConn if its io.Copy is blocked on read.
 		_ = internalConnToVmFile.Close()
 		// Finally, ensure the connection to the guest is closed.
 		_ = guestVSockConn.Close()
 	}
 
-	return hostConn, closer, nil
+	return hostFile, closer, nil
 }

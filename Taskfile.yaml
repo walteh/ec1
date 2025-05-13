@@ -257,3 +257,14 @@ tasks:
           - cd /tmp/bindfs && sudo make install
           - sudo install_name_tool -add_rpath /usr/local/lib /usr/local/bin/bindfs
 
+    firecracker-swagger:
+        desc: generates the firecracker swagger
+        cmds:
+          - cmd: |-
+                {{.GO_COMMAND}} tool swagger generate server \
+                --spec=./docs/firecracker.swagger.yaml \
+                --target=gen/firecracker-swagger-go \
+                --flag-strategy=pflag \
+                --strict-responders \
+                --strict-additional-properties \
+                --all-definitions

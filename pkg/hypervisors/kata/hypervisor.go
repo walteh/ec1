@@ -9,7 +9,6 @@ package kata
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers/types"
+	"gitlab.com/tozd/go/errors"
 
 	hv "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
 
@@ -81,12 +81,12 @@ func (vfw *kataHypervisor[VM]) CreateVM(ctx context.Context, id string, network 
 	}
 	var vmDevices []virtio.VirtioDevice
 
-	vfw.vsockProxy = &virtio.VirtioVsock{
-		Port:      9994,
-		SocketURL: "kata.sock",
-		Direction: virtio.VirtioVsockDirectionGuestListensAsServer,
-	}
-	vmDevices = append(vmDevices, vfw.vsockProxy)
+	// vfw.vsockProxy = &virtio.VirtioVsock{
+	// 	Port:      9994,
+	// 	SocketURL: "kata.sock",
+	// 	Direction: virtio.VirtioVsockDirectionGuestListensAsServer,
+	// }
+	// vmDevices = append(vmDevices, vfw.vsockProxy)
 	// kernelCmdLine := strings.Join(kernelParams, " ")
 
 	// decompress the initrd
@@ -318,28 +318,28 @@ func (vfw *kataHypervisor[VM]) Check() error {
 }
 
 func (vfw *kataHypervisor[VM]) Save() hv.HypervisorState {
-
 	return hv.HypervisorState{}
 }
 
 func (vfw *kataHypervisor[VM]) Load(s hv.HypervisorState) {
+
 }
 
+// this is the kata-agent vsock that needs created
 func (vfw *kataHypervisor[VM]) GenerateSocket(id string) (interface{}, error) {
 
 	// needs  to grab the socket fid somehow and create a new proxy to the it and return it
 
 	// can the proxy be a fd iteself that we return?
 
-	fd, _, _, err := hypervisors.ExposeVsock(vfw.creationContext, vfw.managedVm, vfw.vsockProxy.Port, vfw.vsockProxy.Direction)
+	fd, closerFunc, err := hypervisors.NewVSockStreamFileProxy(vfw.creationContext, vfw.managedVm, 1024)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("failed to create vsock stream file proxy: %w", err)
 	}
-
-	fle := os.NewFile(uintptr(fd), "vsock")
+	defer closerFunc()
 
 	return &types.VSock{
-		VhostFd: fle,
+		VhostFd: fd,
 		Port:    vfw.vsockProxy.Port,
 		// 3 for guests, 2 for hosts
 		// https://developer.apple.com/forums/thread/772288

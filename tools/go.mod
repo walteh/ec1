@@ -15,6 +15,7 @@ tool (
 	github.com/bufbuild/buf/cmd/buf
 	github.com/bufbuild/plugins/cmd/download-plugins
 	github.com/go-delve/delve/cmd/dlv
+	github.com/go-swagger/go-swagger/cmd/swagger
 	github.com/go-task/task/v3/cmd/task
 	github.com/golangci/golangci-lint/cmd/golangci-lint
 	github.com/google/go-containerregistry/cmd/crane
@@ -274,6 +275,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
 	github.com/go-openapi/errors v0.22.0 // indirect
+	github.com/go-openapi/inflect v0.21.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/loads v0.22.0 // indirect
@@ -286,6 +288,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.21.0 // indirect
 	github.com/go-restruct/restruct v1.2.0-alpha // indirect
+	github.com/go-swagger/go-swagger v0.31.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-task/task/v3 v3.43.3 // indirect
 	github.com/go-task/template v0.1.0 // indirect
@@ -337,6 +340,7 @@ require (
 	github.com/goreleaser/fileglob v1.3.0 // indirect
 	github.com/goreleaser/goreleaser/v2 v2.9.0 // indirect
 	github.com/goreleaser/nfpm/v2 v2.41.3 // indirect
+	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gostaticanalysis/analysisutil v0.7.1 // indirect
 	github.com/gostaticanalysis/comment v1.5.0 // indirect
@@ -373,6 +377,7 @@ require (
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/jdx/go-netrc v1.0.0 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20230811132847-661be99b8267 // indirect
+	github.com/jessevdk/go-flags v1.5.0 // indirect
 	github.com/jgautheron/goconst v1.7.1 // indirect
 	github.com/jingyugao/rowserrcheck v1.1.1 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
@@ -390,6 +395,8 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/kulti/thelper v0.6.3 // indirect
 	github.com/kunwardeep/paralleltest v1.0.10 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -556,6 +563,7 @@ require (
 	github.com/tomarrell/wrapcheck/v2 v2.10.0 // indirect
 	github.com/tommy-muehle/go-mnd/v2 v2.5.1 // indirect
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
+	github.com/toqueteos/webbrowser v1.2.0 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
 	github.com/ultraware/funlen v0.2.0 // indirect
 	github.com/ultraware/whitespace v0.2.0 // indirect

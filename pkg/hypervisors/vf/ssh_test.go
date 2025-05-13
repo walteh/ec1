@@ -194,10 +194,11 @@ func TestVSock(t *testing.T) {
 
 	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
 	// Expose the guest's vsock port. The host will connect to the guest's server.
-	conn, cleanup, err := hypervisors.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
+	// conn, cleanup, err := hypervisors.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
+	conn, err := rvm.VM().VSockConnect(ctx, guestListenPort)
 	require.NoError(t, err, "Failed to expose vsock port")
 	require.NotNil(t, conn, "Host connection should not be nil")
-	t.Cleanup(cleanup)
+	// t.Cleanup(cleanup)
 
 	require.False(t, closed, "SSH session should not be closed before we send data")
 	// slog.DebugContext(ctx, "Vsock exposed", "hostFd", fd)

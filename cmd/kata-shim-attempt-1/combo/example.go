@@ -20,17 +20,17 @@ import (
 	"context"
 	"io"
 
-	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
-	apitypes "github.com/containerd/containerd/api/types"
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/containerd/v2/pkg/shutdown"
 	"github.com/containerd/containerd/v2/plugins"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/plugin"
 	"github.com/containerd/plugin/registry"
-
-	katashim "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/types"
+
+	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
+	apitypes "github.com/containerd/containerd/api/types"
+	katashim "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2"
 )
 
 func init() {
@@ -85,7 +85,7 @@ func (m manager) Info(ctx context.Context, optionsR io.Reader) (*apitypes.Runtim
 	return info, nil
 }
 
-func newTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskAPI.TaskService, error) {
+func newTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskAPI.TTRPCTaskService, error) {
 	// The shim.Publisher and shutdown.Service are usually useful for your task service,
 	// but we don't need them in the exampleTaskService.
 	return katashim.New(ctx, types.DefaultKataRuntimeName, publisher, sd)
