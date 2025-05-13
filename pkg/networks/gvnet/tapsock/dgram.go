@@ -169,6 +169,7 @@ func NewBidirectionalDgramNetConn(hostConn *net.UnixConn, vmConn *net.UnixConn) 
 	}
 }
 
+// tbh this thing should prob just be a couple funcitons, like close and remoteAddr on top od the host connection
 type bidirectionalDgramNetConn struct {
 	remote *net.UnixConn
 	host   *net.UnixConn

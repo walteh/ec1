@@ -1,11 +1,14 @@
 package vf_test
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/stretchr/testify/require"
 
@@ -131,31 +134,58 @@ func TestVSock(t *testing.T) {
 	// --- Test Vsock ---
 	guestListenPort := uint32(7890) // Arbitrary vsock port for the guest to listen on
 
+	// 	socatProxy := `#!/bin/bash
+
+	// handle() {
+	//   echo 'HTTP/1.0 200 OK'
+	//   echo 'Content-Type: text/plain'
+	//   echo "Date: $(date)"
+	//   echo "Server: $SOCAT_SOCKADDR:$SOCAT_SOCKPORT"
+	//   echo "Client: $SOCAT_PEERADDR:$SOCAT_PEERPORT"
+	//   echo 'Connection: close'
+	//   echo
+	//   cat
+	// }
+
+	// case $1 in
+	//   "bind")
+	//     socat -T0.05 -v VSOCK-LISTEN:%d,reuseaddr,fork system:". $0 && handle"
+	//     ;;
+	// esac
+	// `
 	// Start a vsock echo server in the guest via SSH
 	// Using socat: listens on VSOCK port guestListenPort, forks a new process for each connection,
 	// and echoes input (STDIO) back to the client.
 	// Runs in the background (&) so SSH command returns.
 	// We use "setsid" to ensure socat is not killed when the SSH session closes.
-	serverCmd := fmt.Sprintf("setsid socat VSOCK-LISTEN:%d,fork STDOUT > /dev/null 2>&1 &", guestListenPort)
+	// serverCmd := fmt.Sprintf("setsid socat VSOCK-LISTEN:%d,fork,STDOUT", guestListenPort)
+	// serverCmd := fmt.Sprintf(socatProxy, guestListenPort)
+	// serverCmd := fmt.Sprintf("socat -v -T0.05 VSOCK-LISTEN:%d,reuseaddr,fork system:'cat '", guestListenPort)
+	serverCmd := fmt.Sprintf("socat VSOCK-LISTEN:%d,fork PIPE", guestListenPort)
 	slog.DebugContext(ctx, "Starting vsock server in guest", "command", serverCmd)
 
 	sshSession, err := sshClient.NewSession() // Declare sshSession here
 	require.NoError(t, err, "error creating ssh session for server start")
 
-	err = sshSession.Start(serverCmd) // Use Start for background commands
-	if err != nil {
-		// Reading output can be helpful for debugging if Start fails immediately
-		// Try to get combined output, but don't let it hang if the command is truly backgrounded
-		// This is a bit tricky with Start(); if Start fails, it might be before the command detaches.
-		// For a truly detached command, CombinedOutput after a failed Start might not give much.
-		// output, _ := sshSession.CombinedOutput(serverCmd) // This might hang or not be useful
-		slog.ErrorContext(ctx, "Failed to start guest server", "error", err /*, "output", string(output)*/)
-		sshSession.Close() // Attempt to close the session even if start failed
-		t.Fatalf("Failed to start guest server: %v", err)
-	}
-	// It's important to close the session that started the background command.
-	err = sshSession.Close()
-	require.NoError(t, err, "error closing ssh session for server start")
+	closed := false
+
+	go func() {
+		defer func() {
+			closed = true
+			sshSession.Close()
+		}()
+		t.Logf("starting guest server")
+		output, err := sshSession.CombinedOutput(serverCmd) // Use Start for background commands
+		if err != nil && !errors.Is(err, &ssh.ExitMissingError{}) {
+			slog.ErrorContext(ctx, "Failed to start guest server", "error", err /*, "output", string(output)*/)
+			t.Errorf("Failed to start guest server: %v", err)
+		}
+		t.Logf("guest server output: %s", string(output))
+	}()
+
+	// // It's important to close the session that started the background command.
+	// defer sshSession.Close()
+	// require.NoError(t, err, "error closing ssh session for server start")
 
 	slog.DebugContext(ctx, "Guest vsock server started, waiting for it to be ready...")
 	// Give the server a moment to start up.
@@ -164,27 +194,27 @@ func TestVSock(t *testing.T) {
 
 	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
 	// Expose the guest's vsock port. The host will connect to the guest's server.
-	conn, listener, closer, err := hypervisors.ExposeListenVsockProxy(ctx, rvm.VM(), guestListenPort)
+	conn, cleanup, err := hypervisors.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
 	require.NoError(t, err, "Failed to expose vsock port")
 	require.NotNil(t, conn, "Host connection should not be nil")
-	require.NotNil(t, closer, "Closer should not be nil")
-	defer closer()
-	defer listener.Close()
+	t.Cleanup(cleanup)
+
+	require.False(t, closed, "SSH session should not be closed before we send data")
 	// slog.DebugContext(ctx, "Vsock exposed", "hostFd", fd)
 
 	// Send data from host to guest via the proxied connection
 	message := "hello vsock from host"
 	slog.DebugContext(ctx, "Writing to host connection", "message", message)
-	_, err = conn.Write([]byte(message))
+	_, err = conn.Write([]byte(message + "\n"))
 	require.NoError(t, err, "Failed to write to host connection")
 
 	// Read the echoed data back from the guest
-	buffer := make([]byte, 1024)
-	slog.DebugContext(ctx, "Reading from host connection")
-	n, err := io.ReadFull(conn, buffer)
-	require.NoError(t, err, "Failed to read from host connection")
+	buffer := bufio.NewScanner(conn)
 
-	receivedMessage := string(buffer[:n])
+	slog.DebugContext(ctx, "Reading from host connection")
+	buffer.Scan()
+
+	receivedMessage := buffer.Text()
 	slog.DebugContext(ctx, "Received from guest", "message", receivedMessage)
 
 	// Verify the echoed message

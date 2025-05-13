@@ -3,6 +3,8 @@ package hypervisors
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,8 +12,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/containers/gvisor-tap-vsock/pkg/tcpproxy"
 	"gitlab.com/tozd/go/errors"
-	"inet.af/tcpproxy"
 
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
@@ -194,3 +196,98 @@ const (
 	VsockTransferTypeDgram  VsockTransferType = "dgram"
 	VsockTransferTypeStream VsockTransferType = "stream"
 )
+
+// NewUnixSocketStreamConnection sets up a Unix socket pair.
+// Data written to the returned 'hostSideConn' by the host application
+// will be forwarded to the guest's VSock port.
+// Data sent by the guest on that VSock port will be readable from 'hostSideConn'.
+func NewUnixSocketStreamConnection(ctx context.Context, vm VirtualMachine, guestVSockPort uint32) (hostSideConn net.Conn, closerFunc func(), err error) {
+	slog.InfoContext(ctx, "setting up unix socket pair to bridge to guest VSock port", "guestVSockPort", guestVSockPort)
+
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0) // SOCK_STREAM is important
+	if err != nil {
+		return nil, nil, errors.Errorf("creating socket pair: %w", err)
+	}
+
+	// Create net.Conn from the file descriptors
+	// fds[0] will be for the host side (returned to caller)
+	// fds[1] will be used to connect to the guest's VSock
+	hostFile := os.NewFile(uintptr(fds[0]), fmt.Sprintf("host-to-vsock-port-%d.sock", guestVSockPort))
+	vmFile := os.NewFile(uintptr(fds[1]), fmt.Sprintf("internal-link-to-vsock-port-%d.sock", guestVSockPort))
+
+	hostConn, err := net.FileConn(hostFile)
+	if err != nil {
+		_ = hostFile.Close()
+		_ = vmFile.Close()
+		return nil, nil, errors.Errorf("creating hostConn from file: %w", err)
+	}
+
+	internalConnToVmFile, err := net.FileConn(vmFile)
+	if err != nil {
+		_ = hostConn.Close() // also closes hostFile
+		_ = vmFile.Close()
+		return nil, nil, errors.Errorf("creating internalConnToVmFile from file: %w", err)
+	}
+
+	// Now, connect the vmFile end of the socket pair to the actual guest VSock port
+	slog.InfoContext(ctx, "dialing actual guest VSock port from internal link", "guestVSockPort", guestVSockPort)
+	guestVSockConn, err := vm.VSockConnect(ctx, guestVSockPort)
+	if err != nil {
+		_ = hostConn.Close()
+		_ = internalConnToVmFile.Close() // also closes vmFile
+		return nil, nil, errors.Errorf("connecting to guest VSock port %d: %w", guestVSockPort, err)
+	}
+	slog.InfoContext(ctx, "successfully connected to guest VSock port", "guestVSockPort", guestVSockPort)
+
+	// Start goroutines to proxy data in both directions
+	// Use a new context for these goroutines that can be cancelled by the closerFunc
+	proxyCtx, cancelProxy := context.WithCancel(ctx)
+
+	go func() {
+		defer cancelProxy() // Always signal, regardless of which connection is closed first
+		// If internalConnToVmFile closes, io.Copy finishes. We shouldn't aggressively close guestVSockConn
+		// here, as the other goroutine might still be reading from it. Let the main closer handle it.
+		// defer guestVSockConn.Close() // <--- REMOVE THIS LINE
+
+		slog.DebugContext(proxyCtx, "starting proxy: internalConnToVmFile -> guestVSockConn")
+		_, copyErr := io.Copy(guestVSockConn, internalConnToVmFile)
+		if copyErr != nil && !errors.Is(copyErr, io.EOF) && !errors.Is(copyErr, net.ErrClosed) && !errors.Is(copyErr, os.ErrClosed) {
+			// syscall.EPIPE is "broken pipe"
+			if !errors.Is(copyErr, unix.EPIPE) { // Don't log broken pipe as error if it's expected
+				slog.ErrorContext(proxyCtx, "error copying from internalConnToVmFile to guestVSockConn", "error", copyErr)
+			} else {
+				slog.DebugContext(proxyCtx, "internalConnToVmFile -> guestVSockConn copy saw broken pipe (expected if peer closed)", "error", copyErr)
+			}
+		}
+		slog.DebugContext(proxyCtx, "stopped proxy: internalConnToVmFile -> guestVSockConn")
+	}()
+
+	go func() {
+		defer cancelProxy() // Always signal
+		// If guestVSockConn closes (EOF from guest), io.Copy finishes.
+		// We don't need to aggressively close internalConnToVmFile here;
+		// the main closer or the host app's closure of hostConn will handle it.
+		// defer internalConnToVmFile.Close() // This was already removed, which is good.
+
+		slog.DebugContext(proxyCtx, "starting proxy: guestVSockConn -> internalConnToVmFile")
+		_, copyErr := io.Copy(internalConnToVmFile, guestVSockConn)
+		if copyErr != nil && !errors.Is(copyErr, io.EOF) && !errors.Is(copyErr, net.ErrClosed) && !errors.Is(copyErr, os.ErrClosed) {
+			slog.ErrorContext(proxyCtx, "error copying from guestVSockConn to internalConnToVmFile", "error", copyErr)
+		}
+		slog.DebugContext(proxyCtx, "stopped proxy: guestVSockConn -> internalConnToVmFile")
+	}()
+
+	closer := func() {
+		slog.InfoContext(ctx, "closing UnixSocketStreamConnection resources", "guestVSockPort", guestVSockPort)
+		cancelProxy()
+		// Order of closing here can be important to ensure graceful shutdown.
+		// Closing hostConn signals to internalConnToVmFile if its io.Copy is blocked on read.
+		_ = hostConn.Close()
+		// Closing internalConnToVmFile signals to guestVSockConn if its io.Copy is blocked on read.
+		_ = internalConnToVmFile.Close()
+		// Finally, ensure the connection to the guest is closed.
+		_ = guestVSockConn.Close()
+	}
+
+	return hostConn, closer, nil
+}
