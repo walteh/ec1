@@ -13,6 +13,7 @@ import (
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
+	"github.com/walteh/ec1/pkg/fc"
 	"github.com/walteh/ec1/pkg/testutils"
 )
 
@@ -47,13 +48,13 @@ func main() {
 	// parse the CLI flags
 	flag.Parse()
 
-	impl := &operations.UnimplementedFirecrackerAPI{}
+	impl := fc.NewEC1FirecrackerAPI()
+
+	logf := testutils.NewLogfBridge(ctx, slog.LevelDebug, slog.String("service", "firecracker"))
 
 	api := operations.NewSwaggerAPI(swaggerSpec, impl)
 
-	api.Logger = func(f string, v ...interface{}) {
-		slog.DebugContext(ctx, f, v...)
-	}
+	api.Logger = logf.Logf
 
 	// get server with flag values filled out
 	server = restapi.NewServer(api)
