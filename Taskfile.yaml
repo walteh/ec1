@@ -260,11 +260,15 @@ tasks:
     firecracker-swagger:
         desc: generates the firecracker swagger
         cmds:
+          - cmd: rm -rf gen/firecracker-swagger-go
+          - cmd: mkdir -p gen/firecracker-swagger-go
           - cmd: |-
                 {{.GO_COMMAND}} tool swagger generate server \
-                --spec=./docs/firecracker.swagger.yaml \
+                --spec=./docs/firecracker/firecracker.swagger.yaml \
                 --target=gen/firecracker-swagger-go \
                 --flag-strategy=pflag \
                 --strict-responders \
                 --strict-additional-properties \
-                --all-definitions
+                --all-definitions \
+                --template-dir=./docs/firecracker/templates \
+                 --regenerate-configureapi

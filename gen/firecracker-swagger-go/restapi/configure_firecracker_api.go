@@ -12,7 +12,7 @@ import (
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
 )
 
-//go:generate swagger generate server --target ../../firecracker-swagger-go --name FirecrackerAPI --spec ../../../docs/firecracker.swagger.yaml --principal interface{} --strict-responders
+//go:generate swagger generate server --target ../../firecracker-swagger-go --name FirecrackerAPI --spec ../../../docs/firecracker/firecracker.swagger.yaml --template-dir ./docs/firecracker/templates --principal interface{} --strict-responders
 
 func configureFlags(api *operations.FirecrackerAPIAPI) {
 	// api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{ ... }

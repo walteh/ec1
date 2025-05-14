@@ -635,3 +635,253 @@ func (o *FirecrackerAPIAPI) AddMiddlewareFor(method, path string, builder middle
 		o.handlers[um][path] = builder(h)
 	}
 }
+
+// NewSwaggerAPI builds the API server wiring all operations to your implementation.
+func NewSwaggerAPI(spec *loads.Document, impl FirecrackerAPI) *FirecrackerAPIAPI {
+	api := NewFirecrackerAPIAPI(spec)
+
+	// Wire each operation handler to the corresponding method on impl
+
+	api.CreateSnapshotHandler = CreateSnapshotHandlerFunc(impl.CreateSnapshot)
+	api.CreateSyncActionHandler = CreateSyncActionHandlerFunc(impl.CreateSyncAction)
+	api.DescribeBalloonConfigHandler = DescribeBalloonConfigHandlerFunc(impl.DescribeBalloonConfig)
+	api.DescribeBalloonStatsHandler = DescribeBalloonStatsHandlerFunc(impl.DescribeBalloonStats)
+	api.DescribeInstanceHandler = DescribeInstanceHandlerFunc(impl.DescribeInstance)
+	api.GetExportVMConfigHandler = GetExportVMConfigHandlerFunc(impl.GetExportVMConfig)
+	api.GetFirecrackerVersionHandler = GetFirecrackerVersionHandlerFunc(impl.GetFirecrackerVersion)
+	api.GetMachineConfigurationHandler = GetMachineConfigurationHandlerFunc(impl.GetMachineConfiguration)
+	api.GetMmdsHandler = GetMmdsHandlerFunc(impl.GetMmds)
+	api.LoadSnapshotHandler = LoadSnapshotHandlerFunc(impl.LoadSnapshot)
+	api.PatchBalloonHandler = PatchBalloonHandlerFunc(impl.PatchBalloon)
+	api.PatchBalloonStatsIntervalHandler = PatchBalloonStatsIntervalHandlerFunc(impl.PatchBalloonStatsInterval)
+	api.PatchGuestDriveByIDHandler = PatchGuestDriveByIDHandlerFunc(impl.PatchGuestDriveByID)
+	api.PatchGuestNetworkInterfaceByIDHandler = PatchGuestNetworkInterfaceByIDHandlerFunc(impl.PatchGuestNetworkInterfaceByID)
+	api.PatchMachineConfigurationHandler = PatchMachineConfigurationHandlerFunc(impl.PatchMachineConfiguration)
+	api.PatchMmdsHandler = PatchMmdsHandlerFunc(impl.PatchMmds)
+	api.PatchVMHandler = PatchVMHandlerFunc(impl.PatchVM)
+	api.PutBalloonHandler = PutBalloonHandlerFunc(impl.PutBalloon)
+	api.PutCPUConfigurationHandler = PutCPUConfigurationHandlerFunc(impl.PutCPUConfiguration)
+	api.PutEntropyDeviceHandler = PutEntropyDeviceHandlerFunc(impl.PutEntropyDevice)
+	api.PutGuestBootSourceHandler = PutGuestBootSourceHandlerFunc(impl.PutGuestBootSource)
+	api.PutGuestDriveByIDHandler = PutGuestDriveByIDHandlerFunc(impl.PutGuestDriveByID)
+	api.PutGuestNetworkInterfaceByIDHandler = PutGuestNetworkInterfaceByIDHandlerFunc(impl.PutGuestNetworkInterfaceByID)
+	api.PutGuestVsockHandler = PutGuestVsockHandlerFunc(impl.PutGuestVsock)
+	api.PutLoggerHandler = PutLoggerHandlerFunc(impl.PutLogger)
+	api.PutMachineConfigurationHandler = PutMachineConfigurationHandlerFunc(impl.PutMachineConfiguration)
+	api.PutMetricsHandler = PutMetricsHandlerFunc(impl.PutMetrics)
+	api.PutMmdsHandler = PutMmdsHandlerFunc(impl.PutMmds)
+	api.PutMmdsConfigHandler = PutMmdsConfigHandlerFunc(impl.PutMmdsConfig)
+
+	return api
+}
+
+// FirecrackerAPI defines your service interface for all
+type FirecrackerAPI interface {
+
+	// CreateSnapshot handles the CreateSnapshot operation.
+	CreateSnapshot(params CreateSnapshotParams) CreateSnapshotResponder
+	// CreateSyncAction handles the CreateSyncAction operation.
+	CreateSyncAction(params CreateSyncActionParams) CreateSyncActionResponder
+	// DescribeBalloonConfig handles the DescribeBalloonConfig operation.
+	DescribeBalloonConfig(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder
+	// DescribeBalloonStats handles the DescribeBalloonStats operation.
+	DescribeBalloonStats(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder
+	// DescribeInstance handles the DescribeInstance operation.
+	DescribeInstance(params DescribeInstanceParams) DescribeInstanceResponder
+	// GetExportVMConfig handles the GetExportVMConfig operation.
+	GetExportVMConfig(params GetExportVMConfigParams) GetExportVMConfigResponder
+	// GetFirecrackerVersion handles the GetFirecrackerVersion operation.
+	GetFirecrackerVersion(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder
+	// GetMachineConfiguration handles the GetMachineConfiguration operation.
+	GetMachineConfiguration(params GetMachineConfigurationParams) GetMachineConfigurationResponder
+	// GetMmds handles the GetMmds operation.
+	GetMmds(params GetMmdsParams) GetMmdsResponder
+	// LoadSnapshot handles the LoadSnapshot operation.
+	LoadSnapshot(params LoadSnapshotParams) LoadSnapshotResponder
+	// PatchBalloon handles the PatchBalloon operation.
+	PatchBalloon(params PatchBalloonParams) PatchBalloonResponder
+	// PatchBalloonStatsInterval handles the PatchBalloonStatsInterval operation.
+	PatchBalloonStatsInterval(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder
+	// PatchGuestDriveByID handles the PatchGuestDriveByID operation.
+	PatchGuestDriveByID(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder
+	// PatchGuestNetworkInterfaceByID handles the PatchGuestNetworkInterfaceByID operation.
+	PatchGuestNetworkInterfaceByID(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder
+	// PatchMachineConfiguration handles the PatchMachineConfiguration operation.
+	PatchMachineConfiguration(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder
+	// PatchMmds handles the PatchMmds operation.
+	PatchMmds(params PatchMmdsParams) PatchMmdsResponder
+	// PatchVM handles the PatchVM operation.
+	PatchVM(params PatchVMParams) PatchVMResponder
+	// PutBalloon handles the PutBalloon operation.
+	PutBalloon(params PutBalloonParams) PutBalloonResponder
+	// PutCPUConfiguration handles the PutCPUConfiguration operation.
+	PutCPUConfiguration(params PutCPUConfigurationParams) PutCPUConfigurationResponder
+	// PutEntropyDevice handles the PutEntropyDevice operation.
+	PutEntropyDevice(params PutEntropyDeviceParams) PutEntropyDeviceResponder
+	// PutGuestBootSource handles the PutGuestBootSource operation.
+	PutGuestBootSource(params PutGuestBootSourceParams) PutGuestBootSourceResponder
+	// PutGuestDriveByID handles the PutGuestDriveByID operation.
+	PutGuestDriveByID(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder
+	// PutGuestNetworkInterfaceByID handles the PutGuestNetworkInterfaceByID operation.
+	PutGuestNetworkInterfaceByID(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder
+	// PutGuestVsock handles the PutGuestVsock operation.
+	PutGuestVsock(params PutGuestVsockParams) PutGuestVsockResponder
+	// PutLogger handles the PutLogger operation.
+	PutLogger(params PutLoggerParams) PutLoggerResponder
+	// PutMachineConfiguration handles the PutMachineConfiguration operation.
+	PutMachineConfiguration(params PutMachineConfigurationParams) PutMachineConfigurationResponder
+	// PutMetrics handles the PutMetrics operation.
+	PutMetrics(params PutMetricsParams) PutMetricsResponder
+	// PutMmds handles the PutMmds operation.
+	PutMmds(params PutMmdsParams) PutMmdsResponder
+	// PutMmdsConfig handles the PutMmdsConfig operation.
+	PutMmdsConfig(params PutMmdsConfigParams) PutMmdsConfigResponder
+}
+
+// UnimplementedFirecrackerAPI provides default stub implementations.
+type UnimplementedFirecrackerAPI struct{}
+
+// CreateSnapshot returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) CreateSnapshot(params CreateSnapshotParams) CreateSnapshotResponder {
+	return CreateSnapshotNotImplemented()
+}
+
+// CreateSyncAction returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) CreateSyncAction(params CreateSyncActionParams) CreateSyncActionResponder {
+	return CreateSyncActionNotImplemented()
+}
+
+// DescribeBalloonConfig returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) DescribeBalloonConfig(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
+	return DescribeBalloonConfigNotImplemented()
+}
+
+// DescribeBalloonStats returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) DescribeBalloonStats(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
+	return DescribeBalloonStatsNotImplemented()
+}
+
+// DescribeInstance returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) DescribeInstance(params DescribeInstanceParams) DescribeInstanceResponder {
+	return DescribeInstanceNotImplemented()
+}
+
+// GetExportVMConfig returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) GetExportVMConfig(params GetExportVMConfigParams) GetExportVMConfigResponder {
+	return GetExportVMConfigNotImplemented()
+}
+
+// GetFirecrackerVersion returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) GetFirecrackerVersion(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
+	return GetFirecrackerVersionNotImplemented()
+}
+
+// GetMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) GetMachineConfiguration(params GetMachineConfigurationParams) GetMachineConfigurationResponder {
+	return GetMachineConfigurationNotImplemented()
+}
+
+// GetMmds returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) GetMmds(params GetMmdsParams) GetMmdsResponder {
+	return GetMmdsNotImplemented()
+}
+
+// LoadSnapshot returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) LoadSnapshot(params LoadSnapshotParams) LoadSnapshotResponder {
+	return LoadSnapshotNotImplemented()
+}
+
+// PatchBalloon returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchBalloon(params PatchBalloonParams) PatchBalloonResponder {
+	return PatchBalloonNotImplemented()
+}
+
+// PatchBalloonStatsInterval returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchBalloonStatsInterval(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder {
+	return PatchBalloonStatsIntervalNotImplemented()
+}
+
+// PatchGuestDriveByID returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchGuestDriveByID(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder {
+	return PatchGuestDriveByIDNotImplemented()
+}
+
+// PatchGuestNetworkInterfaceByID returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchGuestNetworkInterfaceByID(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder {
+	return PatchGuestNetworkInterfaceByIDNotImplemented()
+}
+
+// PatchMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchMachineConfiguration(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder {
+	return PatchMachineConfigurationNotImplemented()
+}
+
+// PatchMmds returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchMmds(params PatchMmdsParams) PatchMmdsResponder {
+	return PatchMmdsNotImplemented()
+}
+
+// PatchVM returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PatchVM(params PatchVMParams) PatchVMResponder {
+	return PatchVMNotImplemented()
+}
+
+// PutBalloon returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutBalloon(params PutBalloonParams) PutBalloonResponder {
+	return PutBalloonNotImplemented()
+}
+
+// PutCPUConfiguration returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutCPUConfiguration(params PutCPUConfigurationParams) PutCPUConfigurationResponder {
+	return PutCPUConfigurationNotImplemented()
+}
+
+// PutEntropyDevice returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutEntropyDevice(params PutEntropyDeviceParams) PutEntropyDeviceResponder {
+	return PutEntropyDeviceNotImplemented()
+}
+
+// PutGuestBootSource returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutGuestBootSource(params PutGuestBootSourceParams) PutGuestBootSourceResponder {
+	return PutGuestBootSourceNotImplemented()
+}
+
+// PutGuestDriveByID returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutGuestDriveByID(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder {
+	return PutGuestDriveByIDNotImplemented()
+}
+
+// PutGuestNetworkInterfaceByID returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutGuestNetworkInterfaceByID(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder {
+	return PutGuestNetworkInterfaceByIDNotImplemented()
+}
+
+// PutGuestVsock returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutGuestVsock(params PutGuestVsockParams) PutGuestVsockResponder {
+	return PutGuestVsockNotImplemented()
+}
+
+// PutLogger returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutLogger(params PutLoggerParams) PutLoggerResponder {
+	return PutLoggerNotImplemented()
+}
+
+// PutMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutMachineConfiguration(params PutMachineConfigurationParams) PutMachineConfigurationResponder {
+	return PutMachineConfigurationNotImplemented()
+}
+
+// PutMetrics returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutMetrics(params PutMetricsParams) PutMetricsResponder {
+	return PutMetricsNotImplemented()
+}
+
+// PutMmds returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutMmds(params PutMmdsParams) PutMmdsResponder {
+	return PutMmdsNotImplemented()
+}
+
+// PutMmdsConfig returns a NotImplemented response.
+func (u *UnimplementedFirecrackerAPI) PutMmdsConfig(params PutMmdsConfigParams) PutMmdsConfigResponder {
+	return PutMmdsConfigNotImplemented()
+}
