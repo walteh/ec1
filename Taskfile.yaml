@@ -272,3 +272,16 @@ tasks:
                 --all-definitions \
                 --template-dir=./docs/firecracker/templates \
                  --regenerate-configureapi
+
+    test:firecracker:
+        desc: runs the firecracker tests
+        dir: ../firecracker/tests
+        cmds:
+          - cmd: rm -rf /tmp/macos-linux-shim
+          - cmd: mkdir -p /tmp/macos-linux-shim
+            #   - cmd: cd ../../ec1 && go run ./cmd/macos-linux-shim --build-path-proxy --proxy-dir=/tmp/macos-linux-shim --use-go-run
+          - cmd: python3 -m venv .venv
+          - cmd: ./.venv/bin/python -m pip install jsonschema
+          - cmd: ./.venv/bin/pip3 install -e .
+          - cmd: sudo ./.venv/bin/python3 -m pytest --binary-dir=../../ec1/docs/firecracker/artifacts integration_tests/functional/test_api*
+

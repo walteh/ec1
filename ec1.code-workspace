@@ -20,6 +20,10 @@
 			"name": "gvisor-tap-vsock",
 			"path": "../gvisor-tap-vsock"
 		},
+		{
+			"name": "firecracker",
+			"path": "../firecracker"
+		},
 		// {
 		// 	"name": "containerd",
 		// 	"path": "../containerd"

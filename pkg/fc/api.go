@@ -2,21 +2,85 @@ package fc
 
 import (
 	"context"
+	"log/slog"
 
+	"github.com/go-openapi/swag"
+
+	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
 	"github.com/walteh/ec1/pkg/hypervisors"
 )
 
+// EC1FirecrackerAPI implements the Firecracker API using the hypervisors package.
+// It provides a translation layer between Firecracker API operations and hypervisor operations
+// for a single Firecracker microVM instance.
+type EC1FirecrackerAPI[V hypervisors.VirtualMachine] struct {
+	hpv             hypervisors.Hypervisor[V]
+	vm              V    // The single VM instance managed by this API
+	isVMInitialized bool // Tracks if the underlying VM in hypervisor has been created
+	// TODO: Add vmConfig *vmConfigState for pre-boot configurations
+	// TODO: Add a mutex for concurrent access to vm, vmConfig, and isVMInitialized
+}
+
+// NewEC1FirecrackerAPI creates a new Firecracker API implementation
+// that leverages the hypervisors package for VM operations for a single microVM.
 func NewEC1FirecrackerAPI[V hypervisors.VirtualMachine](hpv hypervisors.Hypervisor[V]) *EC1FirecrackerAPI[V] {
 	return &EC1FirecrackerAPI[V]{
-		hpv: hpv,
+		hpv:             hpv,
+		// vm is initially nil (zero value for interface/type V)
+		isVMInitialized: false,
 	}
 }
 
 var _ operations.FirecrackerAPI = &EC1FirecrackerAPI[hypervisors.VirtualMachine]{}
 
-type EC1FirecrackerAPI[V hypervisors.VirtualMachine] struct {
-	hpv hypervisors.Hypervisor[V]
+// mapHypervisorStateToInstanceInfoState maps hypervisor VM states to Firecracker InstanceInfo states.
+// InstanceInfo states are: "Not started", "Running", "Paused".
+func mapHypervisorStateToInstanceInfoState(vmState hypervisors.VirtualMachineStateType) string {
+	switch vmState {
+	case hypervisors.VirtualMachineStateTypeRunning:
+		return models.InstanceInfoStateRunning
+	case hypervisors.VirtualMachineStateTypePaused:
+		return models.InstanceInfoStatePaused
+	case hypervisors.VirtualMachineStateTypeStarting,
+		hypervisors.VirtualMachineStateTypeStopping,
+		hypervisors.VirtualMachineStateTypeStopped,
+		hypervisors.VirtualMachineStateTypeError,
+		hypervisors.VirtualMachineStateTypeUnknown:
+		return models.InstanceInfoStateNotStarted
+	default:
+		slog.Warn("mapHypervisorStateToInstanceInfoState: unknown hypervisor state, defaulting to NotStarted", "hypervisor_state", vmState)
+		return models.InstanceInfoStateNotStarted // Default fallback
+	}
+}
+
+// DescribeInstance implements operations.FirecrackerAPI.
+// It returns general information about the Firecracker microVM instance.
+func (f *EC1FirecrackerAPI[V]) DescribeInstance(ctx context.Context, params operations.DescribeInstanceParams) operations.DescribeInstanceResponder {
+	const instanceID = "fc-instance-01"
+	const appName = "ec1-firecracker"
+	// Reuse the version from GetFirecrackerVersion for consistency, or make it truly dynamic.
+	const vmmVersion = "1.13.0-ec1-custom"
+
+	var currentVMState string
+
+	if f.isVMInitialized { // Rely on isVMInitialized to indicate f.vm is valid.
+		// If isVMInitialized is true, f.vm is assumed to be a valid instance.
+		hypervisorState := f.vm.CurrentState()
+		currentVMState = mapHypervisorStateToInstanceInfoState(hypervisorState)
+	} else {
+		currentVMState = models.InstanceInfoStateNotStarted
+	}
+
+	payload := &models.InstanceInfo{
+		ID:           swag.String(instanceID),
+		AppName:      swag.String(appName),
+		State:        swag.String(currentVMState),
+		VmmVersion:   swag.String(vmmVersion),
+	}
+
+	slog.InfoContext(ctx, "Describing instance", "id", instanceID, "app_name", appName, "state", currentVMState, "vmm_version", vmmVersion)
+	return operations.NewDescribeInstanceOK().WithPayload(payload)
 }
 
 // CreateSnapshot implements operations.FirecrackerAPI.
@@ -39,19 +103,21 @@ func (f *EC1FirecrackerAPI[V]) DescribeBalloonStats(ctx context.Context, params 
 	return operations.DescribeBalloonStatsNotImplemented()
 }
 
-// DescribeInstance implements operations.FirecrackerAPI.
-func (f *EC1FirecrackerAPI[V]) DescribeInstance(ctx context.Context, params operations.DescribeInstanceParams) operations.DescribeInstanceResponder {
-	return operations.DescribeInstanceNotImplemented()
-}
-
 // GetExportVMConfig implements operations.FirecrackerAPI.
 func (f *EC1FirecrackerAPI[V]) GetExportVMConfig(ctx context.Context, params operations.GetExportVMConfigParams) operations.GetExportVMConfigResponder {
 	return operations.GetExportVMConfigNotImplemented()
 }
 
 // GetFirecrackerVersion implements operations.FirecrackerAPI.
+// It returns the version of this Firecracker API implementation.
 func (f *EC1FirecrackerAPI[V]) GetFirecrackerVersion(ctx context.Context, params operations.GetFirecrackerVersionParams) operations.GetFirecrackerVersionResponder {
-	return operations.GetFirecrackerVersionNotImplemented()
+	const implementationVersion = "1.13.0-ec1-custom"
+
+	payload := &models.FirecrackerVersion{
+		FirecrackerVersion: swag.String(implementationVersion),
+	}
+
+	return operations.NewGetFirecrackerVersionOK().WithPayload(payload)
 }
 
 // GetMachineConfiguration implements operations.FirecrackerAPI.
