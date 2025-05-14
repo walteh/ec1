@@ -445,6 +445,77 @@ func ({{.ReceiverName}} *{{ pascalize .Name }}API) AddMiddlewareFor(method, path
   }
 }
 
+// NewSwaggerAPI builds the API server wiring all operations to your implementation.
+func NewParameterizedSwaggerAPI(spec *loads.Document, impl ParameterizedFirecrackerAPI) *FirecrackerAPIAPI {
+	api := NewFirecrackerAPIAPI(spec)
+
+	// Wire each operation handler to the corresponding method on impl
+	{{ range .Operations }}
+	api.{{ pascalize .Name }}Handler = {{ pascalize .Name }}HandlerFunc(func(params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder {
+		{{- if eq .Method "GET" }}
+		{{- if .HasPathParams }}
+		return impl.{{ pascalize .Name }}(params.HTTPRequest.Context(), params{{ range .PathParams }}, params.{{ pascalize .Name }}{{ end }})
+		{{- else }}
+		return impl.{{ pascalize .Name }}(params.HTTPRequest.Context(), params)
+		{{- end }}
+		{{- else }}
+		{{- if .HasPathParams }}
+		return impl.{{ pascalize .Name }}(params.HTTPRequest.Context(), params{{ range .PathParams }}, params.{{ pascalize .Name }}{{ end }}, {{ if .HasBodyParams }}params.{{ pascalize (index .Params 0).ID }}{{ else }}nil{{ end }})
+		{{- else }}
+		return impl.{{ pascalize .Name }}(params.HTTPRequest.Context(), params, {{ if .HasBodyParams }}params.{{ pascalize (index .Params 0).ID }}{{ else }}nil{{ end }})
+		{{- end }}
+		{{- end }}
+	})
+	{{- end }}
+
+	return api
+}
+
+// FirecrackerAPI defines your service interface for all operations
+type ParameterizedFirecrackerAPI interface {
+	{{ range .Operations }}
+	// {{ pascalize .Name }} handles the {{ pascalize .Name }} operation.
+	{{- if eq .Method "GET" }}
+	{{- if .HasPathParams }}
+	{{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params{{ range .PathParams }}, {{ .Name }} {{ .GoType }}{{ end }}) {{ pascalize .Name }}Responder
+	{{- else }}
+	{{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder
+	{{- end }}
+	{{- else }}
+	{{- if .HasPathParams }}
+	{{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params{{ range .PathParams }}, {{ .Name }} {{ .GoType }}{{ end }}, {{ if .HasBodyParams }}body {{if not (index .Params 0).IsInterface}}*{{- end -}}{{ (index .Params 0).GoType }}{{- else -}}body interface{}{{- end -}}) {{ pascalize .Name }}Responder
+	{{- else }}
+	{{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params, {{ if .HasBodyParams }}body {{if not (index .Params 0).IsInterface}}*{{- end -}}{{ (index .Params 0).GoType }}{{- else -}}body interface{}{{- end -}}) {{ pascalize .Name }}Responder
+	{{- end }}
+	{{- end }}
+	{{- end }}
+}
+
+// UnimplementedParameterizedFirecrackerAPI provides default stub implementations.
+type UnimplementedParameterizedFirecrackerAPI struct{}
+
+{{ range .Operations }}
+// {{ pascalize .Name }} returns a NotImplemented response.
+{{- if eq .Method "GET" }}
+{{- if .HasPathParams }}
+func (u *UnimplementedParameterizedFirecrackerAPI) {{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params{{ range .PathParams }}, {{ .Name }} {{ .GoType }}{{ end }}) {{ pascalize .Name }}Responder {
+{{- else }}
+func (u *UnimplementedParameterizedFirecrackerAPI) {{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder {
+{{- end }}
+	return {{ pascalize .Name }}NotImplemented()
+}
+{{- else }}
+{{- if .HasPathParams }}
+func (u *UnimplementedParameterizedFirecrackerAPI) {{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params{{ range .PathParams }}, {{ .Name }} {{ .GoType }}{{ end }}, {{ if .HasBodyParams }}body {{if not (index .Params 0).IsInterface}}*{{- end -}}{{ (index .Params 0).GoType }}{{- else -}}body interface{}{{- end -}}) {{ pascalize .Name }}Responder {
+{{- else }}
+func (u *UnimplementedParameterizedFirecrackerAPI) {{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params, {{ if .HasBodyParams }}body {{if not (index .Params 0).IsInterface}}*{{- end -}}{{ (index .Params 0).GoType }}{{- else -}}body interface{}{{- end -}}) {{ pascalize .Name }}Responder {
+{{- end }}
+	return {{ pascalize .Name }}NotImplemented()
+}
+{{- end }}
+{{ end }}
+
+
 
 // NewSwaggerAPI builds the API server wiring all operations to your implementation.
 func NewSwaggerAPI(spec *loads.Document, impl FirecrackerAPI) *FirecrackerAPIAPI {
@@ -452,27 +523,28 @@ func NewSwaggerAPI(spec *loads.Document, impl FirecrackerAPI) *FirecrackerAPIAPI
 
 	// Wire each operation handler to the corresponding method on impl
 	{{ range .Operations }}
-	api.{{ pascalize .Name }}Handler = {{ pascalize .Name }}HandlerFunc(impl.{{ pascalize .Name }})
+	api.{{ pascalize .Name }}Handler = {{ pascalize .Name }}HandlerFunc(func(params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder {
+		return impl.{{ pascalize .Name }}(params.HTTPRequest.Context(), params)
+	})
 	{{- end }}
 
 	return api
 }
 
-// FirecrackerAPI defines your service interface for all 
+// FirecrackerAPI defines your service interface for all operations
 type FirecrackerAPI interface {
 	{{ range .Operations }}
 	// {{ pascalize .Name }} handles the {{ pascalize .Name }} operation.
-	{{ pascalize .Name }}(params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder
+	{{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder
 	{{- end }}
 }
-
 
 // UnimplementedFirecrackerAPI provides default stub implementations.
 type UnimplementedFirecrackerAPI struct{}
 
 {{ range .Operations }}
 // {{ pascalize .Name }} returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) {{ pascalize .Name }}(params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder {
+func (u *UnimplementedFirecrackerAPI) {{ pascalize .Name }}(ctx context.Context, params {{ pascalize .Name }}Params) {{ pascalize .Name }}Responder {
 	return {{ pascalize .Name }}NotImplemented()
 }
 {{ end }}

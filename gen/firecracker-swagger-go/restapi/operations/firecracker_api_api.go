@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,6 +19,8 @@ import (
 	"github.com/go-openapi/spec"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
+
+	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 )
 
 // NewFirecrackerAPIAPI creates a new FirecrackerAPI instance
@@ -637,251 +640,617 @@ func (o *FirecrackerAPIAPI) AddMiddlewareFor(method, path string, builder middle
 }
 
 // NewSwaggerAPI builds the API server wiring all operations to your implementation.
+func NewParameterizedSwaggerAPI(spec *loads.Document, impl ParameterizedFirecrackerAPI) *FirecrackerAPIAPI {
+	api := NewFirecrackerAPIAPI(spec)
+
+	// Wire each operation handler to the corresponding method on impl
+
+	api.CreateSnapshotHandler = CreateSnapshotHandlerFunc(func(params CreateSnapshotParams) CreateSnapshotResponder {
+		return impl.CreateSnapshot(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.CreateSyncActionHandler = CreateSyncActionHandlerFunc(func(params CreateSyncActionParams) CreateSyncActionResponder {
+		return impl.CreateSyncAction(params.HTTPRequest.Context(), params, params.Info)
+	})
+	api.DescribeBalloonConfigHandler = DescribeBalloonConfigHandlerFunc(func(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
+		return impl.DescribeBalloonConfig(params.HTTPRequest.Context(), params)
+	})
+	api.DescribeBalloonStatsHandler = DescribeBalloonStatsHandlerFunc(func(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
+		return impl.DescribeBalloonStats(params.HTTPRequest.Context(), params)
+	})
+	api.DescribeInstanceHandler = DescribeInstanceHandlerFunc(func(params DescribeInstanceParams) DescribeInstanceResponder {
+		return impl.DescribeInstance(params.HTTPRequest.Context(), params)
+	})
+	api.GetExportVMConfigHandler = GetExportVMConfigHandlerFunc(func(params GetExportVMConfigParams) GetExportVMConfigResponder {
+		return impl.GetExportVMConfig(params.HTTPRequest.Context(), params)
+	})
+	api.GetFirecrackerVersionHandler = GetFirecrackerVersionHandlerFunc(func(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
+		return impl.GetFirecrackerVersion(params.HTTPRequest.Context(), params)
+	})
+	api.GetMachineConfigurationHandler = GetMachineConfigurationHandlerFunc(func(params GetMachineConfigurationParams) GetMachineConfigurationResponder {
+		return impl.GetMachineConfiguration(params.HTTPRequest.Context(), params)
+	})
+	api.GetMmdsHandler = GetMmdsHandlerFunc(func(params GetMmdsParams) GetMmdsResponder {
+		return impl.GetMmds(params.HTTPRequest.Context(), params)
+	})
+	api.LoadSnapshotHandler = LoadSnapshotHandlerFunc(func(params LoadSnapshotParams) LoadSnapshotResponder {
+		return impl.LoadSnapshot(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PatchBalloonHandler = PatchBalloonHandlerFunc(func(params PatchBalloonParams) PatchBalloonResponder {
+		return impl.PatchBalloon(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PatchBalloonStatsIntervalHandler = PatchBalloonStatsIntervalHandlerFunc(func(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder {
+		return impl.PatchBalloonStatsInterval(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PatchGuestDriveByIDHandler = PatchGuestDriveByIDHandlerFunc(func(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder {
+		return impl.PatchGuestDriveByID(params.HTTPRequest.Context(), params, params.DriveID, params.Body)
+	})
+	api.PatchGuestNetworkInterfaceByIDHandler = PatchGuestNetworkInterfaceByIDHandlerFunc(func(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder {
+		return impl.PatchGuestNetworkInterfaceByID(params.HTTPRequest.Context(), params, params.IfaceID, params.Body)
+	})
+	api.PatchMachineConfigurationHandler = PatchMachineConfigurationHandlerFunc(func(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder {
+		return impl.PatchMachineConfiguration(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PatchMmdsHandler = PatchMmdsHandlerFunc(func(params PatchMmdsParams) PatchMmdsResponder {
+		return impl.PatchMmds(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PatchVMHandler = PatchVMHandlerFunc(func(params PatchVMParams) PatchVMResponder {
+		return impl.PatchVM(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutBalloonHandler = PutBalloonHandlerFunc(func(params PutBalloonParams) PutBalloonResponder {
+		return impl.PutBalloon(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutCPUConfigurationHandler = PutCPUConfigurationHandlerFunc(func(params PutCPUConfigurationParams) PutCPUConfigurationResponder {
+		return impl.PutCPUConfiguration(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutEntropyDeviceHandler = PutEntropyDeviceHandlerFunc(func(params PutEntropyDeviceParams) PutEntropyDeviceResponder {
+		return impl.PutEntropyDevice(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutGuestBootSourceHandler = PutGuestBootSourceHandlerFunc(func(params PutGuestBootSourceParams) PutGuestBootSourceResponder {
+		return impl.PutGuestBootSource(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutGuestDriveByIDHandler = PutGuestDriveByIDHandlerFunc(func(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder {
+		return impl.PutGuestDriveByID(params.HTTPRequest.Context(), params, params.DriveID, params.Body)
+	})
+	api.PutGuestNetworkInterfaceByIDHandler = PutGuestNetworkInterfaceByIDHandlerFunc(func(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder {
+		return impl.PutGuestNetworkInterfaceByID(params.HTTPRequest.Context(), params, params.IfaceID, params.Body)
+	})
+	api.PutGuestVsockHandler = PutGuestVsockHandlerFunc(func(params PutGuestVsockParams) PutGuestVsockResponder {
+		return impl.PutGuestVsock(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutLoggerHandler = PutLoggerHandlerFunc(func(params PutLoggerParams) PutLoggerResponder {
+		return impl.PutLogger(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutMachineConfigurationHandler = PutMachineConfigurationHandlerFunc(func(params PutMachineConfigurationParams) PutMachineConfigurationResponder {
+		return impl.PutMachineConfiguration(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutMetricsHandler = PutMetricsHandlerFunc(func(params PutMetricsParams) PutMetricsResponder {
+		return impl.PutMetrics(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutMmdsHandler = PutMmdsHandlerFunc(func(params PutMmdsParams) PutMmdsResponder {
+		return impl.PutMmds(params.HTTPRequest.Context(), params, params.Body)
+	})
+	api.PutMmdsConfigHandler = PutMmdsConfigHandlerFunc(func(params PutMmdsConfigParams) PutMmdsConfigResponder {
+		return impl.PutMmdsConfig(params.HTTPRequest.Context(), params, params.Body)
+	})
+
+	return api
+}
+
+// FirecrackerAPI defines your service interface for all operations
+type ParameterizedFirecrackerAPI interface {
+
+	// CreateSnapshot handles the CreateSnapshot operation.
+	CreateSnapshot(ctx context.Context, params CreateSnapshotParams, body *models.SnapshotCreateParams) CreateSnapshotResponder
+	// CreateSyncAction handles the CreateSyncAction operation.
+	CreateSyncAction(ctx context.Context, params CreateSyncActionParams, body *models.InstanceActionInfo) CreateSyncActionResponder
+	// DescribeBalloonConfig handles the DescribeBalloonConfig operation.
+	DescribeBalloonConfig(ctx context.Context, params DescribeBalloonConfigParams) DescribeBalloonConfigResponder
+	// DescribeBalloonStats handles the DescribeBalloonStats operation.
+	DescribeBalloonStats(ctx context.Context, params DescribeBalloonStatsParams) DescribeBalloonStatsResponder
+	// DescribeInstance handles the DescribeInstance operation.
+	DescribeInstance(ctx context.Context, params DescribeInstanceParams) DescribeInstanceResponder
+	// GetExportVMConfig handles the GetExportVMConfig operation.
+	GetExportVMConfig(ctx context.Context, params GetExportVMConfigParams) GetExportVMConfigResponder
+	// GetFirecrackerVersion handles the GetFirecrackerVersion operation.
+	GetFirecrackerVersion(ctx context.Context, params GetFirecrackerVersionParams) GetFirecrackerVersionResponder
+	// GetMachineConfiguration handles the GetMachineConfiguration operation.
+	GetMachineConfiguration(ctx context.Context, params GetMachineConfigurationParams) GetMachineConfigurationResponder
+	// GetMmds handles the GetMmds operation.
+	GetMmds(ctx context.Context, params GetMmdsParams) GetMmdsResponder
+	// LoadSnapshot handles the LoadSnapshot operation.
+	LoadSnapshot(ctx context.Context, params LoadSnapshotParams, body *models.SnapshotLoadParams) LoadSnapshotResponder
+	// PatchBalloon handles the PatchBalloon operation.
+	PatchBalloon(ctx context.Context, params PatchBalloonParams, body *models.BalloonUpdate) PatchBalloonResponder
+	// PatchBalloonStatsInterval handles the PatchBalloonStatsInterval operation.
+	PatchBalloonStatsInterval(ctx context.Context, params PatchBalloonStatsIntervalParams, body *models.BalloonStatsUpdate) PatchBalloonStatsIntervalResponder
+	// PatchGuestDriveByID handles the PatchGuestDriveByID operation.
+	PatchGuestDriveByID(ctx context.Context, params PatchGuestDriveByIDParams, drive_id string, body *models.PartialDrive) PatchGuestDriveByIDResponder
+	// PatchGuestNetworkInterfaceByID handles the PatchGuestNetworkInterfaceByID operation.
+	PatchGuestNetworkInterfaceByID(ctx context.Context, params PatchGuestNetworkInterfaceByIDParams, iface_id string, body *models.PartialNetworkInterface) PatchGuestNetworkInterfaceByIDResponder
+	// PatchMachineConfiguration handles the PatchMachineConfiguration operation.
+	PatchMachineConfiguration(ctx context.Context, params PatchMachineConfigurationParams, body *models.MachineConfiguration) PatchMachineConfigurationResponder
+	// PatchMmds handles the PatchMmds operation.
+	PatchMmds(ctx context.Context, params PatchMmdsParams, body models.MmdsContentsObject) PatchMmdsResponder
+	// PatchVM handles the PatchVM operation.
+	PatchVM(ctx context.Context, params PatchVMParams, body *models.VM) PatchVMResponder
+	// PutBalloon handles the PutBalloon operation.
+	PutBalloon(ctx context.Context, params PutBalloonParams, body *models.Balloon) PutBalloonResponder
+	// PutCPUConfiguration handles the PutCPUConfiguration operation.
+	PutCPUConfiguration(ctx context.Context, params PutCPUConfigurationParams, body *models.CPUConfig) PutCPUConfigurationResponder
+	// PutEntropyDevice handles the PutEntropyDevice operation.
+	PutEntropyDevice(ctx context.Context, params PutEntropyDeviceParams, body *models.EntropyDevice) PutEntropyDeviceResponder
+	// PutGuestBootSource handles the PutGuestBootSource operation.
+	PutGuestBootSource(ctx context.Context, params PutGuestBootSourceParams, body *models.BootSource) PutGuestBootSourceResponder
+	// PutGuestDriveByID handles the PutGuestDriveByID operation.
+	PutGuestDriveByID(ctx context.Context, params PutGuestDriveByIDParams, drive_id string, body *models.Drive) PutGuestDriveByIDResponder
+	// PutGuestNetworkInterfaceByID handles the PutGuestNetworkInterfaceByID operation.
+	PutGuestNetworkInterfaceByID(ctx context.Context, params PutGuestNetworkInterfaceByIDParams, iface_id string, body *models.NetworkInterface) PutGuestNetworkInterfaceByIDResponder
+	// PutGuestVsock handles the PutGuestVsock operation.
+	PutGuestVsock(ctx context.Context, params PutGuestVsockParams, body *models.Vsock) PutGuestVsockResponder
+	// PutLogger handles the PutLogger operation.
+	PutLogger(ctx context.Context, params PutLoggerParams, body *models.Logger) PutLoggerResponder
+	// PutMachineConfiguration handles the PutMachineConfiguration operation.
+	PutMachineConfiguration(ctx context.Context, params PutMachineConfigurationParams, body *models.MachineConfiguration) PutMachineConfigurationResponder
+	// PutMetrics handles the PutMetrics operation.
+	PutMetrics(ctx context.Context, params PutMetricsParams, body *models.Metrics) PutMetricsResponder
+	// PutMmds handles the PutMmds operation.
+	PutMmds(ctx context.Context, params PutMmdsParams, body models.MmdsContentsObject) PutMmdsResponder
+	// PutMmdsConfig handles the PutMmdsConfig operation.
+	PutMmdsConfig(ctx context.Context, params PutMmdsConfigParams, body *models.MmdsConfig) PutMmdsConfigResponder
+}
+
+// UnimplementedParameterizedFirecrackerAPI provides default stub implementations.
+type UnimplementedParameterizedFirecrackerAPI struct{}
+
+// CreateSnapshot returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) CreateSnapshot(ctx context.Context, params CreateSnapshotParams, body *models.SnapshotCreateParams) CreateSnapshotResponder {
+	return CreateSnapshotNotImplemented()
+}
+
+// CreateSyncAction returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) CreateSyncAction(ctx context.Context, params CreateSyncActionParams, body *models.InstanceActionInfo) CreateSyncActionResponder {
+	return CreateSyncActionNotImplemented()
+}
+
+// DescribeBalloonConfig returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) DescribeBalloonConfig(ctx context.Context, params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
+	return DescribeBalloonConfigNotImplemented()
+}
+
+// DescribeBalloonStats returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) DescribeBalloonStats(ctx context.Context, params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
+	return DescribeBalloonStatsNotImplemented()
+}
+
+// DescribeInstance returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) DescribeInstance(ctx context.Context, params DescribeInstanceParams) DescribeInstanceResponder {
+	return DescribeInstanceNotImplemented()
+}
+
+// GetExportVMConfig returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) GetExportVMConfig(ctx context.Context, params GetExportVMConfigParams) GetExportVMConfigResponder {
+	return GetExportVMConfigNotImplemented()
+}
+
+// GetFirecrackerVersion returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) GetFirecrackerVersion(ctx context.Context, params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
+	return GetFirecrackerVersionNotImplemented()
+}
+
+// GetMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) GetMachineConfiguration(ctx context.Context, params GetMachineConfigurationParams) GetMachineConfigurationResponder {
+	return GetMachineConfigurationNotImplemented()
+}
+
+// GetMmds returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) GetMmds(ctx context.Context, params GetMmdsParams) GetMmdsResponder {
+	return GetMmdsNotImplemented()
+}
+
+// LoadSnapshot returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) LoadSnapshot(ctx context.Context, params LoadSnapshotParams, body *models.SnapshotLoadParams) LoadSnapshotResponder {
+	return LoadSnapshotNotImplemented()
+}
+
+// PatchBalloon returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchBalloon(ctx context.Context, params PatchBalloonParams, body *models.BalloonUpdate) PatchBalloonResponder {
+	return PatchBalloonNotImplemented()
+}
+
+// PatchBalloonStatsInterval returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchBalloonStatsInterval(ctx context.Context, params PatchBalloonStatsIntervalParams, body *models.BalloonStatsUpdate) PatchBalloonStatsIntervalResponder {
+	return PatchBalloonStatsIntervalNotImplemented()
+}
+
+// PatchGuestDriveByID returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchGuestDriveByID(ctx context.Context, params PatchGuestDriveByIDParams, drive_id string, body *models.PartialDrive) PatchGuestDriveByIDResponder {
+	return PatchGuestDriveByIDNotImplemented()
+}
+
+// PatchGuestNetworkInterfaceByID returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchGuestNetworkInterfaceByID(ctx context.Context, params PatchGuestNetworkInterfaceByIDParams, iface_id string, body *models.PartialNetworkInterface) PatchGuestNetworkInterfaceByIDResponder {
+	return PatchGuestNetworkInterfaceByIDNotImplemented()
+}
+
+// PatchMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchMachineConfiguration(ctx context.Context, params PatchMachineConfigurationParams, body *models.MachineConfiguration) PatchMachineConfigurationResponder {
+	return PatchMachineConfigurationNotImplemented()
+}
+
+// PatchMmds returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchMmds(ctx context.Context, params PatchMmdsParams, body models.MmdsContentsObject) PatchMmdsResponder {
+	return PatchMmdsNotImplemented()
+}
+
+// PatchVM returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PatchVM(ctx context.Context, params PatchVMParams, body *models.VM) PatchVMResponder {
+	return PatchVMNotImplemented()
+}
+
+// PutBalloon returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutBalloon(ctx context.Context, params PutBalloonParams, body *models.Balloon) PutBalloonResponder {
+	return PutBalloonNotImplemented()
+}
+
+// PutCPUConfiguration returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutCPUConfiguration(ctx context.Context, params PutCPUConfigurationParams, body *models.CPUConfig) PutCPUConfigurationResponder {
+	return PutCPUConfigurationNotImplemented()
+}
+
+// PutEntropyDevice returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutEntropyDevice(ctx context.Context, params PutEntropyDeviceParams, body *models.EntropyDevice) PutEntropyDeviceResponder {
+	return PutEntropyDeviceNotImplemented()
+}
+
+// PutGuestBootSource returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutGuestBootSource(ctx context.Context, params PutGuestBootSourceParams, body *models.BootSource) PutGuestBootSourceResponder {
+	return PutGuestBootSourceNotImplemented()
+}
+
+// PutGuestDriveByID returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutGuestDriveByID(ctx context.Context, params PutGuestDriveByIDParams, drive_id string, body *models.Drive) PutGuestDriveByIDResponder {
+	return PutGuestDriveByIDNotImplemented()
+}
+
+// PutGuestNetworkInterfaceByID returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutGuestNetworkInterfaceByID(ctx context.Context, params PutGuestNetworkInterfaceByIDParams, iface_id string, body *models.NetworkInterface) PutGuestNetworkInterfaceByIDResponder {
+	return PutGuestNetworkInterfaceByIDNotImplemented()
+}
+
+// PutGuestVsock returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutGuestVsock(ctx context.Context, params PutGuestVsockParams, body *models.Vsock) PutGuestVsockResponder {
+	return PutGuestVsockNotImplemented()
+}
+
+// PutLogger returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutLogger(ctx context.Context, params PutLoggerParams, body *models.Logger) PutLoggerResponder {
+	return PutLoggerNotImplemented()
+}
+
+// PutMachineConfiguration returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutMachineConfiguration(ctx context.Context, params PutMachineConfigurationParams, body *models.MachineConfiguration) PutMachineConfigurationResponder {
+	return PutMachineConfigurationNotImplemented()
+}
+
+// PutMetrics returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutMetrics(ctx context.Context, params PutMetricsParams, body *models.Metrics) PutMetricsResponder {
+	return PutMetricsNotImplemented()
+}
+
+// PutMmds returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutMmds(ctx context.Context, params PutMmdsParams, body models.MmdsContentsObject) PutMmdsResponder {
+	return PutMmdsNotImplemented()
+}
+
+// PutMmdsConfig returns a NotImplemented response.
+func (u *UnimplementedParameterizedFirecrackerAPI) PutMmdsConfig(ctx context.Context, params PutMmdsConfigParams, body *models.MmdsConfig) PutMmdsConfigResponder {
+	return PutMmdsConfigNotImplemented()
+}
+
+// NewSwaggerAPI builds the API server wiring all operations to your implementation.
 func NewSwaggerAPI(spec *loads.Document, impl FirecrackerAPI) *FirecrackerAPIAPI {
 	api := NewFirecrackerAPIAPI(spec)
 
 	// Wire each operation handler to the corresponding method on impl
 
-	api.CreateSnapshotHandler = CreateSnapshotHandlerFunc(impl.CreateSnapshot)
-	api.CreateSyncActionHandler = CreateSyncActionHandlerFunc(impl.CreateSyncAction)
-	api.DescribeBalloonConfigHandler = DescribeBalloonConfigHandlerFunc(impl.DescribeBalloonConfig)
-	api.DescribeBalloonStatsHandler = DescribeBalloonStatsHandlerFunc(impl.DescribeBalloonStats)
-	api.DescribeInstanceHandler = DescribeInstanceHandlerFunc(impl.DescribeInstance)
-	api.GetExportVMConfigHandler = GetExportVMConfigHandlerFunc(impl.GetExportVMConfig)
-	api.GetFirecrackerVersionHandler = GetFirecrackerVersionHandlerFunc(impl.GetFirecrackerVersion)
-	api.GetMachineConfigurationHandler = GetMachineConfigurationHandlerFunc(impl.GetMachineConfiguration)
-	api.GetMmdsHandler = GetMmdsHandlerFunc(impl.GetMmds)
-	api.LoadSnapshotHandler = LoadSnapshotHandlerFunc(impl.LoadSnapshot)
-	api.PatchBalloonHandler = PatchBalloonHandlerFunc(impl.PatchBalloon)
-	api.PatchBalloonStatsIntervalHandler = PatchBalloonStatsIntervalHandlerFunc(impl.PatchBalloonStatsInterval)
-	api.PatchGuestDriveByIDHandler = PatchGuestDriveByIDHandlerFunc(impl.PatchGuestDriveByID)
-	api.PatchGuestNetworkInterfaceByIDHandler = PatchGuestNetworkInterfaceByIDHandlerFunc(impl.PatchGuestNetworkInterfaceByID)
-	api.PatchMachineConfigurationHandler = PatchMachineConfigurationHandlerFunc(impl.PatchMachineConfiguration)
-	api.PatchMmdsHandler = PatchMmdsHandlerFunc(impl.PatchMmds)
-	api.PatchVMHandler = PatchVMHandlerFunc(impl.PatchVM)
-	api.PutBalloonHandler = PutBalloonHandlerFunc(impl.PutBalloon)
-	api.PutCPUConfigurationHandler = PutCPUConfigurationHandlerFunc(impl.PutCPUConfiguration)
-	api.PutEntropyDeviceHandler = PutEntropyDeviceHandlerFunc(impl.PutEntropyDevice)
-	api.PutGuestBootSourceHandler = PutGuestBootSourceHandlerFunc(impl.PutGuestBootSource)
-	api.PutGuestDriveByIDHandler = PutGuestDriveByIDHandlerFunc(impl.PutGuestDriveByID)
-	api.PutGuestNetworkInterfaceByIDHandler = PutGuestNetworkInterfaceByIDHandlerFunc(impl.PutGuestNetworkInterfaceByID)
-	api.PutGuestVsockHandler = PutGuestVsockHandlerFunc(impl.PutGuestVsock)
-	api.PutLoggerHandler = PutLoggerHandlerFunc(impl.PutLogger)
-	api.PutMachineConfigurationHandler = PutMachineConfigurationHandlerFunc(impl.PutMachineConfiguration)
-	api.PutMetricsHandler = PutMetricsHandlerFunc(impl.PutMetrics)
-	api.PutMmdsHandler = PutMmdsHandlerFunc(impl.PutMmds)
-	api.PutMmdsConfigHandler = PutMmdsConfigHandlerFunc(impl.PutMmdsConfig)
+	api.CreateSnapshotHandler = CreateSnapshotHandlerFunc(func(params CreateSnapshotParams) CreateSnapshotResponder {
+		return impl.CreateSnapshot(params.HTTPRequest.Context(), params)
+	})
+	api.CreateSyncActionHandler = CreateSyncActionHandlerFunc(func(params CreateSyncActionParams) CreateSyncActionResponder {
+		return impl.CreateSyncAction(params.HTTPRequest.Context(), params)
+	})
+	api.DescribeBalloonConfigHandler = DescribeBalloonConfigHandlerFunc(func(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
+		return impl.DescribeBalloonConfig(params.HTTPRequest.Context(), params)
+	})
+	api.DescribeBalloonStatsHandler = DescribeBalloonStatsHandlerFunc(func(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
+		return impl.DescribeBalloonStats(params.HTTPRequest.Context(), params)
+	})
+	api.DescribeInstanceHandler = DescribeInstanceHandlerFunc(func(params DescribeInstanceParams) DescribeInstanceResponder {
+		return impl.DescribeInstance(params.HTTPRequest.Context(), params)
+	})
+	api.GetExportVMConfigHandler = GetExportVMConfigHandlerFunc(func(params GetExportVMConfigParams) GetExportVMConfigResponder {
+		return impl.GetExportVMConfig(params.HTTPRequest.Context(), params)
+	})
+	api.GetFirecrackerVersionHandler = GetFirecrackerVersionHandlerFunc(func(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
+		return impl.GetFirecrackerVersion(params.HTTPRequest.Context(), params)
+	})
+	api.GetMachineConfigurationHandler = GetMachineConfigurationHandlerFunc(func(params GetMachineConfigurationParams) GetMachineConfigurationResponder {
+		return impl.GetMachineConfiguration(params.HTTPRequest.Context(), params)
+	})
+	api.GetMmdsHandler = GetMmdsHandlerFunc(func(params GetMmdsParams) GetMmdsResponder {
+		return impl.GetMmds(params.HTTPRequest.Context(), params)
+	})
+	api.LoadSnapshotHandler = LoadSnapshotHandlerFunc(func(params LoadSnapshotParams) LoadSnapshotResponder {
+		return impl.LoadSnapshot(params.HTTPRequest.Context(), params)
+	})
+	api.PatchBalloonHandler = PatchBalloonHandlerFunc(func(params PatchBalloonParams) PatchBalloonResponder {
+		return impl.PatchBalloon(params.HTTPRequest.Context(), params)
+	})
+	api.PatchBalloonStatsIntervalHandler = PatchBalloonStatsIntervalHandlerFunc(func(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder {
+		return impl.PatchBalloonStatsInterval(params.HTTPRequest.Context(), params)
+	})
+	api.PatchGuestDriveByIDHandler = PatchGuestDriveByIDHandlerFunc(func(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder {
+		return impl.PatchGuestDriveByID(params.HTTPRequest.Context(), params)
+	})
+	api.PatchGuestNetworkInterfaceByIDHandler = PatchGuestNetworkInterfaceByIDHandlerFunc(func(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder {
+		return impl.PatchGuestNetworkInterfaceByID(params.HTTPRequest.Context(), params)
+	})
+	api.PatchMachineConfigurationHandler = PatchMachineConfigurationHandlerFunc(func(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder {
+		return impl.PatchMachineConfiguration(params.HTTPRequest.Context(), params)
+	})
+	api.PatchMmdsHandler = PatchMmdsHandlerFunc(func(params PatchMmdsParams) PatchMmdsResponder {
+		return impl.PatchMmds(params.HTTPRequest.Context(), params)
+	})
+	api.PatchVMHandler = PatchVMHandlerFunc(func(params PatchVMParams) PatchVMResponder {
+		return impl.PatchVM(params.HTTPRequest.Context(), params)
+	})
+	api.PutBalloonHandler = PutBalloonHandlerFunc(func(params PutBalloonParams) PutBalloonResponder {
+		return impl.PutBalloon(params.HTTPRequest.Context(), params)
+	})
+	api.PutCPUConfigurationHandler = PutCPUConfigurationHandlerFunc(func(params PutCPUConfigurationParams) PutCPUConfigurationResponder {
+		return impl.PutCPUConfiguration(params.HTTPRequest.Context(), params)
+	})
+	api.PutEntropyDeviceHandler = PutEntropyDeviceHandlerFunc(func(params PutEntropyDeviceParams) PutEntropyDeviceResponder {
+		return impl.PutEntropyDevice(params.HTTPRequest.Context(), params)
+	})
+	api.PutGuestBootSourceHandler = PutGuestBootSourceHandlerFunc(func(params PutGuestBootSourceParams) PutGuestBootSourceResponder {
+		return impl.PutGuestBootSource(params.HTTPRequest.Context(), params)
+	})
+	api.PutGuestDriveByIDHandler = PutGuestDriveByIDHandlerFunc(func(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder {
+		return impl.PutGuestDriveByID(params.HTTPRequest.Context(), params)
+	})
+	api.PutGuestNetworkInterfaceByIDHandler = PutGuestNetworkInterfaceByIDHandlerFunc(func(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder {
+		return impl.PutGuestNetworkInterfaceByID(params.HTTPRequest.Context(), params)
+	})
+	api.PutGuestVsockHandler = PutGuestVsockHandlerFunc(func(params PutGuestVsockParams) PutGuestVsockResponder {
+		return impl.PutGuestVsock(params.HTTPRequest.Context(), params)
+	})
+	api.PutLoggerHandler = PutLoggerHandlerFunc(func(params PutLoggerParams) PutLoggerResponder {
+		return impl.PutLogger(params.HTTPRequest.Context(), params)
+	})
+	api.PutMachineConfigurationHandler = PutMachineConfigurationHandlerFunc(func(params PutMachineConfigurationParams) PutMachineConfigurationResponder {
+		return impl.PutMachineConfiguration(params.HTTPRequest.Context(), params)
+	})
+	api.PutMetricsHandler = PutMetricsHandlerFunc(func(params PutMetricsParams) PutMetricsResponder {
+		return impl.PutMetrics(params.HTTPRequest.Context(), params)
+	})
+	api.PutMmdsHandler = PutMmdsHandlerFunc(func(params PutMmdsParams) PutMmdsResponder {
+		return impl.PutMmds(params.HTTPRequest.Context(), params)
+	})
+	api.PutMmdsConfigHandler = PutMmdsConfigHandlerFunc(func(params PutMmdsConfigParams) PutMmdsConfigResponder {
+		return impl.PutMmdsConfig(params.HTTPRequest.Context(), params)
+	})
 
 	return api
 }
 
-// FirecrackerAPI defines your service interface for all
+// FirecrackerAPI defines your service interface for all operations
 type FirecrackerAPI interface {
 
 	// CreateSnapshot handles the CreateSnapshot operation.
-	CreateSnapshot(params CreateSnapshotParams) CreateSnapshotResponder
+	CreateSnapshot(ctx context.Context, params CreateSnapshotParams) CreateSnapshotResponder
 	// CreateSyncAction handles the CreateSyncAction operation.
-	CreateSyncAction(params CreateSyncActionParams) CreateSyncActionResponder
+	CreateSyncAction(ctx context.Context, params CreateSyncActionParams) CreateSyncActionResponder
 	// DescribeBalloonConfig handles the DescribeBalloonConfig operation.
-	DescribeBalloonConfig(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder
+	DescribeBalloonConfig(ctx context.Context, params DescribeBalloonConfigParams) DescribeBalloonConfigResponder
 	// DescribeBalloonStats handles the DescribeBalloonStats operation.
-	DescribeBalloonStats(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder
+	DescribeBalloonStats(ctx context.Context, params DescribeBalloonStatsParams) DescribeBalloonStatsResponder
 	// DescribeInstance handles the DescribeInstance operation.
-	DescribeInstance(params DescribeInstanceParams) DescribeInstanceResponder
+	DescribeInstance(ctx context.Context, params DescribeInstanceParams) DescribeInstanceResponder
 	// GetExportVMConfig handles the GetExportVMConfig operation.
-	GetExportVMConfig(params GetExportVMConfigParams) GetExportVMConfigResponder
+	GetExportVMConfig(ctx context.Context, params GetExportVMConfigParams) GetExportVMConfigResponder
 	// GetFirecrackerVersion handles the GetFirecrackerVersion operation.
-	GetFirecrackerVersion(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder
+	GetFirecrackerVersion(ctx context.Context, params GetFirecrackerVersionParams) GetFirecrackerVersionResponder
 	// GetMachineConfiguration handles the GetMachineConfiguration operation.
-	GetMachineConfiguration(params GetMachineConfigurationParams) GetMachineConfigurationResponder
+	GetMachineConfiguration(ctx context.Context, params GetMachineConfigurationParams) GetMachineConfigurationResponder
 	// GetMmds handles the GetMmds operation.
-	GetMmds(params GetMmdsParams) GetMmdsResponder
+	GetMmds(ctx context.Context, params GetMmdsParams) GetMmdsResponder
 	// LoadSnapshot handles the LoadSnapshot operation.
-	LoadSnapshot(params LoadSnapshotParams) LoadSnapshotResponder
+	LoadSnapshot(ctx context.Context, params LoadSnapshotParams) LoadSnapshotResponder
 	// PatchBalloon handles the PatchBalloon operation.
-	PatchBalloon(params PatchBalloonParams) PatchBalloonResponder
+	PatchBalloon(ctx context.Context, params PatchBalloonParams) PatchBalloonResponder
 	// PatchBalloonStatsInterval handles the PatchBalloonStatsInterval operation.
-	PatchBalloonStatsInterval(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder
+	PatchBalloonStatsInterval(ctx context.Context, params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder
 	// PatchGuestDriveByID handles the PatchGuestDriveByID operation.
-	PatchGuestDriveByID(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder
+	PatchGuestDriveByID(ctx context.Context, params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder
 	// PatchGuestNetworkInterfaceByID handles the PatchGuestNetworkInterfaceByID operation.
-	PatchGuestNetworkInterfaceByID(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder
+	PatchGuestNetworkInterfaceByID(ctx context.Context, params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder
 	// PatchMachineConfiguration handles the PatchMachineConfiguration operation.
-	PatchMachineConfiguration(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder
+	PatchMachineConfiguration(ctx context.Context, params PatchMachineConfigurationParams) PatchMachineConfigurationResponder
 	// PatchMmds handles the PatchMmds operation.
-	PatchMmds(params PatchMmdsParams) PatchMmdsResponder
+	PatchMmds(ctx context.Context, params PatchMmdsParams) PatchMmdsResponder
 	// PatchVM handles the PatchVM operation.
-	PatchVM(params PatchVMParams) PatchVMResponder
+	PatchVM(ctx context.Context, params PatchVMParams) PatchVMResponder
 	// PutBalloon handles the PutBalloon operation.
-	PutBalloon(params PutBalloonParams) PutBalloonResponder
+	PutBalloon(ctx context.Context, params PutBalloonParams) PutBalloonResponder
 	// PutCPUConfiguration handles the PutCPUConfiguration operation.
-	PutCPUConfiguration(params PutCPUConfigurationParams) PutCPUConfigurationResponder
+	PutCPUConfiguration(ctx context.Context, params PutCPUConfigurationParams) PutCPUConfigurationResponder
 	// PutEntropyDevice handles the PutEntropyDevice operation.
-	PutEntropyDevice(params PutEntropyDeviceParams) PutEntropyDeviceResponder
+	PutEntropyDevice(ctx context.Context, params PutEntropyDeviceParams) PutEntropyDeviceResponder
 	// PutGuestBootSource handles the PutGuestBootSource operation.
-	PutGuestBootSource(params PutGuestBootSourceParams) PutGuestBootSourceResponder
+	PutGuestBootSource(ctx context.Context, params PutGuestBootSourceParams) PutGuestBootSourceResponder
 	// PutGuestDriveByID handles the PutGuestDriveByID operation.
-	PutGuestDriveByID(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder
+	PutGuestDriveByID(ctx context.Context, params PutGuestDriveByIDParams) PutGuestDriveByIDResponder
 	// PutGuestNetworkInterfaceByID handles the PutGuestNetworkInterfaceByID operation.
-	PutGuestNetworkInterfaceByID(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder
+	PutGuestNetworkInterfaceByID(ctx context.Context, params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder
 	// PutGuestVsock handles the PutGuestVsock operation.
-	PutGuestVsock(params PutGuestVsockParams) PutGuestVsockResponder
+	PutGuestVsock(ctx context.Context, params PutGuestVsockParams) PutGuestVsockResponder
 	// PutLogger handles the PutLogger operation.
-	PutLogger(params PutLoggerParams) PutLoggerResponder
+	PutLogger(ctx context.Context, params PutLoggerParams) PutLoggerResponder
 	// PutMachineConfiguration handles the PutMachineConfiguration operation.
-	PutMachineConfiguration(params PutMachineConfigurationParams) PutMachineConfigurationResponder
+	PutMachineConfiguration(ctx context.Context, params PutMachineConfigurationParams) PutMachineConfigurationResponder
 	// PutMetrics handles the PutMetrics operation.
-	PutMetrics(params PutMetricsParams) PutMetricsResponder
+	PutMetrics(ctx context.Context, params PutMetricsParams) PutMetricsResponder
 	// PutMmds handles the PutMmds operation.
-	PutMmds(params PutMmdsParams) PutMmdsResponder
+	PutMmds(ctx context.Context, params PutMmdsParams) PutMmdsResponder
 	// PutMmdsConfig handles the PutMmdsConfig operation.
-	PutMmdsConfig(params PutMmdsConfigParams) PutMmdsConfigResponder
+	PutMmdsConfig(ctx context.Context, params PutMmdsConfigParams) PutMmdsConfigResponder
 }
 
 // UnimplementedFirecrackerAPI provides default stub implementations.
 type UnimplementedFirecrackerAPI struct{}
 
 // CreateSnapshot returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) CreateSnapshot(params CreateSnapshotParams) CreateSnapshotResponder {
+func (u *UnimplementedFirecrackerAPI) CreateSnapshot(ctx context.Context, params CreateSnapshotParams) CreateSnapshotResponder {
 	return CreateSnapshotNotImplemented()
 }
 
 // CreateSyncAction returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) CreateSyncAction(params CreateSyncActionParams) CreateSyncActionResponder {
+func (u *UnimplementedFirecrackerAPI) CreateSyncAction(ctx context.Context, params CreateSyncActionParams) CreateSyncActionResponder {
 	return CreateSyncActionNotImplemented()
 }
 
 // DescribeBalloonConfig returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) DescribeBalloonConfig(params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
+func (u *UnimplementedFirecrackerAPI) DescribeBalloonConfig(ctx context.Context, params DescribeBalloonConfigParams) DescribeBalloonConfigResponder {
 	return DescribeBalloonConfigNotImplemented()
 }
 
 // DescribeBalloonStats returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) DescribeBalloonStats(params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
+func (u *UnimplementedFirecrackerAPI) DescribeBalloonStats(ctx context.Context, params DescribeBalloonStatsParams) DescribeBalloonStatsResponder {
 	return DescribeBalloonStatsNotImplemented()
 }
 
 // DescribeInstance returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) DescribeInstance(params DescribeInstanceParams) DescribeInstanceResponder {
+func (u *UnimplementedFirecrackerAPI) DescribeInstance(ctx context.Context, params DescribeInstanceParams) DescribeInstanceResponder {
 	return DescribeInstanceNotImplemented()
 }
 
 // GetExportVMConfig returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) GetExportVMConfig(params GetExportVMConfigParams) GetExportVMConfigResponder {
+func (u *UnimplementedFirecrackerAPI) GetExportVMConfig(ctx context.Context, params GetExportVMConfigParams) GetExportVMConfigResponder {
 	return GetExportVMConfigNotImplemented()
 }
 
 // GetFirecrackerVersion returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) GetFirecrackerVersion(params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
+func (u *UnimplementedFirecrackerAPI) GetFirecrackerVersion(ctx context.Context, params GetFirecrackerVersionParams) GetFirecrackerVersionResponder {
 	return GetFirecrackerVersionNotImplemented()
 }
 
 // GetMachineConfiguration returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) GetMachineConfiguration(params GetMachineConfigurationParams) GetMachineConfigurationResponder {
+func (u *UnimplementedFirecrackerAPI) GetMachineConfiguration(ctx context.Context, params GetMachineConfigurationParams) GetMachineConfigurationResponder {
 	return GetMachineConfigurationNotImplemented()
 }
 
 // GetMmds returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) GetMmds(params GetMmdsParams) GetMmdsResponder {
+func (u *UnimplementedFirecrackerAPI) GetMmds(ctx context.Context, params GetMmdsParams) GetMmdsResponder {
 	return GetMmdsNotImplemented()
 }
 
 // LoadSnapshot returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) LoadSnapshot(params LoadSnapshotParams) LoadSnapshotResponder {
+func (u *UnimplementedFirecrackerAPI) LoadSnapshot(ctx context.Context, params LoadSnapshotParams) LoadSnapshotResponder {
 	return LoadSnapshotNotImplemented()
 }
 
 // PatchBalloon returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchBalloon(params PatchBalloonParams) PatchBalloonResponder {
+func (u *UnimplementedFirecrackerAPI) PatchBalloon(ctx context.Context, params PatchBalloonParams) PatchBalloonResponder {
 	return PatchBalloonNotImplemented()
 }
 
 // PatchBalloonStatsInterval returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchBalloonStatsInterval(params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder {
+func (u *UnimplementedFirecrackerAPI) PatchBalloonStatsInterval(ctx context.Context, params PatchBalloonStatsIntervalParams) PatchBalloonStatsIntervalResponder {
 	return PatchBalloonStatsIntervalNotImplemented()
 }
 
 // PatchGuestDriveByID returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchGuestDriveByID(params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder {
+func (u *UnimplementedFirecrackerAPI) PatchGuestDriveByID(ctx context.Context, params PatchGuestDriveByIDParams) PatchGuestDriveByIDResponder {
 	return PatchGuestDriveByIDNotImplemented()
 }
 
 // PatchGuestNetworkInterfaceByID returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchGuestNetworkInterfaceByID(params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder {
+func (u *UnimplementedFirecrackerAPI) PatchGuestNetworkInterfaceByID(ctx context.Context, params PatchGuestNetworkInterfaceByIDParams) PatchGuestNetworkInterfaceByIDResponder {
 	return PatchGuestNetworkInterfaceByIDNotImplemented()
 }
 
 // PatchMachineConfiguration returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchMachineConfiguration(params PatchMachineConfigurationParams) PatchMachineConfigurationResponder {
+func (u *UnimplementedFirecrackerAPI) PatchMachineConfiguration(ctx context.Context, params PatchMachineConfigurationParams) PatchMachineConfigurationResponder {
 	return PatchMachineConfigurationNotImplemented()
 }
 
 // PatchMmds returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchMmds(params PatchMmdsParams) PatchMmdsResponder {
+func (u *UnimplementedFirecrackerAPI) PatchMmds(ctx context.Context, params PatchMmdsParams) PatchMmdsResponder {
 	return PatchMmdsNotImplemented()
 }
 
 // PatchVM returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PatchVM(params PatchVMParams) PatchVMResponder {
+func (u *UnimplementedFirecrackerAPI) PatchVM(ctx context.Context, params PatchVMParams) PatchVMResponder {
 	return PatchVMNotImplemented()
 }
 
 // PutBalloon returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutBalloon(params PutBalloonParams) PutBalloonResponder {
+func (u *UnimplementedFirecrackerAPI) PutBalloon(ctx context.Context, params PutBalloonParams) PutBalloonResponder {
 	return PutBalloonNotImplemented()
 }
 
 // PutCPUConfiguration returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutCPUConfiguration(params PutCPUConfigurationParams) PutCPUConfigurationResponder {
+func (u *UnimplementedFirecrackerAPI) PutCPUConfiguration(ctx context.Context, params PutCPUConfigurationParams) PutCPUConfigurationResponder {
 	return PutCPUConfigurationNotImplemented()
 }
 
 // PutEntropyDevice returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutEntropyDevice(params PutEntropyDeviceParams) PutEntropyDeviceResponder {
+func (u *UnimplementedFirecrackerAPI) PutEntropyDevice(ctx context.Context, params PutEntropyDeviceParams) PutEntropyDeviceResponder {
 	return PutEntropyDeviceNotImplemented()
 }
 
 // PutGuestBootSource returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutGuestBootSource(params PutGuestBootSourceParams) PutGuestBootSourceResponder {
+func (u *UnimplementedFirecrackerAPI) PutGuestBootSource(ctx context.Context, params PutGuestBootSourceParams) PutGuestBootSourceResponder {
 	return PutGuestBootSourceNotImplemented()
 }
 
 // PutGuestDriveByID returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutGuestDriveByID(params PutGuestDriveByIDParams) PutGuestDriveByIDResponder {
+func (u *UnimplementedFirecrackerAPI) PutGuestDriveByID(ctx context.Context, params PutGuestDriveByIDParams) PutGuestDriveByIDResponder {
 	return PutGuestDriveByIDNotImplemented()
 }
 
 // PutGuestNetworkInterfaceByID returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutGuestNetworkInterfaceByID(params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder {
+func (u *UnimplementedFirecrackerAPI) PutGuestNetworkInterfaceByID(ctx context.Context, params PutGuestNetworkInterfaceByIDParams) PutGuestNetworkInterfaceByIDResponder {
 	return PutGuestNetworkInterfaceByIDNotImplemented()
 }
 
 // PutGuestVsock returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutGuestVsock(params PutGuestVsockParams) PutGuestVsockResponder {
+func (u *UnimplementedFirecrackerAPI) PutGuestVsock(ctx context.Context, params PutGuestVsockParams) PutGuestVsockResponder {
 	return PutGuestVsockNotImplemented()
 }
 
 // PutLogger returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutLogger(params PutLoggerParams) PutLoggerResponder {
+func (u *UnimplementedFirecrackerAPI) PutLogger(ctx context.Context, params PutLoggerParams) PutLoggerResponder {
 	return PutLoggerNotImplemented()
 }
 
 // PutMachineConfiguration returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutMachineConfiguration(params PutMachineConfigurationParams) PutMachineConfigurationResponder {
+func (u *UnimplementedFirecrackerAPI) PutMachineConfiguration(ctx context.Context, params PutMachineConfigurationParams) PutMachineConfigurationResponder {
 	return PutMachineConfigurationNotImplemented()
 }
 
 // PutMetrics returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutMetrics(params PutMetricsParams) PutMetricsResponder {
+func (u *UnimplementedFirecrackerAPI) PutMetrics(ctx context.Context, params PutMetricsParams) PutMetricsResponder {
 	return PutMetricsNotImplemented()
 }
 
 // PutMmds returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutMmds(params PutMmdsParams) PutMmdsResponder {
+func (u *UnimplementedFirecrackerAPI) PutMmds(ctx context.Context, params PutMmdsParams) PutMmdsResponder {
 	return PutMmdsNotImplemented()
 }
 
 // PutMmdsConfig returns a NotImplemented response.
-func (u *UnimplementedFirecrackerAPI) PutMmdsConfig(params PutMmdsConfigParams) PutMmdsConfigResponder {
+func (u *UnimplementedFirecrackerAPI) PutMmdsConfig(ctx context.Context, params PutMmdsConfigParams) PutMmdsConfigResponder {
 	return PutMmdsConfigNotImplemented()
 }
