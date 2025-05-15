@@ -29,6 +29,14 @@
 		// 	"path": "../containerd"
 		// },
 		{
+			"name": "vsock-guest-exec",
+			"path": "../vsock-guest-exec"
+		},
+		{
+			"name": "ignition",
+			"path": "../ignition"
+		},
+		{
 			"name": "wrk",
 			"path": "../../../tmp/ksa2/wrk"
 		}

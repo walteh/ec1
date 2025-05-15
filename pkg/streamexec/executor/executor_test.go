@@ -28,7 +28,7 @@ func TestStreamingExecutor_ExecuteCommand(t *testing.T) {
 		},
 		{
 			name:           "Command with stderr",
-			command:        "echo error message >&2",
+			command:        "echo \"error message\" >&2",
 			expectStderr:   "error message",
 			expectExitCode: true,
 		},
