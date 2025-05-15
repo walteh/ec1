@@ -32,6 +32,9 @@ type VirtualMachine interface {
 	CanRequestStop(ctx context.Context) bool
 	CanResume(ctx context.Context) bool
 	CanPause(ctx context.Context) bool
+	SaveFullSnapshot(ctx context.Context, path string) error
+	// SaveDiffSnapshot(ctx context.Context) error
+	RestoreFromFullSnapshot(ctx context.Context, path string) error
 
 	Opts() *NewVMOptions
 
