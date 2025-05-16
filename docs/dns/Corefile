@@ -1,0 +1,7 @@
+# Corefile
+.:53 {
+    bind 127.0.0.53           # ← Bind to the alias, not all interfaces
+    forward . 1.1.1.1 9.9.9.9
+    cache 30
+    log
+}

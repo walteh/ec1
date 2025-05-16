@@ -8,8 +8,8 @@ set -euo pipefail
 # echo "REENTERRRRR"
 
 my_absolute_dir="$(dirname -- "$(realpath "${BASH_SOURCE[0]}")")"
-touch "$my_absolute_dir/enter_with_call.log"
-echo "ENTER WITH CALL: (cd $(pwd) && $0 $*)" >> "$my_absolute_dir/enter_with_call.log"
+# touch "$my_absolute_dir/.logs/enter_with_call.log"
+# echo "ENTER WITH CALL: (cd $(pwd) && $0 $*)" >> "$my_absolute_dir/.logs/enter_with_call.log"
 
 function safe_go_path() {
 	local reset=0
@@ -29,7 +29,7 @@ function safe_go_path() {
 function safe_go() {
 	local safe_go_abs_path
 	safe_go_abs_path=$(safe_go_path)
-	echo "safe_go: $safe_go_abs_path $*" >> "$my_absolute_dir/enter_with_call.log"
+	# echo "safe_go: $safe_go_abs_path $*" >> "$my_absolute_dir/.logs/safe_go.log"
 	$safe_go_abs_path "$@"
 	# carry the exit code
 	return "$?"

@@ -157,9 +157,17 @@ func (f *FirecrackerMicroVM[V]) DescribeBalloonConfig(ctx context.Context, param
 // DescribeBalloonStats implements operations.FirecrackerAPI.
 func (f *FirecrackerMicroVM[V]) DescribeBalloonStats(ctx context.Context, params operations.DescribeBalloonStatsParams) operations.DescribeBalloonStatsResponder {
 
+	trg, err := f.vm.GetMemoryBalloonTargetSize(ctx)
+	if err != nil {
+		slog.Error("failed to get memory balloon actual size", "error", err)
+		return operations.NewDescribeBalloonStatsDefault(http.StatusInternalServerError).WithPayload(&models.Error{
+			FaultMessage: err.Error(),
+		})
+	}
+
 	payload := &models.BalloonStats{
-		ActualMib:          ptr(int64(strongunits.ToMib(f.vm.GetMemoryBalloonActualSize(ctx)))),
-		TargetMib:          ptr(int64(strongunits.ToMib(f.vm.GetMemoryBalloonTargetSize(ctx)))),
+		ActualMib:          ptr(int64(strongunits.ToMib(trg))),
+		TargetMib:          ptr(int64(strongunits.ToMib(trg))),
 		ActualPages:        ptr(int64(0)),
 		TargetPages:        ptr(int64(0)),
 		AvailableMemory:    int64(0),
@@ -328,7 +336,7 @@ func (f *FirecrackerMicroVM[V]) PatchBalloonStatsInterval(ctx context.Context, p
 		f.cfg.balloon = &models.Balloon{}
 	}
 
-	f.cfg.balloon.StatsPollingIntervals = params.Body.StatsPollingIntervals
+	f.cfg.balloon.StatsPollingIntervals = *params.Body.StatsPollingIntervals
 
 	return operations.NewPatchBalloonStatsIntervalNoContent()
 }
