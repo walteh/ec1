@@ -2817,6 +2817,8 @@ github.com/vmware/vmw-guestinfo v0.0.0-20220317130741-510905f0efa3 h1:v6jG/tdl4O
 github.com/vmware/vmw-guestinfo v0.0.0-20220317130741-510905f0efa3/go.mod h1:CSBTxrhePCm0cmXNKDGeu+6bOQzpaEklfCqEpn89JWk=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/vultr/govultr/v2 v2.17.2/go.mod h1:ZFOKGWmgjytfyjeyAdhQlSWwTjh2ig+X49cAp50dzXI=
+github.com/walteh/run v0.0.0-20250510150917-6f8074766f03 h1:nPAvBLm9TGYzhegjP6WJcvh3tGVAKNbsBIMNd6Cu5Xs=
+github.com/walteh/run v0.0.0-20250510150917-6f8074766f03/go.mod h1:bZSA8XIWt0TSsGNoLObuz58fMdTlDyN0p35gfiten3g=
 github.com/weppos/publicsuffix-go v0.30.3-0.20240510084413-5f1d03393b3d h1:q80YKUcDWRNvvQcziH63e3ammTWARwrhohBCunHaYAg=
 github.com/weppos/publicsuffix-go v0.30.3-0.20240510084413-5f1d03393b3d/go.mod h1:vLdXKydr/OJssAXmjY0XBgLXUfivBMrNRIBljgtqCnw=
 github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 h1:5HZfQkwe0mIfyDmc1Em5GqlNRzcdtlv4HTNmdpt7XH0=
