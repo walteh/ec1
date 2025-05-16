@@ -10,12 +10,14 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/go-openapi/swag"
 	"github.com/rs/xid"
+	"gitlab.com/tozd/go/errors"
 
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
 	"github.com/walteh/ec1/pkg/hypervisors"
+	"github.com/walteh/ec1/pkg/machines/host"
 )
 
 const (
@@ -47,25 +49,35 @@ type apiConfig struct {
 	vm            *models.VM
 }
 
-// type guestDrive struct {
-// 	driveID     string
-// 	rateLimiter *models.RateLimiter
-// 	pathOnHost  string
-// }
-
 // NewFirecrackerMicroVM creates a new Firecracker API implementation
 // that leverages the hypervisors package for VM operations for a single microVM.
-func NewFirecrackerMicroVM[V hypervisors.VirtualMachine](ctx context.Context, hpv hypervisors.Hypervisor[V]) *FirecrackerMicroVM[V] {
-	vm, err := hpv.NewVirtualMachine(ctx, "abc", hypervisors.NewVMOptions{}, nil)
+func NewFirecrackerMicroVM[V hypervisors.VirtualMachine](ctx context.Context, hpv hypervisors.Hypervisor[V], vmi hypervisors.VMIProvider) (*FirecrackerMicroVM[V], error) {
+	id := "mvm-" + xid.New().String()
+
+	lvmi, ok := vmi.(hypervisors.LinuxVMIProvider)
+	if !ok {
+		slog.Error("vmi is not a LinuxVMIProvider")
+		return nil, errors.New("vmi is not a LinuxVMIProvider")
+	}
+
+	cdf, err := host.EmphiricalVMCacheDir(ctx, id)
+	if err != nil {
+		return nil, errors.Errorf("getting empirical VM cache dir: %w", err)
+	}
+
+	bootloader := lvmi.BootLoaderConfig(cdf)
+
+	vm, err := hpv.NewVirtualMachine(ctx, id, hypervisors.NewVMOptions{}, bootloader)
 	if err != nil {
 		slog.Error("failed to create new VM", "error", err)
-		return nil
+		return nil, err
 	}
+
 	return &FirecrackerMicroVM[V]{
 		vm:              vm,
 		isVMInitialized: true,
-		instanceID:      "mvm-" + xid.New().String(),
-	}
+		instanceID:      id,
+	}, nil
 }
 
 var _ operations.FirecrackerAPI = &FirecrackerMicroVM[hypervisors.VirtualMachine]{}
