@@ -6,6 +6,8 @@ go 1.24.3
 // - google.golang.org/grpc ./stats/opentelemetry
 exclude google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a
 
+replace git.wow.st/gmp/nswrap => ../../../../git.wow.st/gmp/nswrap
+
 tool (
 	cmd/test2json
 	connectrpc.com/connect/cmd/protoc-gen-connect-go

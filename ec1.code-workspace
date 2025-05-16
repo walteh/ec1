@@ -12,6 +12,10 @@
 			"name": "kata-containers",
 			"path": "../kata-containers/src/runtime"
 		},
+		{
+			"name": "nswrap",
+			"path": "../../../git.wow.st/gmp/nswrap"
+		},
 		// {
 		// 	"name": "gvisor",
 		// 	"path": "../gvisor"
