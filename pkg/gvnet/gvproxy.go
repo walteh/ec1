@@ -30,8 +30,8 @@ import (
 
 	slogctx "github.com/veqryn/slog-context"
 
+	"github.com/walteh/ec1/pkg/gvnet/tapsock"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock"
 )
 
 const (

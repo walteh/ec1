@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/gvnet/tapsock/tapsocklegacy"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"github.com/walteh/ec1/pkg/networks/gvnet/tapsock/tapsocklegacy"
 )
 
 type Provisioner interface {

@@ -1,8 +1,6 @@
 package virtio
 
 import (
-	"context"
-	"fmt"
 	"net"
 	"os"
 )
@@ -24,85 +22,85 @@ type VirtioNet struct {
 	// ReadyChan      chan struct{} `json:"readyChan,omitempty"`
 }
 
-type VirtioNetTransformable interface {
-	TransformToVirtioNet(ctx context.Context) (*VirtioNet, error)
-}
-
-var _ VirtioDevice = &VirtioNet{}
-
-// var _ VirtioNetTransformable = &VirtioNetViaUnixSocket{}
-
 func (v *VirtioNet) isVirtioDevice() {}
 
-// VirtioNetNew creates a new network device for the virtual machine. It will
-// use macAddress as its MAC address.
-func VirtioNetNew(macAddress string) (*VirtioNet, error) {
-	var hwAddr net.HardwareAddr
+// type VirtioNetTransformable interface {
+// 	TransformToVirtioNet(ctx context.Context) (*VirtioNet, error)
+// }
 
-	if macAddress != "" {
-		var err error
-		if hwAddr, err = net.ParseMAC(macAddress); err != nil {
-			return nil, err
-		}
-	}
-	return &VirtioNet{
-		Nat:        true,
-		MacAddress: hwAddr,
-	}, nil
-}
+// var _ VirtioDevice = &VirtioNet{}
 
-func unixFd(fd uintptr) int {
-	// On unix the underlying fd is int, overflow is not possible.
-	return int(fd) //#nosec G115 -- potential integer overflow
-}
+// // var _ VirtioNetTransformable = &VirtioNetViaUnixSocket{}
 
-// SetSocket Set the socket to use for the network communication
-//
-// This maps the virtual machine network interface to a connected datagram
-// socket. This means all network traffic on this interface will go through
-// file.
-// file must be a connected datagram (SOCK_DGRAM) socket.
-func (dev *VirtioNet) SetSocket(file *os.File) {
-	dev.Socket = file
-	dev.Nat = false
-}
+// // VirtioNetNew creates a new network device for the virtual machine. It will
+// // use macAddress as its MAC address.
+// func VirtioNetNew(macAddress string) (*VirtioNet, error) {
+// 	var hwAddr net.HardwareAddr
 
-// func (dev *VirtioNet) SetUnixSocketPath(path string) {
-// 	dev.UnixSocketPath = path
+// 	if macAddress != "" {
+// 		var err error
+// 		if hwAddr, err = net.ParseMAC(macAddress); err != nil {
+// 			return nil, err
+// 		}
+// 	}
+// 	return &VirtioNet{
+// 		Nat:        true,
+// 		MacAddress: hwAddr,
+// 	}, nil
+// }
+
+// func unixFd(fd uintptr) int {
+// 	// On unix the underlying fd is int, overflow is not possible.
+// 	return int(fd) //#nosec G115 -- potential integer overflow
+// }
+
+// // SetSocket Set the socket to use for the network communication
+// //
+// // This maps the virtual machine network interface to a connected datagram
+// // socket. This means all network traffic on this interface will go through
+// // file.
+// // file must be a connected datagram (SOCK_DGRAM) socket.
+// func (dev *VirtioNet) SetSocket(file *os.File) {
+// 	dev.Socket = file
 // 	dev.Nat = false
 // }
 
-func (dev *VirtioNet) validate() error {
-	if dev.Nat && dev.Socket != nil {
-		return fmt.Errorf("'nat' and 'fd' cannot be set at the same time")
-	}
-	// if dev.Nat && dev.UnixSocketPath != "" {
-	// 	return fmt.Errorf("'nat' and 'unixSocketPath' cannot be set at the same time")
-	// }
-	// if dev.Socket != nil && dev.UnixSocketPath != "" {
-	// 	return fmt.Errorf("'fd' and 'unixSocketPath' cannot be set at the same time")
-	// }
-	if !dev.Nat && dev.Socket == nil {
-		return fmt.Errorf("one of 'nat' or 'fd' or 'unixSocketPath' must be set")
-	}
+// // func (dev *VirtioNet) SetUnixSocketPath(path string) {
+// // 	dev.UnixSocketPath = path
+// // 	dev.Nat = false
+// // }
 
-	return nil
-}
+// func (dev *VirtioNet) validate() error {
+// 	if dev.Nat && dev.Socket != nil {
+// 		return fmt.Errorf("'nat' and 'fd' cannot be set at the same time")
+// 	}
+// 	// if dev.Nat && dev.UnixSocketPath != "" {
+// 	// 	return fmt.Errorf("'nat' and 'unixSocketPath' cannot be set at the same time")
+// 	// }
+// 	// if dev.Socket != nil && dev.UnixSocketPath != "" {
+// 	// 	return fmt.Errorf("'fd' and 'unixSocketPath' cannot be set at the same time")
+// 	// }
+// 	if !dev.Nat && dev.Socket == nil {
+// 		return fmt.Errorf("one of 'nat' or 'fd' or 'unixSocketPath' must be set")
+// 	}
 
-func (dev *VirtioNet) Shutdown() error {
-	if dev.LocalAddr != nil {
-		if err := os.Remove(dev.LocalAddr.Name); err != nil {
-			return err
-		}
-	}
-	if dev.Socket != nil {
-		if err := dev.Socket.Close(); err != nil {
-			return err
-		}
-	}
+// 	return nil
+// }
 
-	return nil
-}
+// func (dev *VirtioNet) Shutdown() error {
+// 	if dev.LocalAddr != nil {
+// 		if err := os.Remove(dev.LocalAddr.Name); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	if dev.Socket != nil {
+// 		if err := dev.Socket.Close(); err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	return nil
+// }
 
 // func (dev *VirtioNet) ToCmdLine() ([]string, error) {
 // 	if err := dev.validate(); err != nil {

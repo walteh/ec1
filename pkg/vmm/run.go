@@ -15,11 +15,11 @@ import (
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/gvnet"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/virtio"
-	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/port"
 )
 
