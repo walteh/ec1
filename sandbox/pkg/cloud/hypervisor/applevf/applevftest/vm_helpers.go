@@ -25,7 +25,7 @@ import (
 
 	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/port"
-	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/hypervisor/applevf"
 )
 
 func init() {

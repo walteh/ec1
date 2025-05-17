@@ -20,7 +20,7 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
-	"github.com/walteh/ec1/sanbox/pkg/cloud/id"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/id"
 )
 
 func NewDriver(ctx context.Context) (Driver, error) {

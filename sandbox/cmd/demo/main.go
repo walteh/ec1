@@ -15,10 +15,11 @@ import (
 	"github.com/containers/winquit/pkg/winquit"
 	"github.com/lmittmann/tint"
 	slogctx "github.com/veqryn/slog-context"
+	"golang.org/x/sync/errgroup"
+
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/pkg/cloud/management"
-	"golang.org/x/sync/errgroup"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/management"
 )
 
 // step 1: start up the management server (mac, native)

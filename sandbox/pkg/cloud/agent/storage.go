@@ -7,7 +7,7 @@ import (
 
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/sanbox/pkg/cloud/id"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/id"
 )
 
 type IDStore interface {

@@ -7,7 +7,8 @@ import (
 
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/log"
-	"github.com/walteh/ec1/cmd/kata-shim-attempt-2/shim/containerd"
+
+	"github.com/walteh/ec1/sandbox/cmd/kata-shim-attempt-2/shim/containerd"
 )
 
 func withoutReaper(config *shim.Config) {

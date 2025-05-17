@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/walteh/ec1/pkg/cloud/agent"
-	"github.com/walteh/ec1/pkg/cloud/clog"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/agent"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/clog"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/walteh/ec1/pkg/cloud/management"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/management"
 )
 
 func main() {

@@ -17,8 +17,8 @@ import (
 
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor"
-	"github.com/walteh/ec1/sanbox/pkg/cloud/id"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/hypervisor"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/id"
 
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 
-	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf"
+	"github.com/walteh/ec1/sandbox/pkg/cloud/hypervisor/applevf"
 )
 
 const fedoraVersion = "42"
