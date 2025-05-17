@@ -1,4 +1,4 @@
-package embedtd
+package testdataembed
 
 import (
 	"embed"

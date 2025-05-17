@@ -10,7 +10,8 @@ import (
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/fifo"
-	"github.com/walteh/ec1/pkg/testutils"
+
+	"github.com/walteh/ec1/pkg/logging"
 
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/katautils"
 	"github.com/kata-containers/kata-containers/src/runtime/pkg/types"
@@ -32,7 +33,7 @@ func main() {
 
 	ctx = namespaces.WithNamespace(ctx, n)
 
-	ctx = testutils.SetupSlogSimple(ctx)
+	ctx = logging.SetupSlogSimple(ctx)
 
 	go func() {
 		if len(os.Args) == 2 && os.Args[1] == "--version" {

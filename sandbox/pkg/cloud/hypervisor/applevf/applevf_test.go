@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/embedtd"
+	"github.com/walteh/ec1/pkg/testing/testdataembed"
 	"github.com/walteh/ec1/sandbox/pkg/cloud/hypervisor/applevf"
 	"github.com/walteh/ec1/sandbox/pkg/cloud/hypervisor/applevf/applevftest/testdata"
 )
@@ -59,8 +59,8 @@ func TestStartIgnitionProvisionerServer(t *testing.T) {
 func TestGenerateCloudInitImage(t *testing.T) {
 
 	iso, err := applevf.GenerateCloudInitImage(t.Context(), []string{
-		embedtd.MustCreateTmpFileFor(t, testdata.FS(), "user-data"),
-		embedtd.MustCreateTmpFileFor(t, testdata.FS(), "meta-data"),
+		testdataembed.MustCreateTmpFileFor(t, testdata.FS(), "user-data"),
+		testdataembed.MustCreateTmpFileFor(t, testdata.FS(), "meta-data"),
 	})
 	require.NoError(t, err)
 
@@ -76,7 +76,7 @@ func TestGenerateCloudInitImage(t *testing.T) {
 func TestGenerateCloudInitImageWithMissingFile(t *testing.T) {
 
 	iso, err := applevf.GenerateCloudInitImage(t.Context(), []string{
-		embedtd.MustCreateTmpFileFor(t, testdata.FS(), "user-data"),
+		testdataembed.MustCreateTmpFileFor(t, testdata.FS(), "user-data"),
 	})
 	require.NoError(t, err)
 
@@ -92,7 +92,7 @@ func TestGenerateCloudInitImageWithMissingFile(t *testing.T) {
 func TestGenerateCloudInitImageWithWrongFile(t *testing.T) {
 
 	iso, err := applevf.GenerateCloudInitImage(t.Context(), []string{
-		embedtd.MustCreateTmpFileFor(t, testdata.FS(), "seed.img"),
+		testdataembed.MustCreateTmpFileFor(t, testdata.FS(), "seed.img"),
 	})
 	assert.Empty(t, iso)
 	require.Error(t, err, "cloud-init needs user-data and meta-data files to work")

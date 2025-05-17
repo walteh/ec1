@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/machines/images/puipui"
-	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
 )
@@ -66,8 +66,7 @@ func (m *mockBootloader) GetCmdLine() (string, error) {
 }
 
 func TestMemoryBalloonDevices(t *testing.T) {
-	ctx := t.Context()
-	ctx = testutils.SetupSlog(t, ctx)
+	ctx := tlog.SetupSlogForTest(t)
 
 	// // Skip on non-macOS platforms
 	// if virtualizationFramework == 0 {
@@ -102,8 +101,7 @@ func TestMemoryBalloonDevices(t *testing.T) {
 }
 
 func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
-	ctx := t.Context()
-	ctx = testutils.SetupSlog(t, ctx)
+	ctx := tlog.SetupSlogForTest(t)
 
 	// Skip on non-macOS platforms
 	// if virtualizationFramework == 0 {

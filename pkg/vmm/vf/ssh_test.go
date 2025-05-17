@@ -12,13 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func TestSSH(t *testing.T) {
-	ctx := t.Context()
-	ctx = testutils.SetupSlog(t, ctx)
+	ctx := tlog.SetupSlogForTest(t)
 
 	// // Skip on non-macOS platforms
 	// if virtualizationFramework == 0 {
@@ -71,8 +70,7 @@ func TestSSH(t *testing.T) {
 }
 
 func TestVSock(t *testing.T) {
-	ctx := t.Context()
-	ctx = testutils.SetupSlog(t, ctx)
+	ctx := tlog.SetupSlogForTest(t)
 
 	// Create a real VM for testing
 	rvm, pp := setupPuipuiVM(t, ctx, 1024)
@@ -187,8 +185,7 @@ func TestVSock(t *testing.T) {
 }
 
 func TestMeminfo(t *testing.T) {
-	ctx := t.Context()
-	ctx = testutils.SetupSlog(t, ctx)
+	ctx := tlog.SetupSlogForTest(t)
 
 	// // Skip on non-macOS platforms
 	// if virtualizationFramework == 0 {

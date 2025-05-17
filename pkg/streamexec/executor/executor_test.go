@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/walteh/ec1/pkg/streamexec/protocol"
-	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/testing/tlog"
 )
 
 func TestStreamingExecutor_ExecuteCommand(t *testing.T) {
@@ -49,9 +49,7 @@ func TestStreamingExecutor_ExecuteCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			ctx := t.Context()
-
-			ctx = testutils.SetupSlog(t, ctx)
+			ctx := tlog.SetupSlogForTest(t)
 
 			// Create mock protocol
 			proto := protocol.NewMockProtocol()

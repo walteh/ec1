@@ -9,7 +9,8 @@ import (
 	"runtime"
 
 	"github.com/containerd/containerd/v2/cmd/containerd/command"
-	"github.com/walteh/ec1/pkg/testutils"
+
+	"github.com/walteh/ec1/pkg/logging"
 	// ... other necessary imports ...
 )
 
@@ -35,7 +36,7 @@ func main() {
 	// n := namespaces.Default
 	// os.Args = append(os.Args, "-namespace="+n) // Usually containerd handles its own args parsing
 	// ctx = namespaces.WithNamespace(ctx, n)
-	ctx = testutils.SetupSlogSimple(ctx) // Assuming this is for your containerd setup
+	ctx = logging.SetupSlogSimple(ctx) // Assuming this is for your containerd setup
 
 	// This starts the containerd daemon
 	containerdApp := command.App()

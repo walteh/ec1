@@ -23,7 +23,7 @@ import (
 	shimapi "github.com/containerd/containerd/v2/pkg/shim"
 	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
 
-	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/vmm/kata"
 	"github.com/walteh/ec1/pkg/vmm/vf"
 )
@@ -73,7 +73,7 @@ func main() {
 	f, err := os.OpenFile(log_file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err == nil {
 		log.L.Logger.SetOutput(io.MultiWriter(f))
-		ctx = testutils.SetupSlogSimpleToWriter(ctx, f, true)
+		ctx = logging.SetupSlogSimpleToWriter(ctx, f, true)
 
 	} else {
 		log.L.WithField("error", err).Error("Failed to open log file")

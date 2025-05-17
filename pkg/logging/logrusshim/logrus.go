@@ -1,4 +1,4 @@
-package testutils
+package logrusshim
 
 import (
 	"context"
@@ -10,13 +10,17 @@ import (
 
 var _ logrus.Hook = &SlogBridgeHook{}
 
-func init() {
+func ForwardLogrusToSlogGlobally() {
 	logrus.SetReportCaller(true)
 	logrus.AddHook(&SlogBridgeHook{})
 	logrus.SetOutput(io.Discard)
 	logrus.SetFormatter(&logrus.TextFormatter{
 		DisableColors: true,
 	})
+}
+
+func SetLogrusLevel(level logrus.Level) {
+	logrus.SetLevel(level)
 }
 
 type SlogBridgeHook struct {
