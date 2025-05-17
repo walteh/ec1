@@ -292,26 +292,36 @@ tasks:
             SYMBOLGRAPH_DIR: ./sandbox/cmd/cgen/symbolgraphs
             SYMBOLGRAPH_OUTPUT_DIR: ./sandbox/cmd/cgen/symbolgraphs
             OUTPUT_DIR: ./sandbox/cmd/cgen/module
+            GO_OUTPUT_DIR: ./sandbox/cmd/cgen/module/golang
             SDK:
                 sh: xcrun --sdk macosx --show-sdk-path
         cmds:
           - cmd: mkdir -p {{.SYMBOLGRAPH_DIR}}
           - cmd: mkdir -p {{.OUTPUT_DIR}}
+          - cmd: mkdir -p {{.GO_OUTPUT_DIR}}/{{lower .FRAMEWORK}}
           - cmd: |-
                 swift-symbolgraph-extract \
-                -module-name {{.FRAMEWORK}} \
-                -target arm64-apple-macos15.4 \
-                -sdk {{.SDK}} \
-                -minimum-access-level public \
-                -output-dir {{.SYMBOLGRAPH_DIR}} \
-                -skip-synthesized-members \
-                -skip-protocol-implementations \
-                -skip-inherited-docs \
-                -emit-extension-block-symbols \
-                -F"{{.SDK}}/System/Library/Frameworks" \
-                -Xcc -fmodules -pretty-print
+                   -module-name {{.FRAMEWORK}} \
+                   -target arm64-apple-macos15.4 \
+                   -sdk {{.SDK}} \
+                   -minimum-access-level public \
+                   -output-dir {{.SYMBOLGRAPH_DIR}} \
+                   -skip-synthesized-members \
+                   -skip-protocol-implementations \
+                   -skip-inherited-docs \
+                   -emit-extension-block-symbols \
+                   -F"{{.SDK}}/System/Library/Frameworks" \
+                   -Xcc -fmodules -pretty-print
           - cmd: |-
-                go run ./sandbox/cmd/cgen {{.SYMBOLGRAPH_DIR}}/{{.FRAMEWORK}}.symbols.json > {{.OUTPUT_DIR}}/{{.FRAMEWORK}}.shim.m
+                jq --sort-keys . \
+                   {{ .SYMBOLGRAPH_DIR }}/{{ .FRAMEWORK }}.symbols.json \
+                   > {{ .SYMBOLGRAPH_DIR }}/{{ .FRAMEWORK }}.symbols.sorted.json && \
+                   mv {{ .SYMBOLGRAPH_DIR }}/{{ .FRAMEWORK }}.symbols.sorted.json \
+                   {{ .SYMBOLGRAPH_DIR }}/{{ .FRAMEWORK }}.symbols.json
+          - cmd: |-
+                go run ./sandbox/cmd/cgen {{.SYMBOLGRAPH_DIR}}/{{.FRAMEWORK}}.symbols.json {{.OUTPUT_DIR}}
+          - cmd: |-
+                c-for-go -out {{.GO_OUTPUT_DIR}} {{.OUTPUT_DIR}}/{{lower .FRAMEWORK}}.yml
 
     cgen:virtualization:
         desc: generates the virtualization shim
@@ -332,3 +342,4 @@ tasks:
         cmds:
           - task: cgen:virtualization
           - task: cgen:hypervisor
+

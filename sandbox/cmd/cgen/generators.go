@@ -30,7 +30,7 @@ extern "C" {
 			typeDefinitions += processType(symbol)
 		}
 	}
-	
+
 	// Add type definitions to the result if there are any
 	if typeDefinitions != "" {
 		result += "// Swift type definitions\n"
@@ -44,7 +44,7 @@ extern "C" {
 		if isCompletion(symbol.FunctionSignature) {
 			continue
 		}
-		
+
 		if symbol.Kind.Identifier == "swift.method" {
 			result += processMethod(symbol)
 		} else if symbol.Kind.Identifier == "swift.var" || symbol.Kind.Identifier == "swift.property" {
@@ -71,9 +71,9 @@ func isSwiftType(kindIdentifier string) bool {
 
 // Process a type symbol into C type definition
 func processType(symbol Symbol) string {
-	typeName := symbol.Names.Title
+	typeName := sanitizeTypeName(symbol.Names.Title)
 	typeImpl := ""
-	
+
 	switch symbol.Kind.Identifier {
 	case "swift.enum":
 		typeImpl = processEnum(symbol)
@@ -81,22 +81,28 @@ func processType(symbol Symbol) string {
 		typeImpl = processStruct(symbol)
 	case "swift.class", "swift.protocol":
 		// For classes and protocols, we use opaque pointers in C
-		typeImpl = fmt.Sprintf("// %s is a Swift %s\ntypedef void* %s;\n\n", 
-			typeName, 
-			symbol.Kind.Identifier[6:], 
+		typeImpl = fmt.Sprintf("// %s is a Swift %s\ntypedef void* %s;\n\n",
+			symbol.Names.Title,
+			symbol.Kind.Identifier[6:],
 			typeName)
 	}
-	
+
 	return typeImpl
+}
+
+// sanitizeTypeName replaces periods in type names with underscores
+// since C doesn't allow periods in type names
+func sanitizeTypeName(name string) string {
+	return strings.ReplaceAll(name, ".", "_")
 }
 
 // Process a Swift enum into a C enum definition
 func processEnum(symbol Symbol) string {
-	typeName := symbol.Names.Title
-	
+	typeName := sanitizeTypeName(symbol.Names.Title)
+
 	// Start with the enum definition
-	enumImpl := fmt.Sprintf("// %s represents a Swift enum\ntypedef enum {\n", typeName)
-	
+	enumImpl := fmt.Sprintf("// %s represents a Swift enum\ntypedef enum {\n", symbol.Names.Title)
+
 	// Try to extract enum cases from Children
 	caseFound := false
 	if len(symbol.Children) > 0 {
@@ -113,32 +119,32 @@ func processEnum(symbol Symbol) string {
 			}
 		}
 	}
-	
+
 	// If no cases were found, add a placeholder
 	if !caseFound {
 		enumImpl += fmt.Sprintf("    %s_Unknown = 0,\n", typeName)
 	}
-	
+
 	// Close the enum
 	enumImpl += fmt.Sprintf("} %s;\n\n", typeName)
-	
+
 	return enumImpl
 }
 
 // Process a Swift struct into a C struct definition
 func processStruct(symbol Symbol) string {
-	typeName := symbol.Names.Title
-	
+	typeName := sanitizeTypeName(symbol.Names.Title)
+
 	// Start with the struct definition
-	structImpl := fmt.Sprintf("// %s represents a Swift struct\ntypedef struct {\n", typeName)
-	
+	structImpl := fmt.Sprintf("// %s represents a Swift struct\ntypedef struct {\n", symbol.Names.Title)
+
 	// Try to extract field information from DeclarationFragments
 	fieldsFound := false
 	if len(symbol.DeclarationFragments) > 0 {
 		inFields := false
 		fieldName := ""
 		fieldType := ""
-		
+
 		for _, frag := range symbol.DeclarationFragments {
 			// Looking for field declarations between { and }
 			if frag.Spelling == "{" {
@@ -148,7 +154,7 @@ func processStruct(symbol Symbol) string {
 				inFields = false
 				continue
 			}
-			
+
 			if inFields {
 				switch frag.Kind {
 				case "keyword", "text":
@@ -171,15 +177,15 @@ func processStruct(symbol Symbol) string {
 			}
 		}
 	}
-	
+
 	// If no fields were found, use a generic opaque pointer
 	if !fieldsFound {
 		structImpl += "    void* _internal;\n"
 	}
-	
+
 	// Close the struct
 	structImpl += fmt.Sprintf("} %s;\n\n", typeName)
-	
+
 	return structImpl
 }
 
@@ -194,14 +200,14 @@ func processMethod(symbol Symbol) string {
 		// Skip this method if we don't have enough path components
 		return ""
 	}
-	
+
 	methodName := symbol.PathComponents[1]
 
 	// Build the method implementation
 	methodImpl := fmt.Sprintf("// Shim for Swift method: %s\n", symbol.Names.Title)
 	methodImpl += fmt.Sprintf("%s %s(%s) {\n", returnType, usr, params)
 	methodImpl += "    id obj = (__bridge id)self;\n"
-	
+
 	// Add function pointer type for objc_msgSend
 	methodImpl += fmt.Sprintf("    typedef %s (*MsgFn)(id, SEL", returnType)
 	if len(symbol.FunctionSignature.Parameters) > 0 {
@@ -225,7 +231,7 @@ func processMethod(symbol Symbol) string {
 		methodImpl += fmt.Sprintf("               %s);\n", args)
 		methodImpl += "    return (__bridge_retained void*)rv;\n"
 	}
-	
+
 	methodImpl += "}\n\n"
 	return methodImpl
 }
@@ -233,15 +239,15 @@ func processMethod(symbol Symbol) string {
 // Process a variable or property symbol into C shim code
 func processVariable(symbol Symbol) string {
 	usr := sanitizeUSR(symbol.Identifier.Precise)
-	
+
 	// Check if we have enough path components
 	if len(symbol.PathComponents) < 2 {
 		// Skip this variable if we don't have enough path components
 		return ""
 	}
-	
+
 	propertyName := symbol.PathComponents[1]
-	
+
 	// Build getter function
 	getterImpl := fmt.Sprintf("// Shim for Swift property getter: %s\n", symbol.Names.Title)
 	getterImpl += fmt.Sprintf("void* %s_get(void* self) {\n", usr)
@@ -251,7 +257,7 @@ func processVariable(symbol Symbol) string {
 	getterImpl += fmt.Sprintf("    id rv = fn(obj, sel_getUid(\"%s\"));\n", propertyName)
 	getterImpl += "    return (__bridge_retained void*)rv;\n"
 	getterImpl += "}\n\n"
-	
+
 	// Build setter function if property is not readonly
 	// Note: This is a simplification - we would need to check if property is writable
 	setterImpl := fmt.Sprintf("// Shim for Swift property setter: %s\n", symbol.Names.Title)
@@ -262,14 +268,14 @@ func processVariable(symbol Symbol) string {
 	setterImpl += "    MsgFn fn = (MsgFn)objc_msgSend;\n"
 	setterImpl += fmt.Sprintf("    fn(obj, sel_getUid(\"set%s:\"), val);\n", capitalizeFirst(propertyName))
 	setterImpl += "}\n\n"
-	
+
 	return getterImpl + setterImpl
 }
 
 // Generate Go type definitions from Swift types
 func generateGoTypes(root Root) string {
 	packageName := strings.ToLower(root.Module.Name)
-	
+
 	result := fmt.Sprintf(`// Code generated by cgen; DO NOT EDIT.
 package %s
 
@@ -294,27 +300,27 @@ import "C"
 				continue // Skip duplicates
 			}
 			typeMap[typeName] = true
-			
+
 			result += processGoType(symbol)
 		}
 	}
-	
+
 	return result
 }
 
 // Process a type symbol into Go type definition with methods
 func processGoType(symbol Symbol) string {
 	typeName := symbol.Names.Title
-	
+
 	// Start with type definition
 	typeImpl := fmt.Sprintf("// %s represents a Swift %s\n", typeName, symbol.Kind.Identifier[6:])
 	typeImpl += fmt.Sprintf("type %s struct {\n", typeName)
 	typeImpl += "    ptr unsafe.Pointer\n"
 	typeImpl += "}\n\n"
-	
+
 	// TODO: Add factory methods and instance methods for this type
 	// We would need to filter the symbols to find methods related to this type
-	
+
 	return typeImpl
 }
 
@@ -324,4 +330,78 @@ func capitalizeFirst(s string) string {
 		return ""
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// generateHeaderFile creates a C header file for the Swift module
+func generateHeaderFile(root Root) string {
+	// Extract module name
+	moduleName := root.Module.Name
+
+	// Start with the header and include guards
+	result := fmt.Sprintf(`#ifndef %s_SHIM_H
+#define %s_SHIM_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+`, strings.ToUpper(moduleName), strings.ToUpper(moduleName))
+
+	// Process all type symbols first
+	typeDefinitions := ""
+	for _, symbol := range root.Symbols {
+		if isSwiftType(symbol.Kind.Identifier) {
+			typeDefinitions += processType(symbol)
+		}
+	}
+
+	// Add type definitions to the result if there are any
+	if typeDefinitions != "" {
+		result += "// Swift type definitions\n"
+		result += typeDefinitions
+		result += "\n"
+	}
+
+	// Forward declarations of functions for methods
+	for _, symbol := range root.Symbols {
+		// Skip completion handlers
+		if isCompletion(symbol.FunctionSignature) {
+			continue
+		}
+
+		if symbol.Kind.Identifier == "swift.method" {
+			if len(symbol.PathComponents) < 2 {
+				continue
+			}
+
+			usr := sanitizeUSR(symbol.Identifier.Precise)
+			returnType := getReturnType(symbol.FunctionSignature)
+			params, _ := makeParams(symbol.FunctionSignature)
+
+			result += fmt.Sprintf("// Swift method: %s\n", symbol.Names.Title)
+			result += fmt.Sprintf("%s %s(%s);\n\n", returnType, usr, params)
+		} else if symbol.Kind.Identifier == "swift.var" || symbol.Kind.Identifier == "swift.property" {
+			if len(symbol.PathComponents) < 2 {
+				continue
+			}
+
+			usr := sanitizeUSR(symbol.Identifier.Precise)
+
+			result += fmt.Sprintf("// Swift property: %s\n", symbol.Names.Title)
+			result += fmt.Sprintf("void* %s_get(void* self);\n", usr)
+			result += fmt.Sprintf("void %s_set(void* self, void* value);\n\n", usr)
+		}
+	}
+
+	// Add footer
+	result += `
+#ifdef __cplusplus
+}
+#endif
+
+#endif // %s_SHIM_H
+`
+	return fmt.Sprintf(result, strings.ToUpper(moduleName))
 }
