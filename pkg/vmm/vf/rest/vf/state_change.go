@@ -5,7 +5,8 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/rest/define"
+
+	"github.com/walteh/ec1/pkg/vmm/vf/rest/define"
 )
 
 // ChangeState execute a state change (i.e. running to stopped)

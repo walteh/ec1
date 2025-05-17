@@ -23,9 +23,9 @@ import (
 	shimapi "github.com/containerd/containerd/v2/pkg/shim"
 	manager "github.com/kata-containers/kata-containers/src/runtime/pkg/containerd-shim-v2/manager"
 
-	"github.com/walteh/ec1/pkg/hypervisors/kata"
-	"github.com/walteh/ec1/pkg/hypervisors/vf"
 	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/vmm/kata"
+	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
 func shimConfig(config *shimapi.Config) {

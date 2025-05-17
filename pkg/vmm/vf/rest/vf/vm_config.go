@@ -7,15 +7,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/hypervisors/vf/rest/define"
+
+	"github.com/walteh/ec1/pkg/vmm"
+	"github.com/walteh/ec1/pkg/vmm/vf/rest/define"
 )
 
 type ControllableVirtualMachine struct {
-	hypervisors.VirtualMachine
+	vmm.VirtualMachine
 }
 
-func NewControllableVirtualMachine(vm hypervisors.VirtualMachine) *ControllableVirtualMachine {
+func NewControllableVirtualMachine(vm vmm.VirtualMachine) *ControllableVirtualMachine {
 	return &ControllableVirtualMachine{vm}
 }
 

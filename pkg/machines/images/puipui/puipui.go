@@ -35,7 +35,7 @@ type PuiPuiProvider struct {
 	// kernelArgs string
 }
 
-// BootLoaderConfig implements hypervisors.LinuxVMIProvider.
+// BootLoaderConfig implements vmm.LinuxVMIProvider.
 func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxBootloader {
 	out := "bzImage"
 	if host.CurrentKernelArch() == "aarch64" {
@@ -48,27 +48,27 @@ func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxB
 	}
 }
 
-// BootProvisioners implements hypervisors.VMIProvider.
+// BootProvisioners implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) BootProvisioners() []vmm.BootProvisioner {
 	return []vmm.BootProvisioner{}
 }
 
-// DiskImageURL implements hypervisors.VMIProvider.
+// DiskImageURL implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) DiskImageURL() string {
 	return prov.URL()
 }
 
-// GuestKernelType implements hypervisors.VMIProvider.
+// GuestKernelType implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }
 
-// RuntimeProvisioners implements hypervisors.VMIProvider.
+// RuntimeProvisioners implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
 	return []vmm.RuntimeProvisioner{}
 }
 
-// SupportsEFI implements hypervisors.VMIProvider.
+// SupportsEFI implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) SupportsEFI() bool {
 	return false
 }

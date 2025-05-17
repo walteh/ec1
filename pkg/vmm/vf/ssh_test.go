@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func TestSSH(t *testing.T) {
@@ -34,7 +34,7 @@ func TestSSH(t *testing.T) {
 
 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
+	if err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
 		t.Fatalf("timeout waiting for vm to be running: %v", err)
 	}
 
@@ -42,11 +42,11 @@ func TestSSH(t *testing.T) {
 
 	sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
 
-	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
+	if err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
 		t.Fatalf("timeout waiting for vm to be running: %v", err)
 	}
 
-	sshClient, err := hypervisors.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
+	sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
 	if err != nil {
 		t.Fatalf("error obtaining ssh connection: %v", err)
 	}
@@ -83,12 +83,12 @@ func TestVSock(t *testing.T) {
 
 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
 	// Setup SSH to run commands in the guest
 	sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
-	sshClient, err := hypervisors.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
+	sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
 	require.NoError(t, err, "error obtaining ssh connection: %v", err)
 	defer sshClient.Close()
 
@@ -155,7 +155,7 @@ func TestVSock(t *testing.T) {
 
 	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
 	// Expose the guest's vsock port. The host will connect to the guest's server.
-	// conn, cleanup, err := hypervisors.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
+	// conn, cleanup, err := vmm.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
 	conn, err := rvm.VM().VSockConnect(ctx, guestListenPort)
 	require.NoError(t, err, "Failed to expose vsock port")
 	require.NotNil(t, conn, "Host connection should not be nil")
@@ -204,7 +204,7 @@ func TestMeminfo(t *testing.T) {
 
 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
+	if err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
 		t.Fatalf("timeout waiting for vm to be running: %v", err)
 	}
 
@@ -212,11 +212,11 @@ func TestMeminfo(t *testing.T) {
 
 	sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
 
-	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
+	if err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second)); err != nil {
 		t.Fatalf("timeout waiting for vm to be running: %v", err)
 	}
 
-	sshClient, err := hypervisors.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
+	sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
 	if err != nil {
 		t.Fatalf("error obtaining ssh connection: %v", err)
 	}

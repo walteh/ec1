@@ -9,31 +9,31 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 type MemoryBalloonDevice struct {
 }
 
-var _ hypervisors.VirtualMachine = &VirtualMachine{}
+var _ vmm.VirtualMachine = &VirtualMachine{}
 
-func vzStateToHypervisorState(state vz.VirtualMachineState) hypervisors.VirtualMachineStateType {
+func vzStateToHypervisorState(state vz.VirtualMachineState) vmm.VirtualMachineStateType {
 	switch state {
 	case vz.VirtualMachineStateRunning:
-		return hypervisors.VirtualMachineStateTypeRunning
+		return vmm.VirtualMachineStateTypeRunning
 	case vz.VirtualMachineStatePaused:
-		return hypervisors.VirtualMachineStateTypePaused
+		return vmm.VirtualMachineStateTypePaused
 	case vz.VirtualMachineStateStarting:
-		return hypervisors.VirtualMachineStateTypeStarting
+		return vmm.VirtualMachineStateTypeStarting
 	case vz.VirtualMachineStateStopping:
-		return hypervisors.VirtualMachineStateTypeStopping
+		return vmm.VirtualMachineStateTypeStopping
 	case vz.VirtualMachineStateStopped:
-		return hypervisors.VirtualMachineStateTypeStopped
+		return vmm.VirtualMachineStateTypeStopped
 	case vz.VirtualMachineStateError:
-		return hypervisors.VirtualMachineStateTypeError
+		return vmm.VirtualMachineStateTypeError
 	default:
-		return hypervisors.VirtualMachineStateTypeUnknown
+		return vmm.VirtualMachineStateTypeUnknown
 	}
 }
 
@@ -65,7 +65,7 @@ type VirtualMachine struct {
 // // targetBytes is the amount of memory the guest OS should have access to.
 // // Note that the target memory should be less than the total VM memory.
 // func (vm *VirtualMachine) SetMemoryBalloonTargetSize(targetBytes strongunits.B) error {
-// 	if vm.CurrentState() != hypervisors.VirtualMachineStateTypeRunning {
+// 	if vm.CurrentState() != vmm.VirtualMachineStateTypeRunning {
 // 		return fmt.Errorf("VM must be running to adjust memory balloon")
 // 	}
 
@@ -86,44 +86,44 @@ type VirtualMachine struct {
 // 	return nil
 // }
 
-// MemoryUsage implements hypervisors.VirtualMachine.
+// MemoryUsage implements vmm.VirtualMachine.
 // func (vm *VirtualMachine) MemoryUsage() strongunits.B {
 // 	// For now, just return the configured memory size
 // 	// In a real implementation, you would get this from the balloon device
 // 	return strongunits.B(vm.configuration.memorySize)
 // }
 
-// // VCPUsUsage implements hypervisors.VirtualMachine.
+// // VCPUsUsage implements vmm.VirtualMachine.
 // func (vm *VirtualMachine) VCPUsUsage() float64 {
 // 	return vm.vzvm.VCPUsUsage()
 // }
 
-// CanHardStop implements hypervisors.VirtualMachine.
+// CanHardStop implements vmm.VirtualMachine.
 func (vm *VirtualMachine) CanHardStop(ctx context.Context) bool {
 	return vm.vzvm.CanStop()
 }
 
-// CanRequestStop implements hypervisors.VirtualMachine.
+// CanRequestStop implements vmm.VirtualMachine.
 func (vm *VirtualMachine) CanRequestStop(ctx context.Context) bool {
 	return vm.vzvm.CanRequestStop()
 }
 
-// HardStop implements hypervisors.VirtualMachine.
+// HardStop implements vmm.VirtualMachine.
 func (vm *VirtualMachine) HardStop(ctx context.Context) error {
 	return vm.Stop(ctx)
 }
 
-// CurrentState implements hypervisors.VirtualMachine.
-func (vm *VirtualMachine) CurrentState() hypervisors.VirtualMachineStateType {
+// CurrentState implements vmm.VirtualMachine.
+func (vm *VirtualMachine) CurrentState() vmm.VirtualMachineStateType {
 	return vzStateToHypervisorState(vm.vzvm.State())
 }
 
-// Devices implements hypervisors.VirtualMachine.
+// Devices implements vmm.VirtualMachine.
 func (vm *VirtualMachine) Devices() []virtio.VirtioDevice {
 	return vm.configuration.newVMOpts.Devices
 }
 
-// ID implements hypervisors.VirtualMachine.
+// ID implements vmm.VirtualMachine.
 func (vm *VirtualMachine) ID() string {
 	return vm.configuration.id
 }
@@ -144,15 +144,15 @@ func (vm *VirtualMachine) GetConsoleDevice() (vz.ConsoleDevice, error) {
 	return devices[0], nil
 }
 
-// StartGraphicApplication implements hypervisors.VirtualMachine.
+// StartGraphicApplication implements vmm.VirtualMachine.
 // Subtle: this method shadows the method (*VirtualMachine).StartGraphicApplication of VirtualMachine.VirtualMachine.
 func (vm *VirtualMachine) StartGraphicApplication(width float64, height float64) error {
 	return vm.vzvm.StartGraphicApplication(width, height)
 }
 
-// StateChangeNotify implements hypervisors.VirtualMachine.
-func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan hypervisors.VirtualMachineStateChange {
-	stateChangeNotify := make(chan hypervisors.VirtualMachineStateChange)
+// StateChangeNotify implements vmm.VirtualMachine.
+func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan vmm.VirtualMachineStateChange {
+	stateChangeNotify := make(chan vmm.VirtualMachineStateChange)
 	go func() {
 		for {
 			select {
@@ -161,7 +161,7 @@ func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan hypervis
 				return
 			case yep := <-vm.vzvm.StateChangedNotify():
 				// slog.DebugContext(ctx, "state change notify start", "state", yep)
-				stateChangeNotify <- hypervisors.VirtualMachineStateChange{
+				stateChangeNotify <- vmm.VirtualMachineStateChange{
 					StateType: vzStateToHypervisorState(yep),
 					Metadata: map[string]string{
 						"raw_state": yep.String(),
@@ -174,7 +174,7 @@ func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan hypervis
 	return stateChangeNotify
 }
 
-// VSockConnect implements hypervisors.VirtualMachine.
+// VSockConnect implements vmm.VirtualMachine.
 func (vm *VirtualMachine) VSockConnect(ctx context.Context, port uint32) (net.Conn, error) {
 	vsockDev, err := vm.GetVSockDevice()
 	if err != nil {
@@ -183,7 +183,7 @@ func (vm *VirtualMachine) VSockConnect(ctx context.Context, port uint32) (net.Co
 	return vsockDev.Connect(port)
 }
 
-// VSockListen implements hypervisors.VirtualMachine.
+// VSockListen implements vmm.VirtualMachine.
 func (vm *VirtualMachine) VSockListen(ctx context.Context, port uint32) (net.Listener, error) {
 	vsockDev, err := vm.GetVSockDevice()
 	if err != nil {
@@ -265,7 +265,7 @@ func (vm *VirtualMachine) SetMemoryBalloonTargetSize(ctx context.Context, target
 	return nil
 }
 
-func (vm *VirtualMachine) Opts() *hypervisors.NewVMOptions {
+func (vm *VirtualMachine) Opts() *vmm.NewVMOptions {
 	return vm.configuration.newVMOpts
 }
 

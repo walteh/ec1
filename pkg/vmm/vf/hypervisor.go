@@ -8,18 +8,18 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
-func NewHypervisor() hypervisors.Hypervisor[*VirtualMachine] {
+func NewHypervisor() vmm.Hypervisor[*VirtualMachine] {
 	return &Hypervisor{
 		vms:    make(map[string]*VirtualMachine),
 		notify: make(chan *VirtualMachine),
 	}
 }
 
-var _ hypervisors.Hypervisor[*VirtualMachine] = &Hypervisor{}
+var _ vmm.Hypervisor[*VirtualMachine] = &Hypervisor{}
 
 type Hypervisor struct {
 	vms    map[string]*VirtualMachine
@@ -27,7 +27,7 @@ type Hypervisor struct {
 	notify chan *VirtualMachine
 }
 
-func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts hypervisors.NewVMOptions, bl bootloader.Bootloader) (*VirtualMachine, error) {
+func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts vmm.NewVMOptions, bl bootloader.Bootloader) (*VirtualMachine, error) {
 	vfConfig, err := NewVirtualMachineConfiguration(ctx, id, &opts, bl)
 	if err != nil {
 		return nil, err
@@ -73,6 +73,6 @@ func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 	return hpv.notify
 }
 
-// func (hpv *Hypervisor) ListenNetworkBlockDevices(ctx context.Context, vm hypervisors.VirtualMachine) error {
+// func (hpv *Hypervisor) ListenNetworkBlockDevices(ctx context.Context, vm vmm.VirtualMachine) error {
 // 	panic("not implemented")
 // }

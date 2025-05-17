@@ -10,22 +10,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/hypervisors/vf"
 	"github.com/walteh/ec1/pkg/machines/images/puipui"
 	"github.com/walteh/ec1/pkg/testutils"
+	"github.com/walteh/ec1/pkg/vmm"
+	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
 // MockObjcRuntime allows mocking of objc interactions
 
 // Create a real VM for testing
-func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*hypervisors.RunningVM[*vf.VirtualMachine], hypervisors.VMIProvider) {
+func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
 	pp := puipui.NewPuipuiProvider()
 
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 
-	rvm, err := hypervisors.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
+	rvm, err := vmm.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
 	require.NoError(t, err)
 
 	go func() {
@@ -86,7 +86,7 @@ func TestMemoryBalloonDevices(t *testing.T) {
 
 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	if err := hypervisors.WaitForVMState(ctx, rvm.VM(), hypervisors.VirtualMachineStateTypeRunning, nil); err != nil {
+	if err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, nil); err != nil {
 		t.Fatalf("virtualization error: %v", err)
 	}
 

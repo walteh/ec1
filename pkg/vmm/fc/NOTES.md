@@ -72,7 +72,7 @@ CreateNetworkDevice(macAddr string, tapName string) (virtio.VirtioDevice, error)
 A builder pattern for VM options would make configuration cleaner:
 
 ```go
-vmOpts := hypervisors.NewVMOptionsBuilder().
+vmOpts := vmm.NewVMOptionsBuilder().
     WithVCPUs(2).
     WithMemory(strongunits.GiB(4)).
     WithBlockDevice("/path/to/disk.img", false).

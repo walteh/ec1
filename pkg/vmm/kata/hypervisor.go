@@ -20,23 +20,23 @@ import (
 
 	hv "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 // This line is a compile-time check. If this file compiles, kataHypervisor implements virtcontainers.Hypervisor.
-var _ virtcontainers.Hypervisor = (*kataHypervisor[hypervisors.VirtualMachine])(nil)
+var _ virtcontainers.Hypervisor = (*kataHypervisor[vmm.VirtualMachine])(nil)
 
-type kataHypervisor[VM hypervisors.VirtualMachine] struct {
-	hypervisor      hypervisors.Hypervisor[VM]
+type kataHypervisor[VM vmm.VirtualMachine] struct {
+	hypervisor      vmm.Hypervisor[VM]
 	managedVm       VM
 	config          *virtcontainers.HypervisorConfig
 	creationContext context.Context
 	vsockProxy      *virtio.VirtioVsock
 }
 
-func WrapHypervisorForKata[VM hypervisors.VirtualMachine](ctx context.Context, parentHypervisor hypervisors.Hypervisor[VM]) (virtcontainers.Hypervisor, error) {
+func WrapHypervisorForKata[VM vmm.VirtualMachine](ctx context.Context, parentHypervisor vmm.Hypervisor[VM]) (virtcontainers.Hypervisor, error) {
 	if parentHypervisor == nil {
 		return nil, fmt.Errorf("parentHypervisor cannot be nil")
 	}
@@ -143,7 +143,7 @@ func (vfw *kataHypervisor[VM]) CreateVM(ctx context.Context, id string, network 
 		}
 	}
 
-	opts := hypervisors.NewVMOptions{
+	opts := vmm.NewVMOptions{
 		Vcpus:   uint(hypervisorConfig.NumVCPUs()),
 		Memory:  memBytes,
 		Devices: vmDevices,
@@ -270,7 +270,7 @@ func (vfw *kataHypervisor[VM]) GetThreadIDs(ctx context.Context) (virtcontainers
 func (vfw *kataHypervisor[VM]) Cleanup(ctx context.Context) error {
 	if any(vfw.managedVm) != nil {
 		currentState := vfw.managedVm.CurrentState()
-		if currentState == hypervisors.VirtualMachineStateTypeRunning || currentState == hypervisors.VirtualMachineStateTypePaused {
+		if currentState == vmm.VirtualMachineStateTypeRunning || currentState == vmm.VirtualMachineStateTypePaused {
 			vfw.managedVm.HardStop(ctx)
 		}
 	}
@@ -332,7 +332,7 @@ func (vfw *kataHypervisor[VM]) GenerateSocket(id string) (interface{}, error) {
 
 	// can the proxy be a fd iteself that we return?
 
-	fd, closerFunc, err := hypervisors.NewVSockStreamFileProxy(vfw.creationContext, vfw.managedVm, 1024)
+	fd, closerFunc, err := vmm.NewVSockStreamFileProxy(vfw.creationContext, vfw.managedVm, 1024)
 	if err != nil {
 		return nil, errors.Errorf("failed to create vsock stream file proxy: %w", err)
 	}

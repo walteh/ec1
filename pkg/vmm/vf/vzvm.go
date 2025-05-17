@@ -14,8 +14,8 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/bootloader"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 // var PlatformType string
@@ -34,7 +34,7 @@ func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
 type VirtualMachineConfiguration struct {
 	id        string
 	bl        bootloader.Bootloader
-	newVMOpts *hypervisors.NewVMOptions // go-friendly virtual machine configuration definition
+	newVMOpts *vmm.NewVMOptions // go-friendly virtual machine configuration definition
 	wrapper   *vzVitualMachineConfigurationWrapper
 	internal  *vz.VirtualMachineConfiguration
 	platform  string
@@ -55,7 +55,7 @@ type vzVitualMachineConfigurationWrapper struct {
 	memoryBalloonDevicesConfiguration    []vz.MemoryBalloonDeviceConfiguration
 }
 
-func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *hypervisors.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachineConfiguration, error) {
+func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachineConfiguration, error) {
 
 	wrapper := &vzVitualMachineConfigurationWrapper{
 		storageDevicesConfiguration:          make([]vz.StorageDeviceConfiguration, 0),

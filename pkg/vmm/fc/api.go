@@ -16,8 +16,8 @@ import (
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 const (
@@ -30,7 +30,7 @@ func ptr[T any](v T) *T { return &v }
 // FirecrackerMicroVM implements the Firecracker API using the hypervisors package.
 // It provides a translation layer between Firecracker API operations and hypervisor operations
 // for a single Firecracker microVM instance.
-type FirecrackerMicroVM[V hypervisors.VirtualMachine] struct {
+type FirecrackerMicroVM[V vmm.VirtualMachine] struct {
 	vm              V    // The single VM instance managed by this API
 	isVMInitialized bool // Tracks if the underlying VM in hypervisor has been created
 	// TODO: Add vmConfig *vmConfigState for pre-boot configurations
@@ -51,10 +51,10 @@ type apiConfig struct {
 
 // NewFirecrackerMicroVM creates a new Firecracker API implementation
 // that leverages the hypervisors package for VM operations for a single microVM.
-func NewFirecrackerMicroVM[V hypervisors.VirtualMachine](ctx context.Context, hpv hypervisors.Hypervisor[V], vmi hypervisors.VMIProvider) (*FirecrackerMicroVM[V], error) {
+func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
 	id := "mvm-" + xid.New().String()
 
-	lvmi, ok := vmi.(hypervisors.LinuxVMIProvider)
+	lvmi, ok := vmi.(vmm.LinuxVMIProvider)
 	if !ok {
 		slog.Error("vmi is not a LinuxVMIProvider")
 		return nil, errors.New("vmi is not a LinuxVMIProvider")
@@ -67,7 +67,7 @@ func NewFirecrackerMicroVM[V hypervisors.VirtualMachine](ctx context.Context, hp
 
 	bootloader := lvmi.BootLoaderConfig(cdf)
 
-	vm, err := hpv.NewVirtualMachine(ctx, id, hypervisors.NewVMOptions{}, bootloader)
+	vm, err := hpv.NewVirtualMachine(ctx, id, vmm.NewVMOptions{}, bootloader)
 	if err != nil {
 		slog.Error("failed to create new VM", "error", err)
 		return nil, err
@@ -80,21 +80,21 @@ func NewFirecrackerMicroVM[V hypervisors.VirtualMachine](ctx context.Context, hp
 	}, nil
 }
 
-var _ operations.FirecrackerAPI = &FirecrackerMicroVM[hypervisors.VirtualMachine]{}
+var _ operations.FirecrackerAPI = &FirecrackerMicroVM[vmm.VirtualMachine]{}
 
 // mapHypervisorStateToInstanceInfoState maps hypervisor VM states to Firecracker InstanceInfo states.
 // InstanceInfo states are: "Not started", "Running", "Paused".
-func mapHypervisorStateToInstanceInfoState(vmState hypervisors.VirtualMachineStateType) string {
+func mapHypervisorStateToInstanceInfoState(vmState vmm.VirtualMachineStateType) string {
 	switch vmState {
-	case hypervisors.VirtualMachineStateTypeRunning:
+	case vmm.VirtualMachineStateTypeRunning:
 		return models.InstanceInfoStateRunning
-	case hypervisors.VirtualMachineStateTypePaused:
+	case vmm.VirtualMachineStateTypePaused:
 		return models.InstanceInfoStatePaused
-	case hypervisors.VirtualMachineStateTypeStarting,
-		hypervisors.VirtualMachineStateTypeStopping,
-		hypervisors.VirtualMachineStateTypeStopped,
-		hypervisors.VirtualMachineStateTypeError,
-		hypervisors.VirtualMachineStateTypeUnknown:
+	case vmm.VirtualMachineStateTypeStarting,
+		vmm.VirtualMachineStateTypeStopping,
+		vmm.VirtualMachineStateTypeStopped,
+		vmm.VirtualMachineStateTypeError,
+		vmm.VirtualMachineStateTypeUnknown:
 		return models.InstanceInfoStateNotStarted
 	default:
 		slog.Warn("mapHypervisorStateToInstanceInfoState: unknown hypervisor state, defaulting to NotStarted", "hypervisor_state", vmState)
@@ -281,7 +281,7 @@ func (f *FirecrackerMicroVM[V]) LoadSnapshot(ctx context.Context, params operati
 		})
 	}
 
-	if err := hypervisors.WaitForVMState(ctx, f.vm, hypervisors.VirtualMachineStateTypePaused, time.After(10*time.Second)); err != nil {
+	if err := vmm.WaitForVMState(ctx, f.vm, vmm.VirtualMachineStateTypePaused, time.After(10*time.Second)); err != nil {
 		slog.Error("failed to wait for vm to be paused", "error", err)
 		return operations.NewLoadSnapshotDefault(http.StatusInternalServerError).WithPayload(&models.Error{
 			FaultMessage: "waiting for snapshot to be restored: " + err.Error(),
@@ -297,7 +297,7 @@ func (f *FirecrackerMicroVM[V]) LoadSnapshot(ctx context.Context, params operati
 			})
 		}
 
-		if err := hypervisors.WaitForVMState(ctx, f.vm, hypervisors.VirtualMachineStateTypeRunning, time.After(10*time.Second)); err != nil {
+		if err := vmm.WaitForVMState(ctx, f.vm, vmm.VirtualMachineStateTypeRunning, time.After(10*time.Second)); err != nil {
 			slog.Error("failed to wait for vm to be running", "error", err)
 			return operations.NewLoadSnapshotDefault(http.StatusInternalServerError).WithPayload(&models.Error{
 				FaultMessage: "failed to wait for vm to be running: " + err.Error(),
