@@ -246,10 +246,10 @@ pragma:
 vaargs: 16
 
 # Debug output for AST parsing
-debugast: true
+debugast: false
 
 # Use ARC (Automatic Reference Counting) - false to match existing code
-arc: false
+arc: true
 
 # Use autoreleases
 autorelease: true

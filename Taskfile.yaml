@@ -285,3 +285,50 @@ tasks:
           - cmd: ./.venv/bin/pip3 install -e .
           - cmd: sudo ./.venv/bin/python3 -m pytest --binary-dir=../../ec1/docs/firecracker/artifacts integration_tests/functional/test_api*
 
+    cgen:
+        desc: generates c shim code
+        vars:
+            FRAMEWORK: '{{ .FRAMEWORK | default "Virtualization" }}'
+            SYMBOLGRAPH_DIR: ./sandbox/cmd/cgen/symbolgraphs
+            SYMBOLGRAPH_OUTPUT_DIR: ./sandbox/cmd/cgen/symbolgraphs
+            OUTPUT_DIR: ./sandbox/cmd/cgen/module
+            SDK:
+                sh: xcrun --sdk macosx --show-sdk-path
+        cmds:
+          - cmd: mkdir -p {{.SYMBOLGRAPH_DIR}}
+          - cmd: mkdir -p {{.OUTPUT_DIR}}
+          - cmd: |-
+                swift-symbolgraph-extract \
+                -module-name {{.FRAMEWORK}} \
+                -target arm64-apple-macos15.4 \
+                -sdk {{.SDK}} \
+                -minimum-access-level public \
+                -output-dir {{.SYMBOLGRAPH_DIR}} \
+                -skip-synthesized-members \
+                -skip-protocol-implementations \
+                -skip-inherited-docs \
+                -emit-extension-block-symbols \
+                -F"{{.SDK}}/System/Library/Frameworks" \
+                -Xcc -fmodules -pretty-print
+          - cmd: |-
+                go run ./sandbox/cmd/cgen/main.go {{.SYMBOLGRAPH_DIR}}/{{.FRAMEWORK}}.symbols.json > {{.OUTPUT_DIR}}/{{.FRAMEWORK}}.shim.m
+
+    cgen:virtualization:
+        desc: generates the virtualization shim
+        cmds:
+          - task: cgen
+            vars:
+                FRAMEWORK: Virtualization
+
+    cgen:hypervisor:
+        desc: generates the hypervisor shim
+        cmds:
+          - task: cgen
+            vars:
+                FRAMEWORK: Hypervisor
+
+    cgen:all:
+        desc: generates all shims
+        cmds:
+          - task: cgen:virtualization
+          - task: cgen:hypervisor
