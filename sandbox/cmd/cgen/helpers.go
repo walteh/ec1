@@ -21,13 +21,23 @@ func sanitizeUSR(usr string) string {
 }
 
 // isCompletion checks if a symbol is a completion handler
-func isSwiftSymbol(selUSR string) bool {
-	// we know ObjC USRs for methods look like "c:objc(...)pauseWithCompletionHandler:"
-	return strings.HasPrefix(selUSR, "s:")
-}
-
 func isCompletion(sig FunctionSignature) bool {
-	return len(sig.Parameters) > 0 && sig.Parameters[len(sig.Parameters)-1].Name == "completionHandler"
+	for _, param := range sig.Parameters {
+		// Check for completion handler patterns in parameter names or types
+		if strings.Contains(strings.ToLower(param.Name), "completion") ||
+			strings.Contains(strings.ToLower(param.Name), "handler") {
+			return true
+		}
+
+		// Look for closure types in parameter declarations
+		for _, frag := range param.DeclarationFragments {
+			if strings.Contains(frag.Spelling, "->") ||
+				strings.Contains(frag.Spelling, "@escaping") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // getReturnType determines the appropriate C return type for a Swift function
@@ -55,4 +65,40 @@ func makeParams(sig FunctionSignature) (string, string) {
 		as = append(as, cname)
 	}
 	return strings.Join(ps, ", "), strings.Join(as, ", ")
+}
+
+// swiftTypeToCType converts a Swift type to a C type
+func swiftTypeToCType(swiftType string) string {
+	switch {
+	case strings.Contains(swiftType, "Int8"):
+		return "int8_t"
+	case strings.Contains(swiftType, "UInt8"):
+		return "uint8_t"
+	case strings.Contains(swiftType, "Int16"):
+		return "int16_t"
+	case strings.Contains(swiftType, "UInt16"):
+		return "uint16_t"
+	case strings.Contains(swiftType, "Int32"):
+		return "int32_t"
+	case strings.Contains(swiftType, "UInt32"):
+		return "uint32_t"
+	case strings.Contains(swiftType, "Int64"):
+		return "int64_t"
+	case strings.Contains(swiftType, "UInt64"):
+		return "uint64_t"
+	case strings.Contains(swiftType, "Int"):
+		return "int"
+	case strings.Contains(swiftType, "UInt"):
+		return "unsigned int"
+	case strings.Contains(swiftType, "Float"):
+		return "float"
+	case strings.Contains(swiftType, "Double"):
+		return "double"
+	case strings.Contains(swiftType, "Bool"):
+		return "bool"
+	case strings.Contains(swiftType, "String"):
+		return "const char*"
+	default:
+		return "void*" // Default to opaque pointer for complex types
+	}
 }

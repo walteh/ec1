@@ -26,6 +26,19 @@ type Symbol struct {
 	PathComponents    []string          `json:"pathComponents"`
 	FunctionSignature FunctionSignature `json:"functionSignature"`
 	Type              *TypeInfo         `json:"type,omitempty"`
+	// Additional fields for type information
+	Children           []EnumCaseChild   `json:"children,omitempty"`
+	SwiftDeclaration   string            `json:"swiftDeclaration,omitempty"`
+	DeclarationFragments []Fragment      `json:"declarationFragments,omitempty"`
+}
+
+// EnumCaseChild represents a case in an enum
+type EnumCaseChild struct {
+	Kind struct {
+		Identifier string `json:"identifier"`
+	} `json:"kind"`
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
 }
 
 // TypeInfo holds information about a type's structure
