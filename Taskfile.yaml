@@ -311,7 +311,7 @@ tasks:
                 -F"{{.SDK}}/System/Library/Frameworks" \
                 -Xcc -fmodules -pretty-print
           - cmd: |-
-                go run ./sandbox/cmd/cgen/main.go {{.SYMBOLGRAPH_DIR}}/{{.FRAMEWORK}}.symbols.json > {{.OUTPUT_DIR}}/{{.FRAMEWORK}}.shim.m
+                go run ./sandbox/cmd/cgen {{.SYMBOLGRAPH_DIR}}/{{.FRAMEWORK}}.symbols.json > {{.OUTPUT_DIR}}/{{.FRAMEWORK}}.shim.m
 
     cgen:virtualization:
         desc: generates the virtualization shim
