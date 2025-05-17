@@ -9,12 +9,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/mod/semver"
+
 	"github.com/walteh/ec1/pkg/machines/bootloader"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/mod/semver"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 // const puipuiMemoryMiB = 1 * 1024
@@ -23,9 +24,9 @@ import (
 const puipuiVersion = "v1.0.3"
 
 var (
-	_ hypervisors.VMIProvider                = &PuiPuiProvider{}
-	_ hypervisors.LinuxVMIProvider           = &PuiPuiProvider{}
-	_ hypervisors.CustomExtractorVMIProvider = &PuiPuiProvider{}
+	_ vmm.VMIProvider                = &PuiPuiProvider{}
+	_ vmm.LinuxVMIProvider           = &PuiPuiProvider{}
+	_ vmm.CustomExtractorVMIProvider = &PuiPuiProvider{}
 )
 
 type PuiPuiProvider struct {
@@ -48,8 +49,8 @@ func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxB
 }
 
 // BootProvisioners implements hypervisors.VMIProvider.
-func (prov *PuiPuiProvider) BootProvisioners() []hypervisors.BootProvisioner {
-	return []hypervisors.BootProvisioner{}
+func (prov *PuiPuiProvider) BootProvisioners() []vmm.BootProvisioner {
+	return []vmm.BootProvisioner{}
 }
 
 // DiskImageURL implements hypervisors.VMIProvider.
@@ -63,8 +64,8 @@ func (prov *PuiPuiProvider) GuestKernelType() guest.GuestKernelType {
 }
 
 // RuntimeProvisioners implements hypervisors.VMIProvider.
-func (prov *PuiPuiProvider) RuntimeProvisioners() []hypervisors.RuntimeProvisioner {
-	return []hypervisors.RuntimeProvisioner{}
+func (prov *PuiPuiProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+	return []vmm.RuntimeProvisioner{}
 }
 
 // SupportsEFI implements hypervisors.VMIProvider.

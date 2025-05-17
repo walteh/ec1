@@ -8,9 +8,9 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 const flatcarVersion = "4230.1.1"
@@ -25,8 +25,8 @@ func (prov *FlatcarProvider) GuestKernelType() guest.GuestKernelType {
 }
 
 var (
-	_ hypervisors.VMIProvider                     = &FlatcarProvider{}
-	_ hypervisors.DiskImageRawFileNameVMIProvider = &FlatcarProvider{}
+	_ vmm.VMIProvider                     = &FlatcarProvider{}
+	_ vmm.DiskImageRawFileNameVMIProvider = &FlatcarProvider{}
 )
 
 type FlatcarProvider struct {
@@ -63,12 +63,12 @@ func (prov *FlatcarProvider) DiskImageRawFileName() string {
 	return strings.TrimSuffix(filepath.Base(diskImageURL), filepath.Ext(diskImageURL))
 }
 
-func (prov *FlatcarProvider) BootProvisioners() []hypervisors.BootProvisioner {
-	return []hypervisors.BootProvisioner{}
+func (prov *FlatcarProvider) BootProvisioners() []vmm.BootProvisioner {
+	return []vmm.BootProvisioner{}
 }
 
-func (prov *FlatcarProvider) RuntimeProvisioners() []hypervisors.RuntimeProvisioner {
-	return []hypervisors.RuntimeProvisioner{}
+func (prov *FlatcarProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+	return []vmm.RuntimeProvisioner{}
 }
 
 func (prov *FlatcarProvider) ShutdownCommand() string {

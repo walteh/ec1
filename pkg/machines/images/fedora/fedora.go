@@ -10,10 +10,10 @@ import (
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/guest"
 	"github.com/walteh/ec1/pkg/machines/host"
 	"github.com/walteh/ec1/pkg/machines/provisioner/ignition"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 const fedoraVersion = "42"
@@ -28,8 +28,8 @@ func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
 }
 
 var (
-	_ hypervisors.VMIProvider                     = &FedoraProvider{}
-	_ hypervisors.DiskImageRawFileNameVMIProvider = &FedoraProvider{}
+	_ vmm.VMIProvider                     = &FedoraProvider{}
+	_ vmm.DiskImageRawFileNameVMIProvider = &FedoraProvider{}
 )
 
 type FedoraProvider struct {
@@ -59,13 +59,13 @@ func (prov *FedoraProvider) DiskImageRawFileName() string {
 	return strings.TrimSuffix(filepath.Base(diskImageURL), filepath.Ext(diskImageURL))
 }
 
-func (prov *FedoraProvider) BootProvisioners() []hypervisors.BootProvisioner {
+func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {
 	cfg := &types_exp.Config{}
-	return []hypervisors.BootProvisioner{ignition.NewIgnitionBootConfigProvider(cfg)}
+	return []vmm.BootProvisioner{ignition.NewIgnitionBootConfigProvider(cfg)}
 }
 
-func (fedora *FedoraProvider) RuntimeProvisioners() []hypervisors.RuntimeProvisioner {
-	return []hypervisors.RuntimeProvisioner{}
+func (fedora *FedoraProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+	return []vmm.RuntimeProvisioner{}
 }
 
 func (fedora *FedoraProvider) ShutdownCommand() string {

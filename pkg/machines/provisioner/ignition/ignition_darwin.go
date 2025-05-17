@@ -12,16 +12,17 @@ import (
 	"time"
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
-	"github.com/walteh/ec1/pkg/hypervisors"
-	"github.com/walteh/ec1/pkg/machines/virtio"
 	"gitlab.com/tozd/go/errors"
+
+	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 const (
 	APPLE_HF_STATIC_IGNITION_PORT = 1024
 )
 
-var _ hypervisors.BootProvisioner = &DarwinIgnitionBootConfigProvider{}
+var _ vmm.BootProvisioner = &DarwinIgnitionBootConfigProvider{}
 
 type IgnitionBootConfigProvider = DarwinIgnitionBootConfigProvider
 
@@ -41,7 +42,7 @@ func (me *DarwinIgnitionBootConfigProvider) device() *virtio.VirtioVsock {
 	}
 }
 
-func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, vm hypervisors.VirtualMachine) error {
+func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, vm vmm.VirtualMachine) error {
 	// we could prob just straight encode this, might as well do the validation and marshall before
 	// 	waiting on the server though to avoid any issues with error propagation
 
@@ -60,7 +61,7 @@ func (me *DarwinIgnitionBootConfigProvider) RunDuringBoot(ctx context.Context, v
 		}
 	})
 
-	listener, err := hypervisors.ListenVsock(ctx, vm, me.device())
+	listener, err := vmm.ListenVsock(ctx, vm, me.device())
 	if err != nil {
 		return errors.Errorf("listening on ignition socket: %w", err)
 	}

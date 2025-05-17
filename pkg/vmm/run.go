@@ -1,4 +1,4 @@
-package hypervisors
+package vmm
 
 import (
 	"context"

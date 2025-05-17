@@ -10,15 +10,15 @@ import (
 
 	"github.com/apex/log"
 
-	"github.com/walteh/ec1/pkg/hypervisors"
 	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 const (
 	QEMU_GUEST_AGENT_SOCKET_PORT = 1024
 )
 
-var _ hypervisors.RuntimeProvisioner = &QemuGuestAgentTimesyncProvisioner{}
+var _ vmm.RuntimeProvisioner = &QemuGuestAgentTimesyncProvisioner{}
 
 type QemuGuestAgentTimesyncProvisioner struct {
 }
@@ -31,7 +31,7 @@ func (me *QemuGuestAgentTimesyncProvisioner) device() *virtio.VirtioVsock {
 	}
 }
 
-func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Context, vm hypervisors.VirtualMachine) error {
+func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Context, vm vmm.VirtualMachine) error {
 
 	var vsockConn net.Conn
 
@@ -51,7 +51,7 @@ func (me *QemuGuestAgentTimesyncProvisioner) RunDuringRuntime(ctx context.Contex
 			log.Infof("machine awake")
 			if vsockConn == nil {
 				var err error
-				vsockConn, err = hypervisors.ConnectVsock(ctx, vm, me.device())
+				vsockConn, err = vmm.ConnectVsock(ctx, vm, me.device())
 				if err != nil {
 					log.Debugf("error connecting to vsock port %d: %v", QEMU_GUEST_AGENT_SOCKET_PORT, err)
 					break
