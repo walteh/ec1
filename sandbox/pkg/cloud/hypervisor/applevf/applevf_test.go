@@ -11,9 +11,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
-	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf/applevftest/testdata"
+
 	"github.com/walteh/ec1/pkg/embedtd"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf/applevftest/testdata"
 )
 
 func TestStartIgnitionProvisionerServer(t *testing.T) {

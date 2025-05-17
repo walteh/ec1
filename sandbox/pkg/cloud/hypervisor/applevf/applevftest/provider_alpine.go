@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/crc-org/vfkit/pkg/config"
-	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
+
+	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf"
 )
 
 const alpineVersion = "3.21"

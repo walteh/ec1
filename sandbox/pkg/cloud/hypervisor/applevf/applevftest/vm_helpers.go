@@ -23,9 +23,9 @@ import (
 
 	vfkithelpers "github.com/crc-org/crc/v2/pkg/drivers/vfkit"
 
-	"github.com/walteh/ec1/pkg/cloud/hypervisor/applevf"
 	"github.com/walteh/ec1/pkg/networks/gvnet"
 	"github.com/walteh/ec1/pkg/port"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor/applevf"
 )
 
 func init() {

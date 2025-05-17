@@ -8,15 +8,18 @@ import (
 	"strings"
 	"time"
 
-	slogctx "github.com/veqryn/slog-context"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/pkg/cloud/hypervisor"
-	"github.com/walteh/ec1/pkg/cloud/id"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
 	"connectrpc.com/connect"
+
+	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
+	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/hypervisor"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/id"
+
 	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
 )
 

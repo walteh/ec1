@@ -16,14 +16,15 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pkg/sftp"
 	slogctx "github.com/veqryn/slog-context"
-	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
-	"github.com/walteh/ec1/pkg/cloud/agent"
-	"github.com/walteh/ec1/pkg/cloud/id"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+
+	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
+	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
+	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/agent"
+	"github.com/walteh/ec1/sanbox/pkg/cloud/id"
 )
 
 var _ v1poc1connect.ManagementServiceHandler = &Server{}
