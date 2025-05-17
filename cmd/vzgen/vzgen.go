@@ -1,14 +1,14 @@
 package main
 
-import (
-	"github.com/walteh/ec1/hypervisor"
-)
+// import (
+// 	"github.com/walteh/ec1/hypervisor"
+// )
 
-//// go:generate go tool nswrap
+// //// go:generate go tool nswrap
 
-func main() {
-	// vzfobjc.Autoreleasepool(func() {
-	// })
+// func main() {
+// 	// vzfobjc.Autoreleasepool(func() {
+// 	// })
 
-	_ = hypervisor.HvVmCreate
-}
+// 	_ = hypervisor.HvVmCreate
+// }

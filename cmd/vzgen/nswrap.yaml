@@ -5,7 +5,7 @@ package: hypervisor
 inputfiles:
   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Hypervisor.framework/Headers/Hypervisor.h
   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Virtualization.framework/Headers/Virtualization.h
-  - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
+#   - /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h
 
 # Classes to generate bindings for
 classes:
@@ -189,7 +189,7 @@ enums:
 frameworks:
   - Foundation
   - Virtualization
-  - Hypervisor
+#   - Hypervisor
 #   - Cocoa
 
 # Framework search dirs
@@ -235,11 +235,6 @@ typesubs:
     # "^API_AVAILABLE_.*": "unsafe.Pointer" # Handle API_AVAILABLE macros
     # "^OS_OBJECT_RETURNS_RETAINED_.*": "unsafe.Pointer" # Handle OS_OBJECT macros
     # # Specific problematic types
-    "API_AVAILABLENSString": "NSString"
-    "API_AVAILABLENSArray": "NSArray"
-    "API_AVAILABLEVZPlatformConfiguration": "VZPlatformConfiguration"
-    "OS_OBJECT_RETURNS_RETAINEDHv_vcpu_config_t": "hv_vcpu_config_t"
-    "OS_OBJECT_RETURNS_RETAINEDHv_vm_config_t": "hv_vm_config_t"
     # (More typesubs for GIC/SME structs and specific typedefs to be added)
 
 # Compiler directives
