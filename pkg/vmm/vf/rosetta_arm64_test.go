@@ -6,7 +6,8 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/walteh/ec1/pkg/machines/virtio"
+
+	"github.com/walteh/ec1/pkg/virtio"
 )
 
 type checkRosettaAvailabilityTest struct {

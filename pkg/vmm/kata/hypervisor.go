@@ -20,8 +20,8 @@ import (
 
 	hv "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
 
-	"github.com/walteh/ec1/pkg/machines/bootloader"
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

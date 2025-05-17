@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/walteh/ec1/pkg/machines/bootloader"
+	"github.com/walteh/ec1/pkg/bootloader"
 )
 
 type Hypervisor[VM VirtualMachine] interface {

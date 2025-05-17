@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/logging/logrusshim"
-	"github.com/walteh/ec1/pkg/machines/host"
 )
 
 func init() {

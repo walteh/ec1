@@ -15,8 +15,8 @@ import (
 	"github.com/containers/gvisor-tap-vsock/pkg/tcpproxy"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/machines/host"
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/host"
+	"github.com/walteh/ec1/pkg/virtio"
 )
 
 func VSockProxyUnixAddr(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (*net.UnixAddr, error) {

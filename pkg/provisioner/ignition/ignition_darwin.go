@@ -14,7 +14,7 @@ import (
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

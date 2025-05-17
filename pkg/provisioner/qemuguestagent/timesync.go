@@ -10,7 +10,7 @@ import (
 
 	"github.com/apex/log"
 
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

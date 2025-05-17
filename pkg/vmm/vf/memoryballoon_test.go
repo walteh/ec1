@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/machines/images/puipui"
+	"github.com/walteh/ec1/pkg/images/puipui"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"

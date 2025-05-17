@@ -16,7 +16,7 @@ import (
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
-	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

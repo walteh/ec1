@@ -8,8 +8,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 
-	"github.com/walteh/ec1/pkg/machines/guest"
-	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/guest"
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

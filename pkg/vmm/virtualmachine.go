@@ -6,7 +6,7 @@ import (
 
 	"github.com/containers/common/pkg/strongunits"
 
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/virtio"
 )
 
 type VirtualMachine interface {

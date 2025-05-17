@@ -10,9 +10,9 @@ import (
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
 
-	"github.com/walteh/ec1/pkg/machines/guest"
-	"github.com/walteh/ec1/pkg/machines/host"
-	"github.com/walteh/ec1/pkg/machines/provisioner/ignition"
+	"github.com/walteh/ec1/pkg/guest"
+	"github.com/walteh/ec1/pkg/host"
+	"github.com/walteh/ec1/pkg/provisioner/ignition"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

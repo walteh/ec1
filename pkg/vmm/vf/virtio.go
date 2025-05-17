@@ -9,8 +9,9 @@ import (
 	"strings"
 
 	"github.com/crc-org/vfkit/pkg/util"
-	"github.com/walteh/ec1/pkg/machines/virtio"
 	"golang.org/x/sys/unix"
+
+	"github.com/walteh/ec1/pkg/virtio"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/pkg/term/termios"

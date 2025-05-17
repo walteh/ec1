@@ -9,7 +9,7 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/machines/host"
+	"github.com/walteh/ec1/pkg/host"
 )
 
 const snapshotExtension = ".ec1-vf-snapshot"

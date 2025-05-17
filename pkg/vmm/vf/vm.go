@@ -9,7 +9,7 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/machines/virtio"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 

@@ -7,7 +7,8 @@ import (
 	"runtime"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/walteh/ec1/pkg/machines/bootloader"
+
+	"github.com/walteh/ec1/pkg/bootloader"
 )
 
 // from https://github.com/h2non/filetype/blob/cfcd7d097bc4990dc8fc86187307651ae79bf9d9/matchers/document.go#L159-L174

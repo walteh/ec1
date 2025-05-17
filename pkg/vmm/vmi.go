@@ -5,8 +5,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/walteh/ec1/pkg/machines/bootloader"
-	"github.com/walteh/ec1/pkg/machines/guest"
+	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/guest"
 )
 
 type VMIProvider interface {

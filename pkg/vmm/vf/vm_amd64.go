@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/walteh/ec1/pkg/machines/bootloader"
+
+	"github.com/walteh/ec1/pkg/bootloader"
 )
 
 func NewMacPlatformConfiguration(_, _, _ string) (vz.PlatformConfiguration, error) {

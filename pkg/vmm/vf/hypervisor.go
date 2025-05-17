@@ -8,7 +8,7 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/machines/bootloader"
+	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
