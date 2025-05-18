@@ -48,7 +48,8 @@ func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.P
 	// If direct execution failed, try with shell
 	if err != nil {
 		log.Printf("Direct execution failed, trying with shell: %v", err)
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
+
 		return e.setupAndRunCommand(ctx, proto, cmd)
 	}
 

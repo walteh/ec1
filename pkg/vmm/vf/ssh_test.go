@@ -279,9 +279,22 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 
 	<-time.After(3 * time.Second)
 
-	sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, "ls -la /ec1")
+	sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, "cat /proc/cmdline")
 	require.NoError(t, err, "Failed to execute command")
 	require.NotEmpty(t, sshout)
+	t.Logf("cmdline: %s", sshout)
+	sshout, err = makeTestSSHCommandCall(t, ctx, sshClient, "ls -l /ec1")
+	require.NoError(t, err, "Failed to execute command")
+	require.NotEmpty(t, sshout)
+	t.Logf("ls -l /ec1: %s", sshout)
+
+	// for each file, init.pid, init.stdout, init.stderr, init.handle cat it
+	// for _, file := range []string{"/ec1/init.pid"} {
+	// 	sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, fmt.Sprintf("cat %s", file))
+	// 	require.NoError(t, err, "Failed to execute command")
+	// 	// require.NotEmpty(t, sshout)
+	// 	t.Logf("%s: %s", file, sshout)
+	// }
 
 	// --- Test Vsock ---
 	guestListenPort := uint32(2019) // Arbitrary vsock port for the guest to listen on
@@ -300,6 +313,11 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	scli := streamexec.NewClient(trans, func(conn io.ReadWriter) protocol.Protocol {
 		return protocol.NewFramedProtocol(conn)
 	})
+
+	err = scli.Connect(ctx)
+	require.NoError(t, err, "Failed to connect to streamexec server")
+
+	defer scli.Close()
 
 	stdout, stderr, exitCode, err := scli.ExecuteCommand(ctx, "cat /proc/meminfo")
 	fmt.Printf("stdout: %s\n", string(stdout))

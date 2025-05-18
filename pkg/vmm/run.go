@@ -32,7 +32,9 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 			if err != nil {
 				return nil, errors.Errorf("preparing initramfs cpio: %w", err)
 			}
+			os.Remove(bl.InitrdPath)
 			bl.InitrdPath = modifiedInitrd
+
 			return bl, nil
 		} else {
 			return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
@@ -97,6 +99,11 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 	// 	return nil, errors.Errorf("creating memory balloon device: %w", err)
 	// }
 	// devices = append(devices, memoryBalloonDev)
+
+	devices = append(devices, &virtio.VirtioSerial{
+		LogFile: "./init.log",
+		// UsesStdio: true,
+	})
 
 	// run boot provisioner
 	bootProvisioners := vmi.BootProvisioners()

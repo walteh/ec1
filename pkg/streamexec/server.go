@@ -82,6 +82,8 @@ func (s *Server) Serve() error {
 		}
 	}()
 
+	s.wg.Wait()
+
 	return nil
 }
 

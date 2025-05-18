@@ -34,14 +34,14 @@ func (t *VSockTransport) Dial() (io.ReadWriteCloser, error) {
 // ListenVsock creates a VSOCK listener on the given CID and port
 func (t *VSockTransport) Listen() (net.Listener, error) {
 
-	// when listening we want to use our own contextid
-	id, err := vsock.ContextID()
-	if err != nil {
-		return nil, errors.Errorf("vsock context id: %w", err)
-	}
-	t.contextID = id
+	// // when listening we want to use our own contextid
+	// id, err := vsock.ContextID()
+	// if err != nil {
+	// 	return nil, errors.Errorf("vsock context id: %w", err)
+	// }
+	// t.contextID = id
 
-	listener, err := vsock.ListenContextID(id, t.port, nil)
+	listener, err := vsock.ListenContextID(3, t.port, nil)
 	if err != nil {
 		return nil, errors.Errorf("vsock listen: %w", err)
 	}

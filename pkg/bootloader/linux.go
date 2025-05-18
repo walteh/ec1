@@ -124,7 +124,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	}
 
 	// Path for our custom init
-	const customInitPath = "init.ec1"
+	const customInitPath = "init"
 
 	// Read all records from the input CPIO
 	records, err := cpio.ReadAllRecords(cpioReader)
@@ -135,8 +135,11 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Filter out any existing init.ec1 files
 	var filteredRecords []cpio.Record
 	for _, rec := range records {
-		if rec.Name == customInitPath {
-			continue
+		// if rec.Name == customInitPath {
+		// 	continue
+		// }
+		if rec.Name == "init" {
+			rec.Name = "init.real"
 		}
 		filteredRecords = append(filteredRecords, rec)
 	}

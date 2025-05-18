@@ -44,7 +44,7 @@ func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxB
 
 	return &bootloader.LinuxBootloader{
 		VmlinuzPath:   filepath.Join(cacheDir, out),
-		KernelCmdLine: "init=/init.ec1",
+		KernelCmdLine: "console=hvc0 init=/init.ec1",
 		InitrdPath:    filepath.Join(cacheDir, "initramfs.cpio.gz"),
 	}
 }
