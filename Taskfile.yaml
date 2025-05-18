@@ -343,3 +343,33 @@ tasks:
           - task: cgen:virtualization
           - task: cgen:hypervisor
 
+    binembed:
+        desc: embeds the bins
+        vars:
+            BINS:
+                map:
+                    lgia-linux-arm64:
+                        src: lgia
+                        goarch: arm64
+                        goos: linux
+                    lgia-linux-amd64:
+                        src: lgia
+                        goarch: amd64
+                        goos: linux
+
+        cmds:
+          - cmd: rm -rf ./gen/binembed
+          - cmd: mkdir -p ./gen/binembed
+          - for: {var: BINS}
+            cmd: |-
+                mkdir -p ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}
+          - for: {var: BINS}
+            cmd: |-
+                GOOS={{.ITEM.goos}} GOARCH={{.ITEM.goarch}} {{.GO_COMMAND}} build -ldflags="-s -w -extldflags=-static" -trimpath -o ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/{{.ITEM.src | replace "-" "_" | lower}} ./cmd/{{.ITEM.src}}
+                xz -k ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/{{.ITEM.src | replace "-" "_" | lower}}
+                sha256sum ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/{{.ITEM.src | replace "-" "_" | lower}}.xz > ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/{{.ITEM.src | replace "-" "_" | lower}}.xz.sha256
+          - for: {var: BINS}
+            cmd: |-
+                echo -e "package {{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}\n\nimport _ \"embed\"\n" > ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
+                echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}\n\nvar BinaryXZ []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
+                echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}.xz.sha256\n\nvar BinaryXZChecksum []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go

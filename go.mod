@@ -30,12 +30,10 @@ require (
 	github.com/containerd/typeurl/v2 v2.2.3
 	github.com/containers/common v0.63.0
 	github.com/containers/gvisor-tap-vsock v0.8.6
-	github.com/containers/winquit v1.1.0
 	github.com/coreos/ignition/v2 v2.21.0
-	github.com/crc-org/crc/v2 v2.50.0
+	github.com/crc-org/crc/v2 v2.49.0
 	github.com/crc-org/vfkit v0.6.2-0.20250415145558-4b7cae94e86a
-	github.com/creack/pty v1.1.24
-	github.com/digitalocean/go-libvirt v0.0.0-20250512231903-57024326652b
+	github.com/creack/pty v1.1.18
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-openapi/errors v0.22.1
@@ -54,7 +52,6 @@ require (
 	github.com/mdlayher/vsock v1.2.1
 	github.com/mholt/archives v0.1.2
 	github.com/opencontainers/runtime-spec v1.2.1
-	github.com/pkg/sftp v1.13.9
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
 	github.com/rs/xid v1.6.0
@@ -74,7 +71,6 @@ require (
 	golang.org/x/sys v0.33.0
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
-	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 	libguestfs.org/libnbd v1.20.0
 )
@@ -130,7 +126,7 @@ require (
 	github.com/crc-org/machine v0.0.0-20240926103419-a943b47fd48b // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/go-events v0.0.0-20250114142523-c867878c5e32 // indirect
+	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
@@ -177,7 +173,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
-	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/linuxkit/virtsock v0.0.0-20220523201153-1a23e78aa7a2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
@@ -274,6 +269,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250428153025-10db94c68c34 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9 // indirect
 	k8s.io/api v0.32.3 // indirect
 	k8s.io/apimachinery v0.32.3 // indirect

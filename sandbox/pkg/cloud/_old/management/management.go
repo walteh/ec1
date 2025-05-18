@@ -11,23 +11,23 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/tozd/go/errors"
-
-	"connectrpc.com/connect"
 	"github.com/pkg/sftp"
-	slogctx "github.com/veqryn/slog-context"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	ec1v1 "github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1"
+	"connectrpc.com/connect"
+	"gitlab.com/tozd/go/errors"
+
+	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/gen/proto/golang/buf/validate/protovalidate"
 	"github.com/walteh/ec1/gen/proto/golang/ec1/v1poc1/v1poc1connect"
-	"github.com/walteh/ec1/gen/proto/golang/ec1/validate/protovalidate"
 	"github.com/walteh/ec1/sandbox/pkg/cloud/agent"
 	"github.com/walteh/ec1/sandbox/pkg/cloud/id"
 )
 
-var _ v1poc1connect.ManagementServiceHandler = &Server{}
+// var _ v1poc1connect.ManagementServiceHandler = &Server{}
 
 const OWN_AGENT_ID = "agent-00000000000000000000"
 
