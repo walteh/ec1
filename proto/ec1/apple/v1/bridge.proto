@@ -1,0 +1,5 @@
+edition = "2023";
+
+package ec1.bridge.v1;
+
+service HypervisorBridgeService {}
