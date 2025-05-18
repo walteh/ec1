@@ -27,9 +27,10 @@ plugins:
     local: ["go", "tool", "connectrpc.com/connect/cmd/protoc-gen-connect-go"]
     opt:
       - paths=source_relative
+
   - out: gen/proto/golang
     local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate"]
     include_imports: true
     opt:
       - paths=source_relative
-      - buf_validate_file=ec1/validate/validate.proto
+    #   - buf_validate_file=ec1/validate/validate.proto

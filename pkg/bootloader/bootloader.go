@@ -67,18 +67,6 @@ type MacOSBootloader struct {
 	AuxImagePath          string `json:"auxImagePath"`
 }
 
-// NewLinuxBootloader creates a new bootloader to start a VM with the file at
-// vmlinuzPath as the kernel, kernelCmdLine as the kernel command line, and the
-// file at initrdPath as the initrd. On ARM64, the kernel must be uncompressed
-// otherwise the VM will fail to boot.
-func NewLinuxBootloader(vmlinuzPath, kernelCmdLine, initrdPath string) *LinuxBootloader {
-	return &LinuxBootloader{
-		VmlinuzPath:   vmlinuzPath,
-		KernelCmdLine: kernelCmdLine,
-		InitrdPath:    initrdPath,
-	}
-}
-
 func (bootloader *LinuxBootloader) FromOptions(options []option) error {
 	for _, option := range options {
 		switch option.key {

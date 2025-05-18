@@ -76,6 +76,7 @@ require (
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
+	libguestfs.org/libnbd v1.20.0
 )
 
 require (
