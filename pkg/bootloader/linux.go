@@ -9,7 +9,11 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	nbd "libguestfs.org/libnbd"
+
+	"github.com/walteh/ec1/gen/binembed/lgia_linux_arm64"
 )
+
+var bin = lgia_linux_arm64.BinaryXZ
 
 // NewLinuxBootloader creates a new bootloader to start a VM with the file at
 // vmlinuzPath as the kernel, kernelCmdLine as the kernel command line, and the

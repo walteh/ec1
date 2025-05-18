@@ -112,16 +112,20 @@ func (s *Server) handleConnection(conn io.ReadWriteCloser) error {
 
 			command := string(data)
 			log.Printf("Executing command: %s", command)
-
-			// Execute the command in a separate context that can be canceled when the server shuts down
 			cmdCtx, cmdCancel := context.WithCancel(s.ctx)
-			err = s.executor.ExecuteCommand(cmdCtx, proto, command)
-			cmdCancel()
 
-			if err != nil {
-				log.Printf("Error executing command: %v", err)
-				// Continue processing commands despite errors
-			}
+			go func() {
+				defer cmdCancel()
+
+				// Execute the command in a separate context that can be canceled when the server shuts down
+				err := s.executor.ExecuteCommand(cmdCtx, proto, command)
+
+				if err != nil {
+					log.Printf("Error executing command: %v", err)
+					// Continue processing commands despite errors
+				}
+			}()
+
 		}
 	}
 }

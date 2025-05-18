@@ -3,6 +3,7 @@ package protocol
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"gitlab.com/tozd/go/errors"
@@ -23,6 +24,23 @@ const (
 	// Exit represents a command exit status
 	Exit
 )
+
+func (m MessageType) String() string {
+	switch m {
+	case Command:
+		return "command"
+	case Stdout:
+		return "stdout"
+	case Stderr:
+		return "stderr"
+	case Stdin:
+		return "stdin"
+	case Exit:
+		return "exit"
+	default:
+		return fmt.Sprintf("unknown(%d)", m)
+	}
+}
 
 type ProtocolConnFunc func(conn io.ReadWriter) Protocol
 
