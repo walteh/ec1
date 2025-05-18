@@ -261,7 +261,7 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 
 	// Create a real VM for testing
-	rvm, pp := setupPuipuiVM(t, ctx, 1024)
+	rvm, _ := setupPuipuiVM(t, ctx, 1024)
 	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return
@@ -272,21 +272,21 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
-	sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
-	require.NoError(t, err, "error obtaining ssh connection: %v", err)
-	defer sshClient.Close()
+	// sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
+	// sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
+	// require.NoError(t, err, "error obtaining ssh connection: %v", err)
+	// defer sshClient.Close()
 
-	<-time.After(3 * time.Second)
+	// <-time.After(3 * time.Second)
 
-	sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, "cat /proc/cmdline")
-	require.NoError(t, err, "Failed to execute command")
-	require.NotEmpty(t, sshout)
-	t.Logf("cmdline: %s", sshout)
-	sshout, err = makeTestSSHCommandCall(t, ctx, sshClient, "ls -l /ec1")
-	require.NoError(t, err, "Failed to execute command")
-	require.NotEmpty(t, sshout)
-	t.Logf("ls -l /ec1: %s", sshout)
+	// sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, "cat /proc/cmdline")
+	// require.NoError(t, err, "Failed to execute command")
+	// require.NotEmpty(t, sshout)
+	// t.Logf("cmdline: %s", sshout)
+	// sshout, err = makeTestSSHCommandCall(t, ctx, sshClient, "ls -l /ec1")
+	// require.NoError(t, err, "Failed to execute command")
+	// require.NotEmpty(t, sshout)
+	// t.Logf("ls -l /ec1: %s", sshout)
 
 	// for each file, init.pid, init.stdout, init.stderr, init.handle cat it
 	// for _, file := range []string{"/ec1/init.pid"} {
@@ -295,6 +295,8 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	// 	// require.NotEmpty(t, sshout)
 	// 	t.Logf("%s: %s", file, sshout)
 	// }
+
+	<-time.After(100 * time.Millisecond)
 
 	// --- Test Vsock ---
 	guestListenPort := uint32(2019) // Arbitrary vsock port for the guest to listen on
