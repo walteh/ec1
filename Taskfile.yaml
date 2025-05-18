@@ -371,5 +371,5 @@ tasks:
           - for: {var: BINS}
             cmd: |-
                 echo -e "package {{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}\n\nimport _ \"embed\"\n" > ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
-                echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}\n\nvar BinaryXZ []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
+                echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}.xz\n\nvar BinaryXZ []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
                 echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}.xz.sha256\n\nvar BinaryXZChecksum []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go

@@ -2,7 +2,7 @@ package lgia_linux_amd64
 
 import _ "embed"
 
-//go:embed lgia
+//go:embed lgia.xz
 
 var BinaryXZ []byte
 

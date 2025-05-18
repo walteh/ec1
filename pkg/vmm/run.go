@@ -27,7 +27,13 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
 		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
-			return linuxVMIProvider.BootLoaderConfig(bootCacheDir), nil
+			bl := linuxVMIProvider.BootLoaderConfig(bootCacheDir)
+			modifiedInitrd, err := bootloader.PrepareInitramfsCpio(ctx, bl.InitrdPath)
+			if err != nil {
+				return nil, errors.Errorf("preparing initramfs cpio: %w", err)
+			}
+			bl.InitrdPath = modifiedInitrd
+			return bl, nil
 		} else {
 			return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
 		}

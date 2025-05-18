@@ -2,8 +2,10 @@ package vf_test
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -12,6 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/walteh/ec1/pkg/streamexec"
+	"github.com/walteh/ec1/pkg/streamexec/protocol"
+	"github.com/walteh/ec1/pkg/streamexec/transport"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 )
@@ -67,6 +72,21 @@ func TestSSH(t *testing.T) {
 
 	require.Equal(t, "hello\n", string(output))
 
+}
+
+func makeTestSSHCommandCall(t *testing.T, ctx context.Context, sshClient *ssh.Client, command string) (string, error) {
+	sshSession, err := sshClient.NewSession()
+	if err != nil {
+		t.Fatalf("error creating ssh session: %v", err)
+	}
+
+	defer sshSession.Close()
+	output, err := sshSession.CombinedOutput(command)
+	if err != nil {
+		t.Fatalf("command failed: %v: %s", err, string(output))
+	}
+
+	return string(output), nil
 }
 
 func TestVSock(t *testing.T) {
@@ -234,5 +254,65 @@ func TestMeminfo(t *testing.T) {
 	t.Logf("command output: %s", string(output))
 
 	require.NotEmpty(t, string(output))
+
+}
+
+func TestGuestInitWrapperVSock(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+
+	// Create a real VM for testing
+	rvm, pp := setupPuipuiVM(t, ctx, 1024)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	sshUrl := fmt.Sprintf("tcp://%s:%d", "127.0.0.1", rvm.PortOnHostIP())
+	sshClient, err := vmm.ObtainSSHConnectionWithGuest(ctx, sshUrl, pp.SSHConfig(), time.After(30*time.Second))
+	require.NoError(t, err, "error obtaining ssh connection: %v", err)
+	defer sshClient.Close()
+
+	<-time.After(3 * time.Second)
+
+	sshout, err := makeTestSSHCommandCall(t, ctx, sshClient, "ls -la /ec1")
+	require.NoError(t, err, "Failed to execute command")
+	require.NotEmpty(t, sshout)
+
+	// --- Test Vsock ---
+	guestListenPort := uint32(2019) // Arbitrary vsock port for the guest to listen on
+
+	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
+	// Expose the guest's vsock port. The host will connect to the guest's server.
+	// conn, cleanup, err := vmm.NewUnixSocketStreamConnection(ctx, rvm.VM(), guestListenPort)
+	conn, err := rvm.VM().VSockConnect(ctx, guestListenPort)
+	require.NoError(t, err, "Failed to expose vsock port")
+	require.NotNil(t, conn, "Host connection should not be nil")
+	// t.Cleanup(cleanup)
+	trans := transport.NewFunctionTransport(func() (io.ReadWriteCloser, error) {
+		return conn, nil
+	}, nil)
+
+	scli := streamexec.NewClient(trans, func(conn io.ReadWriter) protocol.Protocol {
+		return protocol.NewFramedProtocol(conn)
+	})
+
+	stdout, stderr, exitCode, err := scli.ExecuteCommand(ctx, "cat /proc/meminfo")
+	fmt.Printf("stdout: %s\n", string(stdout))
+	fmt.Printf("stderr: %s\n", string(stderr))
+	fmt.Printf("exitCode: %d\n", exitCode)
+	fmt.Printf("err: %v\n", err)
+
+	require.Equal(t, 0, exitCode)
+
+	require.NoError(t, err, "Failed to execute command")
+
+	require.NotEmpty(t, string(stdout))
+
+	require.Empty(t, string(stderr))
 
 }

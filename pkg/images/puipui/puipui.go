@@ -41,9 +41,10 @@ func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxB
 	if host.CurrentKernelArch() == "aarch64" {
 		out = "Image"
 	}
+
 	return &bootloader.LinuxBootloader{
 		VmlinuzPath:   filepath.Join(cacheDir, out),
-		KernelCmdLine: "quiet",
+		KernelCmdLine: "init=/init.ec1",
 		InitrdPath:    filepath.Join(cacheDir, "initramfs.cpio.gz"),
 	}
 }
@@ -112,6 +113,7 @@ func (prov *PuiPuiProvider) CustomExtraction(ctx context.Context, cacheDir strin
 		if err != nil {
 			return err
 		}
+
 	}
 
 	return nil
