@@ -33,6 +33,7 @@ require (
 	github.com/containers/common v0.63.0
 	github.com/containers/gvisor-tap-vsock v0.8.6
 	github.com/coreos/ignition/v2 v2.21.0
+	github.com/coreos/stream-metadata-go v0.4.7
 	github.com/crc-org/crc/v2 v2.49.0
 	github.com/crc-org/vfkit v0.6.2-0.20250415145558-4b7cae94e86a
 	github.com/creack/pty v1.1.21
@@ -57,16 +58,19 @@ require (
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
+	github.com/prometheus/procfs v0.15.1
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	github.com/superblocksteam/run v0.0.7
+	github.com/u-root/u-root v0.14.0
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/veqryn/slog-context v0.8.0
 	github.com/walteh/run v0.0.0-20250510150917-6f8074766f03
 	gitlab.com/tozd/go/errors v0.10.0
+	go.pdmccormick.com/initramfs v0.1.1
 	golang.org/x/crypto v0.38.0
 	golang.org/x/mod v0.24.0
 	golang.org/x/net v0.40.0
@@ -221,7 +225,6 @@ require (
 	github.com/prometheus/client_golang v1.22.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/safchain/ethtool v0.5.10 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
@@ -237,7 +240,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.9.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	github.com/u-root/u-root v0.14.0 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
@@ -263,7 +265,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
-	go.pdmccormick.com/initramfs v0.1.1 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329 // indirect

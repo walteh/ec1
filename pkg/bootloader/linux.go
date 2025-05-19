@@ -8,7 +8,8 @@ import (
 	"os"
 
 	"github.com/diskfs/go-diskfs"
-	"github.com/diskfs/go-diskfs/filesystem"
+	"github.com/diskfs/go-diskfs/filesystem/ext4"
+	"github.com/diskfs/go-diskfs/partition/gpt"
 	"github.com/mholt/archives"
 	"github.com/u-root/u-root/pkg/cpio"
 	"gitlab.com/tozd/go/errors"
@@ -45,7 +46,7 @@ var (
 	uncompressedInitBin = []byte{}
 )
 
-func uncompressInitBin(ctx context.Context) ([]byte, error) {
+func UncompressInitBin(ctx context.Context) ([]byte, error) {
 	if len(uncompressedInitBin) > 0 {
 		return uncompressedInitBin, nil
 	}
@@ -118,7 +119,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	cpioWriter := cpio.Newc.Writer(gzw)
 
 	// Get the uncompressed init binary
-	uncompressedInitBinData, err := uncompressInitBin(ctx)
+	uncompressedInitBinData, err := UncompressInitBin(ctx)
 	if err != nil {
 		return "", errors.Errorf("uncompressing init binary: %w", err)
 	}
@@ -197,30 +198,98 @@ func PrepareRootFS(ctx context.Context, imagePath string) (string, error) {
 	}
 	defer d.Close()
 
-	// Get the filesystem - we'll try partition 1 first
-	// In a real-world scenario, you might need to identify the correct partition
-	var fs filesystem.FileSystem
+	// // Get the filesystem - we'll try partition 1 first
+	// // In a real-world scenario, you might need to identify the correct partition
+	// var fs filesystem.FileSystem
 
-	// Try to get the filesystem from the first partition
-	fs, err = d.GetFilesystem(1)
+	// for i, p := range d.Table.GetPartitions() {
+	// 	if p.(*gpt.Partition).Name == "p.lxroot" {
+	// 		fs, err = d.GetFilesystem(i)
+	// 		if err != nil {
+	// 			return "", errors.Errorf("getting filesystem: %w", err)
+	// 		}
+	// 		break
+	// 	}
+	// }
+
+	// Find the ext4 partition (e.g., partition 3)
+	var ext4fs *ext4.FileSystem
+	for i, part := range d.Table.GetPartitions() {
+		if part.(*gpt.Partition).Type == gpt.LinuxLVM {
+			fsTemp, err := d.GetFilesystem(i + 1) // partitions are 1-based
+			if err != nil {
+				continue
+			}
+			if e4, ok := fsTemp.(*ext4.FileSystem); ok {
+				ext4fs = e4
+				break
+			}
+		}
+	}
+	if ext4fs == nil {
+		return "", errors.Errorf("ext4 partition not found")
+	}
+
+	// fse := fs.(*ext4.FileSystem)
+
+	dirents, err := ext4fs.ReadDir("/")
 	if err != nil {
-		// If that fails, try to get the filesystem from the entire disk (partition 0)
-		fs, err = d.GetFilesystem(0)
-		if err != nil {
-			return "", errors.Errorf("getting filesystem: %w", err)
+		slog.ErrorContext(ctx, "reading root directory", "error", err)
+	} else {
+
+		for _, dirent := range dirents {
+			slog.InfoContext(ctx, "directory entry", "name", dirent.Name(), "isDir", dirent.IsDir())
 		}
 	}
 
+	file, err := ext4fs.OpenFile("/etc/os-release", os.O_RDONLY)
+	if err != nil {
+		slog.ErrorContext(ctx, "opening os-release", "error", err)
+	} else {
+		defer file.Close()
+		data := make([]byte, 1024)
+		n, err := file.Read(data)
+		if err != nil {
+			slog.ErrorContext(ctx, "reading os-release", "error", err)
+		} else {
+			slog.InfoContext(ctx, "os-release", "data", string(data[:n]))
+		}
+	}
+
+	// slog.InfoContext(ctx, "init", "path", "/sbin/init", "size", len(rdat))
+
+	// // Try to get the filesystem from the first partition
+	// fs, err = d.GetFilesystem(1)
+	// if err != nil {
+	// 	// If that fails, try to get the filesystem from the entire disk (partition 0)
+	// 	fs, err = d.GetFilesystem(0)
+	// 	if err != nil {
+	// 		return "", errors.Errorf("getting filesystem: %w", err)
+	// 	}
+	// }
+
 	// Path for our custom init
-	const customInitPath = "/init.ec1"
+	const customInitPath = "/init"
+
+	if true {
+		return "", errors.New("not implemented")
+	}
+
+	// move the existing init to /init.real
+	existingInit, err := ext4fs.OpenFile("/sbin/init", os.O_RDONLY)
+	if err != nil {
+		return "", errors.Errorf("opening existing init: %w", err)
+	}
+
+	existingInit.Close()
 
 	// Write the custom init
-	newInitFile, err := fs.OpenFile(customInitPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
+	newInitFile, err := ext4fs.OpenFile(customInitPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return "", errors.Errorf("opening custom init file for writing: %w", err)
 	}
 
-	uncompressedInitBinData, err := uncompressInitBin(ctx)
+	uncompressedInitBinData, err := UncompressInitBin(ctx)
 	if err != nil {
 		return "", errors.Errorf("uncompressing init bin: %w", err)
 	}

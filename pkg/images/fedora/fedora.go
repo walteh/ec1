@@ -1,12 +1,14 @@
 package fedora
 
 import (
+	"context"
 	"fmt"
-	"path/filepath"
-	"strings"
+	"io"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
+
+	"github.com/coreos/stream-metadata-go/fedoracoreos"
 
 	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
 
@@ -16,8 +18,20 @@ import (
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
-const fedoraVersion = "42"
-const fedoraRelease = "1.1"
+const fedoraVersion = "42.20250427.3.0"
+const fedoraReleaseStream = fedoracoreos.StreamStable
+
+// stream, err := fedoracoreos.FetchStream(fedoraReleaseStream)
+// if err != nil {
+// 	return nil, errors.Errorf("fetching stream: %w", err)
+// }
+
+// archInfo, err := stream.GetArchitecture(arch)
+// if err != nil {
+// 	return nil, errors.Errorf("getting architecture info: %w", err)
+// }
+
+// root := archInfo.Artifacts["metal"].Formats["pxe"]
 
 func (prov *FedoraProvider) SupportsEFI() bool {
 	return true
@@ -28,8 +42,9 @@ func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
 }
 
 var (
-	_ vmm.VMIProvider                     = &FedoraProvider{}
-	_ vmm.DiskImageRawFileNameVMIProvider = &FedoraProvider{}
+	_ vmm.VMIProvider             = &FedoraProvider{}
+	_ vmm.DownloadableVMIProvider = &FedoraProvider{}
+	_ vmm.LinuxVMIProvider        = &FedoraProvider{}
 )
 
 type FedoraProvider struct {
@@ -44,19 +59,55 @@ func (prov *FedoraProvider) Name() string {
 }
 
 func (prov *FedoraProvider) Version() string {
-	return semver.Canonical(fmt.Sprintf("v%s.%s", fedoraVersion, fedoraRelease))
+	return semver.Canonical(fmt.Sprintf("v%s", fedoraVersion))
 }
 
-func (prov *FedoraProvider) DiskImageURL() string {
+func (prov *FedoraProvider) Downloads() map[string]string {
+
+	initrd := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s`
+	initrdSig := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s.sig`
+
 	arch := host.CurrentKernelArch()
-	// GCE doesn't work https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-GCE-42-1.1.aarch64.tar.gz
-	buildString := fmt.Sprintf("%s-%s.%s", fedoraVersion, fedoraRelease, arch)
-	return fmt.Sprintf("https://download.fedoraproject.org/pub/fedora/linux/releases/%s/Cloud/%s/images/Fedora-Cloud-Base-AmazonEC2-%s.raw.xz", fedoraVersion, arch, buildString)
+
+	return map[string]string{
+		"kernel":            fmt.Sprintf(initrd, fedoraVersion, arch, "kernel", ""),
+		"initramfs.img":     fmt.Sprintf(initrd, fedoraVersion, arch, "initramfs", ".img"),
+		"rootfs.img":        fmt.Sprintf(initrd, fedoraVersion, arch, "rootfs", ".img"),
+		"kernel.sig":        fmt.Sprintf(initrdSig, fedoraVersion, arch, "kernel", ".sig"),
+		"initramfs.img.sig": fmt.Sprintf(initrdSig, fedoraVersion, arch, "initramfs", ".img.sig"),
+		"rootfs.img.sig":    fmt.Sprintf(initrdSig, fedoraVersion, arch, "rootfs", ".img.sig"),
+		"fedora.gpg":        "https://fedoraproject.org/fedora.gpg",
+	}
 }
 
-func (prov *FedoraProvider) DiskImageRawFileName() string {
-	diskImageURL := prov.DiskImageURL()
-	return strings.TrimSuffix(filepath.Base(diskImageURL), filepath.Ext(diskImageURL))
+func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+	return cacheDir, nil
+}
+
+func (prov *FedoraProvider) InitScript(ctx context.Context) (string, error) {
+	script := `
+#!/bin/sh
+
+echo "Hello, world!"
+`
+
+	return script, nil
+}
+
+func (prov *FedoraProvider) RootfsPath() (path string) {
+	return "rootfs.img"
+}
+
+func (prov *FedoraProvider) KernelPath() (path string) {
+	return "kernel"
+}
+
+func (prov *FedoraProvider) InitramfsPath() (path string) {
+	return "initramfs.img"
+}
+
+func (prov *FedoraProvider) KernelArgs() (args string) {
+	return ""
 }
 
 func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {

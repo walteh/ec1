@@ -6,13 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 
-	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/mholt/archives"
+	"gitlab.com/tozd/go/errors"
+
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -24,9 +24,9 @@ import (
 const puipuiVersion = "v1.0.3"
 
 var (
-	_ vmm.VMIProvider                = &PuiPuiProvider{}
-	_ vmm.LinuxVMIProvider           = &PuiPuiProvider{}
-	_ vmm.CustomExtractorVMIProvider = &PuiPuiProvider{}
+	_ vmm.VMIProvider             = &PuiPuiProvider{}
+	_ vmm.LinuxVMIProvider        = &PuiPuiProvider{}
+	_ vmm.DownloadableVMIProvider = &PuiPuiProvider{}
 )
 
 type PuiPuiProvider struct {
@@ -36,27 +36,10 @@ type PuiPuiProvider struct {
 }
 
 // BootLoaderConfig implements vmm.LinuxVMIProvider.
-func (prov *PuiPuiProvider) BootLoaderConfig(cacheDir string) *bootloader.LinuxBootloader {
-	out := "bzImage"
-	if host.CurrentKernelArch() == "aarch64" {
-		out = "Image"
-	}
-
-	return &bootloader.LinuxBootloader{
-		VmlinuzPath:   filepath.Join(cacheDir, out),
-		KernelCmdLine: "console=hvc0 init=/init.ec1",
-		InitrdPath:    filepath.Join(cacheDir, "initramfs.cpio.gz"),
-	}
-}
 
 // BootProvisioners implements vmm.VMIProvider.
 func (prov *PuiPuiProvider) BootProvisioners() []vmm.BootProvisioner {
 	return []vmm.BootProvisioner{}
-}
-
-// DiskImageURL implements vmm.VMIProvider.
-func (prov *PuiPuiProvider) DiskImageURL() string {
-	return prov.URL()
 }
 
 // GuestKernelType implements vmm.VMIProvider.
@@ -86,65 +69,110 @@ func (prov *PuiPuiProvider) Version() string {
 	return semver.Canonical(puipuiVersion)
 }
 
-func (prov *PuiPuiProvider) URL() string {
-	return fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/%s/puipui_linux_%s_%s.tar.gz", puipuiVersion, puipuiVersion, host.CurrentKernelArch())
+func (prov *PuiPuiProvider) InitramfsPath() (path string) {
+	return "initramfs.cpio.gz"
 }
 
-func (prov *PuiPuiProvider) CustomExtraction(ctx context.Context, cacheDir string) error {
-	if host.CurrentKernelArch() == "aarch64" {
-		// we need to extract the Image.gz file
-		compressed, err := os.ReadFile(filepath.Join(cacheDir, "Image.gz"))
-		if err != nil {
-			return err
-		}
+func (prov *PuiPuiProvider) KernelPath() (path string) {
+	return "kernel"
+}
 
-		gzipped, err := gzip.NewReader(bytes.NewReader(compressed))
-		if err != nil {
-			return err
-		}
-		defer gzipped.Close()
+func (prov *PuiPuiProvider) KernelArgs() (args string) {
+	return ""
+}
 
-		unzipped, err := io.ReadAll(gzipped)
-		if err != nil {
-			return err
-		}
+func (prov *PuiPuiProvider) RootfsPath() (path string) {
+	return "" // no rootfs
+}
 
-		err = os.WriteFile(filepath.Join(cacheDir, "Image"), unzipped, 0644)
+func (prov *PuiPuiProvider) InitScript(ctx context.Context) (string, error) {
+	script := `
+#!/bin/sh
+
+echo "Hello, world!"
+`
+
+	return script, nil
+}
+
+func (prov *PuiPuiProvider) Downloads() map[string]string {
+	return map[string]string{
+		"root": fmt.Sprintf("https://github.com/Code-Hex/puipui-linux/releases/download/%s/puipui_linux_%s_%s.tar.gz", puipuiVersion, puipuiVersion, host.CurrentKernelArch()),
+	}
+}
+
+func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+	out := make(map[string]io.Reader)
+
+	// extract the files
+	fmtz := archives.CompressedArchive{
+		Archival:    archives.Tar{},
+		Compression: archives.Gz{},
+		Extraction:  archives.Tar{},
+	}
+
+	files := make(map[string]io.Reader)
+
+	all, err := io.ReadAll(cacheDir["root"])
+	if err != nil {
+		return nil, errors.Errorf("reading file: %w", err)
+	}
+
+	err = fmtz.Extract(ctx, bytes.NewReader(all), func(ctx context.Context, info archives.FileInfo) error {
+		fmt.Printf("info: %+v\n", info)
+		rdr, err := info.Open()
 		if err != nil {
-			return err
+			return errors.Errorf("opening file: %w", err)
 		}
+		defer rdr.Close()
+		data, err := io.ReadAll(rdr)
+		if err != nil {
+			return errors.Errorf("reading file: %w", err)
+		}
+		files[info.Name()] = bytes.NewReader(data)
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Errorf("extracting files: %w", err)
+	}
+
+	for name, _ := range files {
+		fmt.Printf("name: %s\n", name)
 
 	}
 
-	return nil
+	if host.CurrentKernelArch() == "aarch64" {
+		for name, file := range files {
+			switch name {
+			case "initramfs.cpio.gz":
+				out["initramfs.cpio.gz"] = file
+			case "Image.gz":
+				gzipped, err := gzip.NewReader(file)
+				if err != nil {
+					return nil, errors.Errorf("ungzipping kernel: %w", err)
+				}
+				out["kernel"] = gzipped
+			}
+		}
+		if len(out) != 2 {
+			return nil, errors.Errorf("expected 2 files, got %d", len(out))
+		}
+	} else {
+		for name, file := range files {
+			switch name {
+			case "initramfs.cpio.gz":
+				out["initramfs.cpio.gz"] = file
+			case "bzImage":
+				out["kernel"] = file
+			}
+		}
+		if len(out) != 2 {
+			return nil, errors.Errorf("expected 2 files, got %d", len(out))
+		}
+	}
+
+	return out, nil
 }
-
-// func (prov *PuiPuiProvider) Initialize(ctx context.Context, cacheDir string) error {
-// 	filez, err := os.ReadDir(cacheDir)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	files := []string{}
-// 	for _, file := range filez {
-// 		files = append(files, filepath.Join(cacheDir, file.Name()))
-// 	}
-// 	prov.vmlinuz, err = findKernel(ctx, files)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	prov.initramfs, err = findFile(files, "initramfs.cpio.gz")
-// 	if err != nil {
-// 		return err
-// 	}
-// 	prov.kernelArgs = "quiet"
-// 	return nil
-// }
-
-// func (puipui *PuiPuiProvider) ToVirtualMachine(ctx context.Context) (*config.VirtualMachine, error) {
-// 	bootloader := config.NewLinuxBootloader(puipui.vmlinuz, puipui.kernelArgs, puipui.initramfs)
-// 	vm := config.NewVirtualMachine(puipuiCPUs, puipuiMemoryMiB, bootloader)
-// 	return vm, nil
-// }
 
 func (puipui *PuiPuiProvider) ShutdownCommand() string {
 	return "poweroff"

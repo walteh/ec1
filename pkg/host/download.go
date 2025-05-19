@@ -3,11 +3,13 @@ package host
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/cavaliergopher/grab/v3"
 	"github.com/lima-vm/go-qcow2reader"
@@ -16,71 +18,233 @@ import (
 	"gitlab.com/tozd/go/errors"
 )
 
-func DownloadAndExtractVMI(ctx context.Context, url string, outDir string) error {
+func DownloadAndExtractVMI(ctx context.Context, downloads map[string]string) (map[string]io.Reader, error) {
+
+	files := make(map[string]io.Reader)
+
+	group := sync.WaitGroup{}
+	errs := make(chan error)
+	mutex := sync.Mutex{}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	tmpCacheDir, err := os.MkdirTemp("", "ec1-download-cache")
+	if err != nil {
+		return nil, errors.Errorf("creating temp cache dir: %w", err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		os.RemoveAll(tmpCacheDir)
+	}()
+
+	for name, url := range downloads {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			rdr, err := downloadAndExtractFileFromURL(ctx, name, url, tmpCacheDir)
+			if err != nil {
+				errs <- errors.Errorf("downloading and extracting file %s: %w", name, err)
+				return
+			}
+
+			mutex.Lock()
+			// save as read seeker
+			files[name] = rdr
+			mutex.Unlock()
+		}()
+	}
+
+	go func() {
+		fmt.Printf("waiting for group\n")
+		group.Wait()
+		fmt.Printf("group done\n")
+		close(errs)
+	}()
+
+	errout := []error{}
+	fmt.Printf("waiting for errs\n")
+	for err := range errs {
+		errout = append(errout, err)
+	}
+	fmt.Printf("errs done\n")
+
+	if len(errs) > 0 {
+		return nil, errors.Errorf("errors: %w", errors.Join(errout...))
+	}
+
+	return files, nil
+}
+
+func downloadAndExtractFileFromURL(ctx context.Context, name string, url string, tmpCacheDir string) (io.Reader, error) {
 
 	cacheDir, err := CacheDirForURL(url)
 	if err != nil {
-		return errors.Errorf("getting cache dir for url: %w", err)
+		return nil, errors.Errorf("getting cache dir for url: %w", err)
 	}
 
-	extractedCachedZip := filepath.Join(cacheDir, "extracted.zip")
-	cacheFile := filepath.Join(cacheDir, filepath.Base(url))
-
-	if _, err := os.Stat(cacheFile); err != nil {
-		err = downloadURLToFile(ctx, url, cacheFile)
-		if err != nil {
-			return errors.Errorf("downloading url to file: %w", err)
-		}
-	}
-
-	if strings.HasSuffix(url, ".qcow2") {
-		slog.InfoContext(ctx, "converting qcow2 to raw", "cacheFile", cacheFile)
-		updatedCacheFile := strings.TrimSuffix(cacheFile, ".qcow2") + ".raw"
-		outFile, err := os.Create(updatedCacheFile)
-		if err != nil {
-			return errors.Errorf("creating file: %w", err)
-		}
-		defer outFile.Close()
-		qcow2File, err := os.Open(cacheFile)
-		if err != nil {
-			return errors.Errorf("opening file: %w", err)
-		}
-		defer qcow2File.Close()
-		err = convertQcow2ToRaw(ctx, qcow2File, outFile)
-		if err != nil {
-			return errors.Errorf("converting qcow2 to raw: %w", err)
-		}
-		cacheFile = updatedCacheFile
-	}
+	extractedCachedZip := filepath.Join(cacheDir, name+".cached.gz")
 
 	if _, err := os.Stat(extractedCachedZip); err != nil {
-		err = extractIntoDir(ctx, cacheFile, outDir)
+
+		tmpfile, err := os.Create(filepath.Join(tmpCacheDir, name))
 		if err != nil {
-			return errors.Errorf("extracting into dir: %w", err)
+			return nil, errors.Errorf("creating temp file: %w", err)
 		}
 
-		err = compressDirToZip(ctx, outDir, extractedCachedZip)
+		defer tmpfile.Close()
+
+		go func() {
+			<-ctx.Done()
+			os.Remove(tmpfile.Name())
+		}()
+
+		err = downloadURLToFile(ctx, url, tmpfile.Name())
 		if err != nil {
-			return errors.Errorf("compressing dir to zip: %w", err)
+			return nil, errors.Errorf("downloading url to file: %w", err)
 		}
+
+		slog.InfoContext(ctx, "downloaded file", "url", url, "file", tmpfile.Name())
+
+		rdr, err := os.Open(tmpfile.Name())
+		if err != nil {
+			return nil, errors.Errorf("opening file: %w", err)
+		}
+		defer rdr.Close()
+
+		outfile, err := os.Create(extractedCachedZip)
+		if err != nil {
+			return nil, errors.Errorf("creating file: %w", err)
+		}
+		defer outfile.Close()
+
+		wrt, err := (archives.Gz{}).OpenWriter(outfile)
+		if err != nil {
+			return nil, errors.Errorf("opening gzip writer: %w", err)
+		}
+
+		_, err = io.Copy(wrt, rdr)
+		if err != nil {
+			return nil, errors.Errorf("copying file: %w", err)
+		}
+
+		err = wrt.Close()
+
+		rdr2, err := os.Open(tmpfile.Name())
+		if err != nil {
+			return nil, errors.Errorf("opening file: %w", err)
+		}
+
+		return rdr2, nil
 	}
 
-	if _, err := os.Stat(outDir); err != nil {
-		err = extractIntoDir(ctx, extractedCachedZip, outDir)
-		if err != nil {
-			return errors.Errorf("extracting into dir: %w", err)
-		}
+	rdrf, err := os.Open(extractedCachedZip)
+	if err != nil {
+		return nil, errors.Errorf("opening file: %w", err)
 	}
+
+	z, err := (archives.Gz{}).OpenReader(rdrf)
+	if err != nil {
+		return nil, errors.Errorf("extracting archive: %w", err)
+	}
+
+	return z, nil
+
+	// if strings.HasSuffix(url, ".qcow2") {
+	// 	slog.InfoContext(ctx, "converting qcow2 to raw", "cacheFile", cacheFile)
+	// 	updatedCacheFile := strings.TrimSuffix(cacheFile, ".qcow2") + ".raw"
+	// 	outFile, err := os.Create(updatedCacheFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("creating file: %w", err)
+	// 	}
+	// 	defer outFile.Close()
+	// 	qcow2File, err := os.Open(cacheFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("opening file: %w", err)
+	// 	}
+	// 	defer qcow2File.Close()
+	// 	err = convertQcow2ToRaw(ctx, qcow2File, outFile)
+	// 	if err != nil {
+	// 		return errors.Errorf("converting qcow2 to raw: %w", err)
+	// 	}
+	// 	cacheFile = updatedCacheFile
+	// }
+
+	// if _, err := os.Stat(extractedCachedZip); err != nil {
+
+	// }
+
+	// if _, err := os.Stat(filepath.Join(outDir, ".extracted")); err != nil {
+	// 	err = extractIntoDir(ctx, extractedCachedZip, outDir)
+	// 	if err != nil {
+	// 		return errors.Errorf("extracting into dir: %w", err)
+	// 	}
+	// }
 
 	// err = prov.Initialize(ctx, outDir)
 	// if err != nil {
 	// 	return errors.Errorf("initializing os provider: %w", err)
 	// }
 
-	slog.InfoContext(ctx, "OS provider initialized", "url", url, "cacheFile", cacheFile, "outDir", outDir)
+	// slog.InfoContext(ctx, "OS provider initialized", "url", url, "cacheFile", cacheFile, "outDir", outDir)
 
-	return nil
+	// return nil
 }
+
+// func SaveDownloadedFilesToCache(ctx context.Context, tmpCacheDir string) error {
+
+// 	files, err := os.ReadDir(tmpCacheDir)
+// 	if err != nil {
+// 		return errors.Errorf("reading dir: %w", err)
+// 	}
+
+// 	for _, file := range files {
+// 		cacheDir, err := CacheDirForURL(url)
+// 		if err != nil {
+// 			return errors.Errorf("getting cache dir for url: %w", err)
+// 		}
+
+// 		rdr, ok := readers[name]
+// 		if !ok {
+// 			return errors.Errorf("reader not found for url: %s: %s", name, url)
+// 		}
+
+// 		// readers[name] = bufrd
+
+// 		err = os.MkdirAll(cacheDir, 0755)
+// 		if err != nil {
+// 			return errors.Errorf("creating cache dir: %w", err)
+// 		}
+
+// 		gzipFile, err := os.Create(filepath.Join(cacheDir, name+".cached.gz"))
+// 		if err != nil {
+// 			return errors.Errorf("creating gzip file: %w", err)
+// 		}
+// 		defer gzipFile.Close()
+
+// 		wrt, err := (archives.Gz{}).OpenWriter(gzipFile)
+// 		if err != nil {
+// 			return errors.Errorf("opening gzip file: %w", err)
+// 		}
+
+// 		slog.InfoContext(ctx, "saving file to cache", "name", name, "url", url, "cacheDir", cacheDir)
+// 		_, err = io.Copy(wrt, rdr)
+// 		if err != nil {
+// 			return errors.Errorf("copying file: %w", err)
+// 		}
+
+// 		slog.InfoContext(ctx, "saved file to cache", "name", name, "url", url, "cacheDir", cacheDir)
+
+// 		err = wrt.Close()
+// 		if err != nil {
+// 			return errors.Errorf("closing gzip file: %w", err)
+// 		}
+
+// 	}
+
+// 	return nil
+// }
 
 func downloadURLToFile(ctx context.Context, url string, file string) error {
 	slog.InfoContext(ctx, "downloading url to file", "url", url, "file", file)
@@ -273,6 +437,12 @@ func extractIntoDir(ctx context.Context, file string, dir string) error {
 	_, err = io.Copy(outputFile, rdr)
 	if err != nil {
 		return errors.Errorf("copying file: %w", err)
+	}
+
+	// write a file to the dir called .extracted
+	err = os.WriteFile(filepath.Join(dir, ".extracted"), []byte("true"), 0644)
+	if err != nil {
+		return errors.Errorf("writing extracted file: %w", err)
 	}
 
 	slog.InfoContext(ctx, "reformatted file", "in", file, "out", out)

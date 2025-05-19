@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/images/puipui"
+	"github.com/walteh/ec1/pkg/images/fedora"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
@@ -21,7 +21,7 @@ import (
 // Create a real VM for testing
 func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
-	pp := puipui.NewPuipuiProvider()
+	pp := fedora.NewFedoraProvider()
 
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 

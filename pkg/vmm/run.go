@@ -2,7 +2,13 @@ package vmm
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -23,31 +29,85 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider, bootCacheDir string) (bootloader.Bootloader, error) {
+func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider, bootCacheDir string) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+	var err error
+	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
 		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
-			bl := linuxVMIProvider.BootLoaderConfig(bootCacheDir)
-			modifiedInitrd, err := bootloader.PrepareInitramfsCpio(ctx, bl.InitrdPath)
-			if err != nil {
-				return nil, errors.Errorf("preparing initramfs cpio: %w", err)
+			initramfsFileName := linuxVMIProvider.InitramfsPath()
+			initramfsPath := filepath.Join(bootCacheDir, initramfsFileName)
+			if initramfsFileName != "" {
+				initramfsPath, err = bootloader.PrepareInitramfsCpio(ctx, initramfsPath)
+				if err != nil {
+					return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
+				}
 			}
-			os.Remove(bl.InitrdPath)
-			bl.InitrdPath = modifiedInitrd
 
-			return bl, nil
-		} else {
-			return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
+			rootfsPath := linuxVMIProvider.RootfsPath()
+			if rootfsPath != "" {
+				if initramfsFileName == "" {
+					rootfsPath, err = bootloader.PrepareRootFS(ctx, rootfsPath)
+					if err != nil {
+						return nil, nil, errors.Errorf("preparing rootfs: %w", err)
+					}
+				}
+				blkDev, err := virtio.VirtioBlkNew(rootfsPath)
+				if err != nil {
+					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
+				}
+				devices = append(devices, blkDev)
+			}
+
+			kernelFileName := linuxVMIProvider.KernelPath()
+			if kernelFileName == "" {
+				return nil, nil, errors.New("kernel file name is empty")
+			}
+			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
+
+			return &bootloader.LinuxBootloader{
+				InitrdPath:    initramfsPath,
+				VmlinuzPath:   kernelPath,
+				KernelCmdLine: linuxVMIProvider.KernelArgs(),
+			}, devices, nil
 		}
+		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
+		return nil, nil, errors.New("unsupported guest kernel type: linux")
+
 	case guest.GuestKernelTypeDarwin:
 		if mos, ok := provider.(MacOSVMIProvider); ok {
-			return mos.BootLoaderConfig(), nil
+			return mos.BootLoaderConfig(), nil, nil
 		} else {
-			return nil, errors.New("guest kernel type is darwin but provider does not support macOS")
+			return nil, nil, errors.New("guest kernel type is darwin but provider does not support macOS")
 		}
 	default:
-		return nil, errors.Errorf("unsupported guest kernel type: %s", kt)
+		return nil, nil, errors.Errorf("unsupported guest kernel type: %s", kt)
 	}
+}
+
+// obviously this is not secure, we need something better long term
+// for now its fine because im not even sure it will be used
+// if this key thing is depended upon we need to move it to a more secure location
+func addSSHKeyToVM(ctx context.Context, workingDir string) error {
+	sshKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return errors.Errorf("creating ssh key: %w", err)
+	}
+
+	m, err := x509.MarshalPKCS8PrivateKey(sshKey)
+	if err != nil {
+		return errors.Errorf("marshalling ssh key: %w", err)
+	}
+
+	sshKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: m})
+
+	sshKeyFile := filepath.Join(workingDir, "id_ecdsa")
+	err = os.WriteFile(sshKeyFile, sshKeyPEM, 0600)
+	if err != nil {
+		return errors.Errorf("writing ssh key: %w", err)
+	}
+
+	return nil
 }
 
 func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
@@ -60,49 +120,80 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, err
 	}
 
+	err = os.MkdirAll(workingDir, 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating working directory: %w", err)
+	}
+
 	devices := []virtio.VirtioDevice{}
 	provisioners := []Provisioner{}
 
-	if diskImageURLVMIProvider, ok := vmi.(DiskImageURLVMIProvider); ok {
-		err = host.DownloadAndExtractVMI(ctx, diskImageURLVMIProvider.DiskImageURL(), workingDir)
+	err = addSSHKeyToVM(ctx, workingDir)
+	if err != nil {
+		return nil, errors.Errorf("adding ssh key to vm: %w", err)
+	}
+
+	// create an ssh private key for this vm
+
+	if diskImageURLVMIProvider, ok := vmi.(DownloadableVMIProvider); ok {
+		files, err := host.DownloadAndExtractVMI(ctx, diskImageURLVMIProvider.Downloads())
 		if err != nil {
 			return nil, errors.Errorf("downloading and extracting VMI: %w", err)
 		}
 
-		if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
-			err = customExtractor.CustomExtraction(ctx, workingDir)
+		// fdupforcache := fdup()
+
+		fmt.Printf("files: %+v\n", files)
+
+		extrfles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
+		if err != nil {
+			return nil, errors.Errorf("extracting downloads: %w", err)
+		}
+
+		// err = host.SaveDownloadedFilesToCache(ctx, diskImageURLVMIProvider.Downloads(), fdupforcache)
+		// if err != nil {
+		// 	return nil, errors.Errorf("saving downloaded files to cache: %w", err)
+		// }
+
+		for name, file := range extrfles {
+			filePath := filepath.Join(workingDir, name)
+			out, err := os.Create(filePath)
 			if err != nil {
-				return nil, errors.Errorf("custom extraction: %w", err)
+				return nil, errors.Errorf("creating file: %w", err)
+			}
+			defer out.Close()
+			_, err = io.Copy(out, file)
+			if err != nil {
+				return nil, errors.Errorf("writing file: %w", err)
 			}
 		}
 
-		if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
-			diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
+		// if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
+		// 	err = customExtractor.CustomExtraction(ctx, workingDir)
+		// 	if err != nil {
+		// 		return nil, errors.Errorf("custom extraction: %w", err)
+		// 	}
+		// }
 
-			if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
-				return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
-			}
+		// if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
+		// 	diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
 
-			blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
-			if err != nil {
-				return nil, errors.Errorf("creating virtio block device: %w", err)
-			}
+		// 	if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
+		// 		return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
+		// 	}
 
-			devices = append(devices, blkDev)
-		}
+		// 	blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
+		// 	if err != nil {
+		// 		return nil, errors.Errorf("creating virtio block device: %w", err)
+		// 	}
+
+		// 	devices = append(devices, blkDev)
+		// }
 
 	}
 
-	// // add memory balloon device
-	// memoryBalloonDev, err := virtio.VirtioBalloonNew()
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating memory balloon device: %w", err)
-	// }
-	// devices = append(devices, memoryBalloonDev)
-
 	devices = append(devices, &virtio.VirtioSerial{
-		LogFile: "./init.log",
-		// UsesStdio: true,
+		LogFile: filepath.Join(workingDir, "console.log"),
 	})
 
 	// run boot provisioner
@@ -135,10 +226,11 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		provisioners = append(provisioners, runtimeProvisioner)
 	}
 
-	bl, err := EmphericalBootLoaderConfigForGuest(ctx, vmi, workingDir)
+	bl, bldev, err := EmphericalBootLoaderConfigForGuest(ctx, vmi, workingDir)
 	if err != nil {
 		return nil, errors.Errorf("getting boot loader config: %w", err)
 	}
+	devices = append(devices, bldev...)
 
 	opts := NewVMOptions{
 		Vcpus:        vcpus,

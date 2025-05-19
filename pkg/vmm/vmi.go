@@ -2,6 +2,7 @@ package vmm
 
 import (
 	"context"
+	"io"
 
 	"golang.org/x/crypto/ssh"
 
@@ -16,20 +17,18 @@ type VMIProvider interface {
 	ShutdownCommand() string
 	Name() string
 	Version() string
-	SupportsEFI() bool
+	// SupportsEFI() bool
 	GuestKernelType() guest.GuestKernelType
+	InitScript(ctx context.Context) (string, error)
 }
 
-type DiskImageURLVMIProvider interface {
-	DiskImageURL() string
+type DownloadableVMIProvider interface {
+	Downloads() map[string]string
+	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error)
 }
 
-type CustomExtractorVMIProvider interface {
-	CustomExtraction(ctx context.Context, cacheDir string) error
-}
-
-type DiskImageRawFileNameVMIProvider interface {
-	DiskImageRawFileName() string
+type RootFSProvider interface {
+	RelativeRootFSPath() string
 }
 
 type MacOSVMIProvider interface {
@@ -37,5 +36,8 @@ type MacOSVMIProvider interface {
 }
 
 type LinuxVMIProvider interface {
-	BootLoaderConfig(cacheDir string) *bootloader.LinuxBootloader
+	RootfsPath() (path string)
+	KernelPath() (path string)
+	InitramfsPath() (path string)
+	KernelArgs() (args string)
 }

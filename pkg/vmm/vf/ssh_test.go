@@ -13,10 +13,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 )
+
+func init() {
+	_, _ = bootloader.UncompressInitBin(context.Background())
+}
 
 func TestSSH(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
@@ -110,33 +115,6 @@ func TestVSock(t *testing.T) {
 	// --- Test Vsock ---
 	guestListenPort := uint32(7890) // Arbitrary vsock port for the guest to listen on
 
-	// 	socatProxy := `#!/bin/bash
-
-	// handle() {
-	//   echo 'HTTP/1.0 200 OK'
-	//   echo 'Content-Type: text/plain'
-	//   echo "Date: $(date)"
-	//   echo "Server: $SOCAT_SOCKADDR:$SOCAT_SOCKPORT"
-	//   echo "Client: $SOCAT_PEERADDR:$SOCAT_PEERPORT"
-	//   echo 'Connection: close'
-	//   echo
-	//   cat
-	// }
-
-	// case $1 in
-	//   "bind")
-	//     socat -T0.05 -v VSOCK-LISTEN:%d,reuseaddr,fork system:". $0 && handle"
-	//     ;;
-	// esac
-	// `
-	// Start a vsock echo server in the guest via SSH
-	// Using socat: listens on VSOCK port guestListenPort, forks a new process for each connection,
-	// and echoes input (STDIO) back to the client.
-	// Runs in the background (&) so SSH command returns.
-	// We use "setsid" to ensure socat is not killed when the SSH session closes.
-	// serverCmd := fmt.Sprintf("setsid socat VSOCK-LISTEN:%d,fork,STDOUT", guestListenPort)
-	// serverCmd := fmt.Sprintf(socatProxy, guestListenPort)
-	// serverCmd := fmt.Sprintf("socat -v -T0.05 VSOCK-LISTEN:%d,reuseaddr,fork system:'cat '", guestListenPort)
 	serverCmd := fmt.Sprintf("socat VSOCK-LISTEN:%d,fork PIPE", guestListenPort)
 	slog.DebugContext(ctx, "Starting vsock server in guest", "command", serverCmd)
 
