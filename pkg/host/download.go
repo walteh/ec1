@@ -29,26 +29,17 @@ func DownloadAndExtractVMI(ctx context.Context, downloads map[string]string) (ma
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	tmpCacheDir, err := os.MkdirTemp("", "ec1-download-cache")
-	if err != nil {
-		return nil, errors.Errorf("creating temp cache dir: %w", err)
-	}
-
-	go func() {
-		<-ctx.Done()
-		os.RemoveAll(tmpCacheDir)
-	}()
-
 	for name, url := range downloads {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			rdr, err := downloadAndExtractFileFromURL(ctx, name, url, tmpCacheDir)
+			slog.InfoContext(ctx, "downloading and extracting file", "name", name, "url", url)
+			rdr, err := downloadAndExtractFileFromURL(ctx, name, url)
 			if err != nil {
 				errs <- errors.Errorf("downloading and extracting file %s: %w", name, err)
 				return
 			}
-
+			slog.InfoContext(ctx, "downloaded and extracted file", "name", name, "url", url)
 			mutex.Lock()
 			// save as read seeker
 			files[name] = rdr
@@ -68,75 +59,45 @@ func DownloadAndExtractVMI(ctx context.Context, downloads map[string]string) (ma
 	for err := range errs {
 		errout = append(errout, err)
 	}
-	fmt.Printf("errs done\n")
 
-	if len(errs) > 0 {
+	if len(errout) > 0 {
 		return nil, errors.Errorf("errors: %w", errors.Join(errout...))
 	}
 
 	return files, nil
 }
 
-func downloadAndExtractFileFromURL(ctx context.Context, name string, url string, tmpCacheDir string) (io.Reader, error) {
+func downloadAndExtractFileFromURL(ctx context.Context, name string, url string) (io.Reader, error) {
 
 	cacheDir, err := CacheDirForURL(url)
 	if err != nil {
 		return nil, errors.Errorf("getting cache dir for url: %w", err)
 	}
 
-	extractedCachedZip := filepath.Join(cacheDir, name+".cached.gz")
+	err = os.MkdirAll(cacheDir, 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating cache dir: %w", err)
+	}
+
+	extractedCachedZip := filepath.Join(cacheDir, name+".cached")
 
 	if _, err := os.Stat(extractedCachedZip); err != nil {
 
-		tmpfile, err := os.Create(filepath.Join(tmpCacheDir, name))
+		// tmpfile, err := os.Create(extractedCachedZip)
+		// if err != nil {
+		// 	return nil, errors.Errorf("creating temp file: %w", err)
+		// }
+
+		// tmpfile.Close()
+
+		err = downloadURLToFile(ctx, url, extractedCachedZip)
 		if err != nil {
-			return nil, errors.Errorf("creating temp file: %w", err)
-		}
-
-		defer tmpfile.Close()
-
-		go func() {
-			<-ctx.Done()
-			os.Remove(tmpfile.Name())
-		}()
-
-		err = downloadURLToFile(ctx, url, tmpfile.Name())
-		if err != nil {
+			// os.Remove(tmpfile.Name())
 			return nil, errors.Errorf("downloading url to file: %w", err)
 		}
 
-		slog.InfoContext(ctx, "downloaded file", "url", url, "file", tmpfile.Name())
+		slog.InfoContext(ctx, "downloaded file", "url", url, "file", extractedCachedZip)
 
-		rdr, err := os.Open(tmpfile.Name())
-		if err != nil {
-			return nil, errors.Errorf("opening file: %w", err)
-		}
-		defer rdr.Close()
-
-		outfile, err := os.Create(extractedCachedZip)
-		if err != nil {
-			return nil, errors.Errorf("creating file: %w", err)
-		}
-		defer outfile.Close()
-
-		wrt, err := (archives.Gz{}).OpenWriter(outfile)
-		if err != nil {
-			return nil, errors.Errorf("opening gzip writer: %w", err)
-		}
-
-		_, err = io.Copy(wrt, rdr)
-		if err != nil {
-			return nil, errors.Errorf("copying file: %w", err)
-		}
-
-		err = wrt.Close()
-
-		rdr2, err := os.Open(tmpfile.Name())
-		if err != nil {
-			return nil, errors.Errorf("opening file: %w", err)
-		}
-
-		return rdr2, nil
 	}
 
 	rdrf, err := os.Open(extractedCachedZip)
@@ -144,12 +105,14 @@ func downloadAndExtractFileFromURL(ctx context.Context, name string, url string,
 		return nil, errors.Errorf("opening file: %w", err)
 	}
 
-	z, err := (archives.Gz{}).OpenReader(rdrf)
-	if err != nil {
-		return nil, errors.Errorf("extracting archive: %w", err)
-	}
+	slog.InfoContext(ctx, "opening file", "file", extractedCachedZip)
 
-	return z, nil
+	// z, err := (archives.Gz{}).OpenReader(rdrf)
+	// if err != nil {
+	// 	return nil, errors.Errorf("extracting archive: %w", err)
+	// }
+
+	return rdrf, nil
 
 	// if strings.HasSuffix(url, ".qcow2") {
 	// 	slog.InfoContext(ctx, "converting qcow2 to raw", "cacheFile", cacheFile)

@@ -1,33 +1,42 @@
 package host
 
-// func ShortTestTempDir(t *testing.T) string {
-// 	// hash the test name, take the first 8 characters
-// 	hash := sha256.Sum256([]byte(t.Name()))
-// 	tmpdir := os.TempDir()
-// 	testTmpDir := t.TempDir()
-// 	dir := filepath.Join(tmpdir, fmt.Sprintf("t%x", hash[:4]), filepath.Base(testTmpDir))
-// 	slog.InfoContext(t.Context(), "creating short test temp dir", "dir", dir)
-// 	// clean the dir
-// 	if _, err := os.Stat(dir); err == nil {
-// 		os.RemoveAll(dir)
-// 	}
+import (
+	"bytes"
+	"os"
+)
 
-// 	err := os.MkdirAll(dir, 0755)
-// 	if err != nil {
-// 		t.Fatalf("creating temp dir: %s", err)
-// 	}
-// 	t.Cleanup(func() {
-// 		os.RemoveAll(dir)
-// 	})
-// 	RegisterRedactedLogValue(t, dir, "[short-tmp-dir]")
-// 	return dir
-// }
+// from https://github.com/h2non/filetype/blob/cfcd7d097bc4990dc8fc86187307651ae79bf9d9/matchers/document.go#L159-L174
+func compareBytes(slice, subSlice []byte, startOffset int) bool {
+	sl := len(subSlice)
 
-// func FullSetupOS(t *testing.T, prov OsProvider) *testVM {
-// 	tmpDir := ShortTestTempDir(t)
-// 	err := SetupOS(t, prov, tmpDir)
-// 	if err != nil {
-// 		t.Fatalf("setting up os: %s", err)
-// 	}
-// 	return NewTestVM(t, prov, tmpDir)
-// }
+	if startOffset+sl > len(slice) {
+		return false
+	}
+
+	s := slice[startOffset : startOffset+sl]
+	return bytes.Equal(s, subSlice)
+}
+
+// patterns and offsets are coming from https://github.com/file/file/blob/master/magic/Magdir/linux
+func isUncompressedArm64Kernel(buf []byte) bool {
+	pattern := []byte{0x41, 0x52, 0x4d, 0x64}
+	offset := 0x38
+
+	return compareBytes(buf, pattern, offset)
+}
+
+func IsKernelUncompressed(filename string) (bool, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	buf := make([]byte, 2048)
+	_, err = file.Read(buf)
+	if err != nil {
+		return false, err
+	}
+
+	return isUncompressedArm64Kernel(buf), nil
+}

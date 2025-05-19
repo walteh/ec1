@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/walteh/ec1/pkg/host"
 )
 
 type isUncompressedCheckFunc func(t require.TestingT, value bool, msgAndArgs ...interface{})
@@ -45,7 +47,7 @@ var uncompressedKernelTests = map[string]uncompressedKernelTest{
 func TestUncompressedKernel(t *testing.T) {
 	for name, test := range uncompressedKernelTests {
 		t.Run(name, func(t *testing.T) {
-			uncompressed, err := isKernelUncompressed(test.filename)
+			uncompressed, err := host.IsKernelUncompressed(test.filename)
 			require.NoError(t, err)
 			test.isUncompressedCheck(t, uncompressed)
 		})

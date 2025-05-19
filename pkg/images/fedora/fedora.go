@@ -65,7 +65,6 @@ func (prov *FedoraProvider) Version() string {
 func (prov *FedoraProvider) Downloads() map[string]string {
 
 	initrd := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s`
-	initrdSig := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s.sig`
 
 	arch := host.CurrentKernelArch()
 
@@ -73,14 +72,23 @@ func (prov *FedoraProvider) Downloads() map[string]string {
 		"kernel":            fmt.Sprintf(initrd, fedoraVersion, arch, "kernel", ""),
 		"initramfs.img":     fmt.Sprintf(initrd, fedoraVersion, arch, "initramfs", ".img"),
 		"rootfs.img":        fmt.Sprintf(initrd, fedoraVersion, arch, "rootfs", ".img"),
-		"kernel.sig":        fmt.Sprintf(initrdSig, fedoraVersion, arch, "kernel", ".sig"),
-		"initramfs.img.sig": fmt.Sprintf(initrdSig, fedoraVersion, arch, "initramfs", ".img.sig"),
-		"rootfs.img.sig":    fmt.Sprintf(initrdSig, fedoraVersion, arch, "rootfs", ".img.sig"),
+		"kernel.sig":        fmt.Sprintf(initrd, fedoraVersion, arch, "kernel", ".sig"),
+		"initramfs.img.sig": fmt.Sprintf(initrd, fedoraVersion, arch, "initramfs", ".img.sig"),
+		"rootfs.img.sig":    fmt.Sprintf(initrd, fedoraVersion, arch, "rootfs", ".img.sig"),
 		"fedora.gpg":        "https://fedoraproject.org/fedora.gpg",
 	}
 }
 
 func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+
+	// initramfs, ok := cacheDir["initramfs.img"]
+	// if !ok {
+	// 	return nil, errors.New("initramfs.img not found")
+	// }
+
+	// // extract the image
+	// diskf, err :=
+
 	return cacheDir, nil
 }
 

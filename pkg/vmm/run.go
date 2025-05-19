@@ -44,7 +44,7 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				}
 			}
 
-			rootfsPath := linuxVMIProvider.RootfsPath()
+			rootfsPath := filepath.Join(bootCacheDir, linuxVMIProvider.RootfsPath())
 			if rootfsPath != "" {
 				if initramfsFileName == "" {
 					rootfsPath, err = bootloader.PrepareRootFS(ctx, rootfsPath)
@@ -64,6 +64,12 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				return nil, nil, errors.New("kernel file name is empty")
 			}
 			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
+			kernelPath, err = bootloader.PrepareKernel(ctx, kernelPath)
+			if err != nil {
+				return nil, nil, errors.Errorf("preparing kernel: %w", err)
+			}
+
+			slog.InfoContext(ctx, "kernel path", "path", kernelPath)
 
 			return &bootloader.LinuxBootloader{
 				InitrdPath:    initramfsPath,
@@ -142,8 +148,6 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		}
 
 		// fdupforcache := fdup()
-
-		fmt.Printf("files: %+v\n", files)
 
 		extrfles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
 		if err != nil {
