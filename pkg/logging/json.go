@@ -9,6 +9,14 @@ type SlogRawJSONValue struct {
 	rawJson json.RawMessage
 }
 
+func NewSlogRawJSONValue(v any) SlogRawJSONValue {
+	json, err := json.Marshal(v)
+	if err != nil {
+		return SlogRawJSONValue{rawJson: nil}
+	}
+	return SlogRawJSONValue{rawJson: json}
+}
+
 var _ slog.LogValuer = &SlogRawJSONValue{}
 
 func (s SlogRawJSONValue) LogValue() slog.Value {
