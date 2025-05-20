@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -6,7 +8,11 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
+
+	"github.com/mdlayher/vsock"
 
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/streamexec"
@@ -69,6 +75,64 @@ func main() {
 
 		log.Printf("Starting lgia at %s, pid %d, hf %d", os.Args[0], pid, hf)
 
+		// check if realInitPath exists
+		if _, err := os.Stat(realInitPath); os.IsNotExist(err) {
+			// read the command line
+
+			// parse the kernel command line, get the rootfs path
+			// kernelCmdLine, err := os.ReadFile("/proc/cmdline")
+			// if err != nil {
+			// 	log.Fatalf("Failed to read kernel command line: %v", err)
+			// }
+			kernelCmdLineStr := strings.Join(os.Args[1:], " ")
+			kernelCmdLineStr = strings.TrimSpace(kernelCmdLineStr)
+
+			// parse the kernel command line, get the rootfs path
+			rootfsPath := "/dev/nvme0n1p1"
+			initCommand := "/sbin/init"
+			for _, arg := range strings.Split(kernelCmdLineStr, " ") {
+				if strings.HasPrefix(arg, "root=") {
+					rootfsPath = arg[6:]
+					break
+				}
+				if strings.HasPrefix(arg, "init=") {
+					initCommand = arg[5:]
+					break
+				}
+			}
+
+			// 1) Mount real root
+			err = syscall.Mount(rootfsPath, rootfsPath, "", syscall.MS_BIND|syscall.MS_REC, "")
+			if err != nil {
+				log.Fatalf("mount failed: %v", err)
+			}
+			// 2) pivot_root into new root
+			if err := syscall.PivotRoot(rootfsPath, rootfsPath+"/.oldroot"); err != nil {
+				log.Fatalf("pivot_root failed: %v", err)
+			}
+			// 3) Change working directory and unmount old root
+			err = syscall.Chdir("/")
+			if err != nil {
+				log.Fatalf("chdir failed: %v", err)
+			}
+			err = syscall.Unmount("/.oldroot", syscall.MNT_DETACH)
+			if err != nil {
+				log.Fatalf("unmount failed: %v", err)
+			}
+			// 4) Exec the real init
+			if err := syscall.Exec(initCommand, []string{initCommand}, os.Environ()); err != nil {
+				log.Fatalf("Failed to exec real init: %v", err)
+			}
+
+			// we need to do the switch to rootfs
+			// command := []string{rootfsPath, initCommand}
+			// log.Printf("Switching to rootfs: %s, initCommand: %s", rootfsPath, initCommand)
+			// if err := syscall.Exec("switch_root", command, os.Environ()); err != nil {
+			// 	log.Fatalf("Failed to exec switch_root: %v", err)
+			// }
+		}
+
+		// pidFile.WriteString(strconv.Itoa(pid))
 		// pidFile.WriteString(strconv.Itoa(pid))
 		// pidFile.Close()
 
@@ -141,6 +205,29 @@ func serveRawVsock(ctx context.Context, port int) error {
 	// 	stdout.Close()
 	// 	stderr.Close()
 	// }()
+
+	// just keep printing a message
+	go func() {
+		count := 0
+		for {
+			count++
+			// check if /dev/vsock exists
+			l, err := vsock.ListenContextID(3, uint32(2020+count), nil)
+			if err != nil {
+				log.Printf("Error listening on vsock: %v", err)
+			} else {
+				log.Printf("Listening on vsock")
+
+			}
+
+			log.Printf("Waiting for z to be ready (listenErr=%v)", err)
+			time.Sleep(100 * time.Millisecond)
+
+			if l != nil {
+				l.Close()
+			}
+		}
+	}()
 
 	pidFile.WriteString(strconv.Itoa(os.Getpid()))
 	pidFile.Close()

@@ -26,7 +26,6 @@ import (
 	"github.com/walteh/ec1/pkg/gvnet"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/port"
-	"github.com/walteh/ec1/pkg/unzbootgo"
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
@@ -44,16 +43,17 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				if err != nil {
 					return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
 				}
+			} else {
+				// NEXT: try mounting antoher disk with our wrapper in it and adding init= to the kernel cmdline
+				// initramfsPath, err = bootloader.PrepareEmptyInitramfs(ctx, bootCacheDir)
+				// if err != nil {
+				// 	return nil, nil, errors.Errorf("preparing rootfs: %w", err)
+				// }
 			}
+
 			rootfsFileName := linuxVMIProvider.RootfsPath()
 			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
 			if rootfsFileName != "" {
-				if initramfsFileName == "" {
-					rootfsPath, err = bootloader.PrepareRootFS(ctx, rootfsPath)
-					if err != nil {
-						return nil, nil, errors.Errorf("preparing rootfs: %w", err)
-					}
-				}
 				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
 				if err != nil {
 					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
@@ -68,11 +68,11 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 			}
 			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
 
-			err = unzbootgo.ExtractKernel(kernelPath, kernelPath+".ec1")
-			if err != nil {
-				// Not an EFI application or extraction failed, return the original
-				return nil, nil, errors.Errorf("extracting kernel: %w", err)
-			}
+			// err = unzbootgo.ExtractKernel(kernelPath, kernelPath+".ec1")
+			// if err != nil {
+			// 	// Not an EFI application or extraction failed, return the original
+			// 	return nil, nil, errors.Errorf("extracting kernel: %w", err)
+			// }
 
 			slog.InfoContext(ctx, "kernel path", "path", kernelPath)
 
@@ -294,14 +294,8 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		}
 	}()
 
-	runtimeInfo := &RunningVM[VM]{
-		portOnHostIP: hostIPPort,
-		vm:           vm,
-		wait:         errCh,
-		start:        startTime,
-	}
+	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
 
-	return runtimeInfo, nil
 }
 
 func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.VirtioNet, uint16, error) {

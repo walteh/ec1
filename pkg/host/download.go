@@ -435,7 +435,7 @@ func renameExtensionOfExtractedFile(ctx context.Context, afmt archives.Format, f
 	return out
 }
 
-func convertQcow2ToRaw(ctx context.Context, qcow2File io.ReaderAt, rawFile io.WriterAt) error {
+func ConvertQcow2ToRaw(ctx context.Context, qcow2File io.ReaderAt, rawFile io.WriterAt) error {
 	img, err := qcow2reader.Open(qcow2File)
 	if err != nil {
 		return errors.Errorf("opening qcow2 file: %w", err)
@@ -465,7 +465,7 @@ func convertFileToRaw(ctx context.Context, in string) (string, error) {
 	}
 	defer qcow2File.Close()
 
-	err = convertQcow2ToRaw(ctx, qcow2File, outFile)
+	err = ConvertQcow2ToRaw(ctx, qcow2File, outFile)
 	if err != nil {
 		return "", errors.Errorf("converting qcow2 to raw: %w", err)
 	}

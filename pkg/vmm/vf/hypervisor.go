@@ -50,7 +50,6 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts vm
 		return nil, errors.Errorf("creating vz virtual machine: %w", err)
 	}
 
-
 	vm := &VirtualMachine{
 		configuration: vfConfig,
 		vzvm:          vzVM,

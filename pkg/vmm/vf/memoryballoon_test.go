@@ -2,16 +2,24 @@ package vf_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
+	"github.com/fatih/color"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/images/coreos"
+	"github.com/walteh/ec1/pkg/images/fedora"
 	"github.com/walteh/ec1/pkg/images/puipui"
+	"github.com/walteh/ec1/pkg/images/ubuntu"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
@@ -20,42 +28,85 @@ import (
 // MockObjcRuntime allows mocking of objc interactions
 
 // Create a real VM for testing
-func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+func setupVM(t *testing.T, ctx context.Context, memory strongunits.MiB, provider vmm.VMIProvider) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
-	pp := puipui.NewPuipuiProvider()
 
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 
-	rvm, err := vmm.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
+	rvm, err := vmm.RunVirtualMachine(ctx, hv, provider, 2, memory.ToBytes())
 	require.NoError(t, err)
 
 	go func() {
 		t.Logf("vm running,waiting for vm to stop")
-		err := rvm.Wait()
+		err := rvm.WaitOnVmStopped()
 		assert.NoError(t, err)
 	}()
 
-	return rvm, pp
+	t.Cleanup(func() {
+		t.Logf("vm stopped")
+		catConsoleFile(t, ctx, rvm.VM())
 
+		rvm.VM().VZ().Stop()
+	})
+
+	return rvm, provider
+}
+
+func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	return setupVM(t, ctx, memory, puipui.NewPuipuiProvider())
 }
 
 func setupCoreOSVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
-	hv := vf.NewHypervisor()
-	pp := coreos.NewProvider()
+	return setupVM(t, ctx, memory, coreos.NewProvider())
+}
 
-	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
+func setupFedoraVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	return setupVM(t, ctx, memory, fedora.NewProvider())
+}
 
-	rvm, err := vmm.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
-	require.NoError(t, err)
+func setupUbuntuVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	return setupVM(t, ctx, memory, ubuntu.NewProvider())
+}
 
-	go func() {
-		t.Logf("vm running,waiting for vm to stop")
-		err := rvm.Wait()
-		assert.NoError(t, err)
-	}()
+func buildDiffReport(t *testing.T, title string, header1 string, header2 string, diffContent string) string {
+	var result strings.Builder
 
-	return rvm, pp
+	// Add report header
+	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("\n\n============= %s START =============\n\n", title))
+	result.WriteString(fmt.Sprintf("%s\n\n", color.YellowString("%s", t.Name())))
 
+	// Add type/value information headers if provided
+	if header1 != "" {
+		result.WriteString(header1 + "\n")
+	}
+	if header2 != "" {
+		result.WriteString(header2 + "\n\n\n")
+	}
+
+	// Add diff content
+	result.WriteString(diffContent + "\n\n")
+
+	// Add report footer
+	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("============= %s END ===============\n\n", title))
+
+	return result.String()
+}
+
+func catConsoleFile(t *testing.T, ctx context.Context, rvm vmm.VirtualMachine) {
+	cd, err := host.EmphiricalVMCacheDir(ctx, rvm.ID())
+	if err != nil {
+		t.Logf("Failed to get vm cache dir: %v", err)
+		return
+	}
+	fullPath := filepath.Join(cd, "console.log")
+
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Logf("Failed to read console.log: %v", err)
+		return
+	}
+
+	t.Log(buildDiffReport(t, "console.log", "", "", string(content)))
 }
 
 // Mock bootloader for testing

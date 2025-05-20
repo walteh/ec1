@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"sync"
 
 	"gitlab.com/tozd/go/errors"
 
@@ -16,6 +17,7 @@ type Client struct {
 	transport transport.Transport
 	protocol  protocol.ProtocolConnFunc
 	conn      io.ReadWriteCloser
+	mu        sync.Mutex
 }
 
 // NewClient creates a new Client with the given transport
@@ -28,6 +30,10 @@ func NewClient(transport transport.Transport, protocol protocol.ProtocolConnFunc
 
 // Connect establishes a connection to the server
 func (c *Client) Connect(ctx context.Context) error {
+	if c.conn != nil {
+		return nil
+	}
+
 	var err error
 	c.conn, err = c.transport.Dial()
 	if err != nil {
@@ -48,6 +54,9 @@ func (c *Client) Close() error {
 
 // SendCommand sends a command to the server
 func (c *Client) SendCommand(ctx context.Context, command string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.conn == nil {
 		return errors.New("not connected")
 	}

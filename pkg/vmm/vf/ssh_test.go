@@ -6,19 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/fatih/color"
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/bootloader"
-	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -252,13 +247,38 @@ func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	t.Cleanup(func() {
-		catConsoleFile(t, ctx, rvm.VM())
-	})
+	rvm.WaitOnVMReadyToExec()
 
-	<-time.After(100 * time.Millisecond)
+	t.Logf("ready to exec")
 
-	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
+	mi, err := vmm.ProcMemInfo(ctx, rvm)
+	require.NoError(t, err, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+
+	require.NotNil(t, mi)
+
+}
+
+func TestGuestInitWrapperVSockFedora(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+
+	// Create a real VM for testing
+	rvm, _ := setupFedoraVM(t, ctx, 1024)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	<-time.After(5000 * time.Millisecond)
+
+	t.Logf("ready to exec")
+	mi, err := vmm.ProcMemInfo(ctx, rvm)
 	require.NoError(t, err, "Failed to get meminfo")
 
 	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
@@ -282,13 +302,10 @@ func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	t.Cleanup(func() {
-		catConsoleFile(t, ctx, rvm.VM())
-	})
+	rvm.WaitOnVMReadyToExec()
 
-	<-time.After(3000 * time.Millisecond)
-
-	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
+	t.Logf("ready to exec")
+	mi, err := vmm.ProcMemInfo(ctx, rvm)
 	require.NoError(t, err, "Failed to get meminfo")
 
 	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
@@ -297,43 +314,29 @@ func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 
 }
 
-func buildDiffReport(t *testing.T, title string, header1 string, header2 string, diffContent string) string {
-	var result strings.Builder
+func TestGuestInitWrapperVSockUbuntu(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
 
-	// Add report header
-	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("\n\n============= %s START =============\n\n", title))
-	result.WriteString(fmt.Sprintf("%s\n\n", color.YellowString("%s", t.Name())))
-
-	// Add type/value information headers if provided
-	if header1 != "" {
-		result.WriteString(header1 + "\n")
-	}
-	if header2 != "" {
-		result.WriteString(header2 + "\n\n\n")
-	}
-
-	// Add diff content
-	result.WriteString(diffContent + "\n\n")
-
-	// Add report footer
-	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("============= %s END ===============\n\n", title))
-
-	return result.String()
-}
-
-func catConsoleFile(t *testing.T, ctx context.Context, rvm vmm.VirtualMachine) {
-	cd, err := host.EmphiricalVMCacheDir(ctx, rvm.ID())
-	if err != nil {
-		t.Logf("Failed to get vm cache dir: %v", err)
-		return
-	}
-	fullPath := filepath.Join(cd, "console.log")
-
-	content, err := os.ReadFile(fullPath)
-	if err != nil {
-		t.Logf("Failed to read console.log: %v", err)
+	// Create a real VM for testing
+	rvm, _ := setupUbuntuVM(t, ctx, 1024*10)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
 		return
 	}
 
-	t.Log(buildDiffReport(t, "console.log", "", "", string(content)))
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	<-time.After(5000 * time.Millisecond)
+
+	t.Logf("ready to exec")
+	mi, err := vmm.ProcMemInfo(ctx, rvm)
+	require.NoError(t, err, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+
+	require.NotNil(t, mi)
+
 }

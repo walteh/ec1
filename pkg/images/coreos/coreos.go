@@ -32,10 +32,6 @@ const coreosReleaseStream = fedoracoreos.StreamStable
 
 // root := archInfo.Artifacts["metal"].Formats["pxe"]
 
-func (prov *CoreOSProvider) SupportsEFI() bool {
-	return true
-}
-
 func (prov *CoreOSProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }

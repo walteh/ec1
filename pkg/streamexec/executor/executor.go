@@ -23,6 +23,7 @@ type CommandExecutor interface {
 
 // StreamingExecutor implements CommandExecutor using a Protocol for streaming
 type StreamingExecutor struct {
+	mu         sync.Mutex
 	bufferSize int
 }
 
@@ -35,6 +36,7 @@ func NewStreamingExecutor(bufferSize int) *StreamingExecutor {
 
 // ExecuteCommand executes a command and streams stdin/stdout/stderr through the protocol
 func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error {
+
 	// Split the command into parts
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
@@ -58,6 +60,9 @@ func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.P
 
 // setupAndRunCommand sets up pipes for a command and runs it
 func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protocol.Protocol, cmd *exec.Cmd) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	// Create pipes for stdout, stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -84,20 +89,19 @@ func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protoc
 	// Stream stdout to the protocol
 	go func() {
 		defer wg.Done()
-		e.streamOutput(stdout, protocol.Stdout, proto)
+		e.streamOutput2(stdout, protocol.Stdout, proto)
 	}()
 
 	// Stream stderr to the protocol
 	go func() {
 		defer wg.Done()
-		e.streamOutput(stderr, protocol.Stderr, proto)
+		e.streamOutput2(stderr, protocol.Stderr, proto)
 	}()
 
 	// Wait for the command to complete
 	cmdErr := cmd.Wait()
-
-	// Wait for stdout/stderr goroutines to finish
 	wg.Wait()
+	// Wait for stdout/stderr goroutines to finish
 
 	// Send exit status
 	var exitMsg string
@@ -114,6 +118,8 @@ func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protoc
 
 // streamOutput reads from a reader and sends the data through the protocol
 func (e *StreamingExecutor) streamOutput(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
+
+	debugBuf := []byte{}
 	buf := make([]byte, e.bufferSize)
 	for {
 		n, err := r.Read(buf)
@@ -122,12 +128,40 @@ func (e *StreamingExecutor) streamOutput(r io.Reader, msgType protocol.MessageTy
 				log.Printf("Error sending output: %v", err)
 				break
 			}
+			debugBuf = append(debugBuf, buf[:n]...)
 		}
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("Error reading output: %v", err)
+				log.Printf("Error reading output (only got %d bytes): %v: %s", n, err, string(debugBuf))
 			}
 			break
 		}
 	}
+}
+
+func (e *StreamingExecutor) streamOutput2(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
+	_, err := io.Copy(NewWrappedWriter(proto, msgType), r)
+	if err != nil {
+		log.Printf("Error copying output: %v", err)
+	}
+}
+
+type WrappedWriter struct {
+	protocol protocol.Protocol
+	msgType  protocol.MessageType
+}
+
+func NewWrappedWriter(protocol protocol.Protocol, msgType protocol.MessageType) *WrappedWriter {
+	return &WrappedWriter{
+		protocol: protocol,
+		msgType:  msgType,
+	}
+}
+
+func (w *WrappedWriter) Write(p []byte) (n int, err error) {
+	err = w.protocol.WriteMessage(w.msgType, p)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

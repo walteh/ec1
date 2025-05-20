@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -123,6 +124,28 @@ type FakeGzipReader struct {
 // data or the extracted kernel data.
 func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 
+	// check if it needs uncompressed
+	format, reader, err := archives.Identify(ctx, "", reader)
+	noMatch := errors.Is(err, archives.NoMatch)
+	if err != nil && !noMatch {
+		return nil, errors.Errorf("identifying compression format: %w", err)
+	}
+	if !noMatch {
+		slog.Info("kernel is compressed", "format", fmt.Sprintf("%T", format))
+		if comp, ok := format.(archives.Compression); ok {
+			decompressedReader, err := comp.OpenReader(reader)
+			if err != nil {
+				return nil, errors.Errorf("opening compressed kernel: %w", err)
+			}
+
+			validationReader, err := validateARM64Kernel(decompressedReader)
+			if err != nil {
+				return nil, errors.Errorf("validating ARM64 kernel: %w", err)
+			}
+			return validationReader, nil
+		}
+	}
+
 	// all, err := io.ReadAll(reader)
 	// if err != nil {
 	// 	return nil, errors.Errorf("reading all: %w", err)
@@ -147,8 +170,14 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 				return nil, errors.Errorf("seeking to beginning: %w", err)
 			}
 		}
-		// Not an EFI zboot image, return as is
-		return reader, nil
+		slog.Info("not an EFI zboot image, returning as is")
+
+		validationReader, err := validateARM64Kernel(reader)
+		if err != nil {
+			return nil, errors.Errorf("validating ARM64 kernel: %w", err)
+		}
+		return validationReader, nil
+
 	}
 
 	// sectionReader := io.NewSectionReader(bytes.NewReader(all), int64(header.PayloadOffset), int64(header.PayloadSize))

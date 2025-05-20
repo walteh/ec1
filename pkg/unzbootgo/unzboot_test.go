@@ -36,37 +36,6 @@ func TestExtractKernel(t *testing.T) {
 	t.Logf("Successfully extracted kernel of size %d bytes", stat.Size())
 }
 
-func TestExtractKernelFromBuffer(t *testing.T) {
-	// Skip this test unless we have a test EFI file
-	testEFIFile := os.Getenv("TEST_EFI_FILE")
-	if testEFIFile == "" {
-		t.Skip("Skipping test: TEST_EFI_FILE environment variable not set")
-	}
-
-	// Read the test EFI file
-	data, err := os.ReadFile(testEFIFile)
-	require.NoError(t, err, "Failed to read test EFI file")
-
-	// Create a temporary directory for the output
-	tempDir, err := os.MkdirTemp("", "unzbootgo-test")
-	require.NoError(t, err, "Failed to create temp dir")
-	defer os.RemoveAll(tempDir)
-
-	// Create output file path
-	outputFile := filepath.Join(tempDir, "kernel.out")
-
-	// Test ExtractKernelFromBuffer
-	err = ExtractKernelFromBuffer(data, outputFile)
-	require.NoError(t, err, "ExtractKernelFromBuffer failed")
-
-	// Verify output file exists and is not empty
-	stat, err := os.Stat(outputFile)
-	require.NoError(t, err, "Failed to stat output file")
-	assert.Greater(t, stat.Size(), int64(0), "Output file is empty")
-
-	t.Logf("Successfully extracted kernel of size %d bytes from buffer", stat.Size())
-}
-
 // TestNonEFIFile tests that non-EFI files are returned unchanged
 func TestNonEFIFile(t *testing.T) {
 	// Create a temporary directory
