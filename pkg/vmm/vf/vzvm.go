@@ -111,7 +111,7 @@ func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.Ne
 
 	for _, dev := range opts.Devices {
 		if err := AddToVirtualMachineConfig(wrapper, dev); err != nil {
-			return nil, errors.Errorf("adding device to virtual machine configuration: %w", err)
+			return nil, errors.Errorf("adding device to virtual machine configuration: %T: %w", dev, err)
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 
 	"github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/filesystem/ext4"
@@ -78,6 +79,78 @@ func UncompressInitBin(ctx context.Context) ([]byte, error) {
 	return uncompressedInitBin, nil
 }
 
+type discarder struct {
+	r   io.Reader
+	pos int64
+	dup *os.File
+}
+
+func NewDiscarder(r io.Reader) *discarder {
+	df, err := os.CreateTemp("", "initramfs-discarder")
+	if err != nil {
+		panic(err)
+	}
+	return &discarder{
+		r:   r,
+		pos: 0,
+		dup: df,
+	}
+}
+
+// ReadAt implements ReadAt for a discarder.
+// It is an error for the offset to be negative.
+func (r *discarder) ReadAt(p []byte, off int64) (int, error) {
+
+	if off-r.pos < 0 {
+		return r.dup.ReadAt(p, off)
+		// return 0, fmt.Errorf("negative seek on discarder not allowed: off=%d, pos=%d", off, r.pos)
+	}
+	if off != r.pos {
+		i, err := io.Copy(r.dup, io.LimitReader(r.r, off-r.pos))
+		if err != nil || i != off-r.pos {
+			return 0, err
+		}
+		r.pos += i
+	}
+	n, err := io.ReadFull(io.TeeReader(r.r, r.dup), p)
+	if err != nil {
+		return n, err
+	}
+	r.pos += int64(n)
+	return n, err
+}
+
+type InMemoryReaderAt struct {
+	reader io.Reader
+	buffer []byte
+	offset int64
+	mutex  sync.Mutex
+}
+
+func NewInMemoryReaderAt(r io.Reader) *InMemoryReaderAt {
+	return &InMemoryReaderAt{
+		reader: r,
+		buffer: make([]byte, 1024),
+		offset: 0,
+	}
+}
+
+func (r *InMemoryReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if off < 0 {
+		return 0, fmt.Errorf("negative offset not allowed: %d", off)
+	}
+
+	if off >= int64(len(r.buffer)) {
+		return 0, io.EOF
+	}
+
+	copy(p, r.buffer[off:])
+	return len(p), nil
+}
+
 func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, error) {
 	// Create a new file next to the original with .ec1 suffix
 	outputPath := initramfsPath + ".ec1"
@@ -97,21 +170,6 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	noMatch := err == archives.NoMatch
 	if !noMatch {
 		if format, ok := format.(archives.Compression); ok {
-			// if _, ok := format.(archives.Zstd); ok {
-			// 	pr, pw := io.Pipe()
-			// 	cmd := exec.CommandContext(ctx, "zstd", "-cd", initramfsPath)
-			// 	cmd.Stdin = rdr
-			// 	cmd.Stdout = pw
-			// 	cmd.Stderr = os.Stderr
-			// 	go func() {
-			// 		err := cmd.Run()
-			// 		if err != nil {
-			// 			slog.ErrorContext(ctx, "running zstd", "error", err)
-			// 		}
-			// 		pw.Close()
-			// 	}()
-			// 	rdr = pr
-			// } else {
 			slog.InfoContext(ctx, "initramfs is compressed", "format", fmt.Sprintf("%T", format))
 			rdrz, err := format.OpenReader(rdr)
 			if err != nil {
@@ -119,55 +177,16 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 			}
 			defer rdrz.Close()
 			rdr = rdrz
-			// }
-
 		} else {
 			return "", errors.Errorf("initramfs file %s is not a compression format: %s", initramfsPath, format)
 		}
 	}
 
-	// all, err := io.ReadAll(rdr)
-	// if err != nil {
-	// 	return "", errors.Errorf("reading initramfs file %s: %w", initramfsPath, err)
-	// }
-
-	r := initramfs.NewReader(rdr)
-
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		r.WriteTo(pw)
-	}()
-
-	// r.WriteTo()
-
-	buff := bytes.NewBuffer([]byte{})
-	id, err := io.Copy(buff, pr)
-	if err != nil {
-		return "", errors.Errorf("copying cpio file (finished %d bytes): %w", id, err)
-	}
-
-	// Create the output file
-	outputFile, err := os.Create(outputPath)
-	if err != nil {
-		return "", errors.Errorf("creating output file %s: %w", outputPath, err)
-	}
-	defer outputFile.Close()
-
-	outputWriter := io.Writer(outputFile)
-
-	if format, ok := format.(archives.Compression); ok {
-		outputWriterd, err := format.OpenWriter(outputWriter)
-		if err != nil {
-			return "", errors.Errorf("opening compression writer: %w", err)
-		}
-		defer outputWriterd.Close()
-		outputWriter = outputWriterd
-	}
+	// ok := initramfs.NewReader(rdr)
+	// ok.WriteTo()
 
 	// Create CPIO reader and writer using the Newc format
-	cpioReader := cpio.Newc.Reader(bytes.NewReader(buff.Bytes()))
-	cpioWriter := cpio.Newc.Writer(outputWriter)
+	cpioReader := cpio.Newc.Reader(NewDiscarder(rdr))
 
 	// Get the uncompressed init binary
 	uncompressedInitBinData, err := UncompressInitBin(ctx)
@@ -187,9 +206,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Filter out any existing init.ec1 files
 	var filteredRecords []cpio.Record
 	for _, rec := range records {
-		// if rec.Name == customInitPath {
-		// 	continue
-		// }
+		fmt.Println("rec.Name", rec.Name)
 		if rec.Name == "init" {
 			rec.Name = "init.real"
 		}
@@ -199,6 +216,25 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Add our custom init file
 	customInitRecord := cpio.StaticFile(customInitPath, string(uncompressedInitBinData), 0755)
 	filteredRecords = append(filteredRecords, customInitRecord)
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return "", errors.Errorf("creating output file %s: %w", outputPath, err)
+	}
+	defer outputFile.Close()
+
+	outputWriter := io.Writer(outputFile)
+
+	if format, ok := format.(archives.Compression); ok {
+		outputWriterd, err := format.OpenWriter(outputWriter)
+		if err != nil {
+			return "", errors.Errorf("opening compression writer: %w", err)
+		}
+		defer outputWriterd.Close()
+		outputWriter = outputWriterd
+	}
+
+	cpioWriter := cpio.Newc.Writer(outputWriter)
 
 	// Write all records to the output file
 	if err := cpio.WriteRecords(cpioWriter, filteredRecords); err != nil {
@@ -448,3 +484,56 @@ func PrepareRootFS(ctx context.Context, imagePath string) (string, error) {
 // 	}
 
 // }
+
+type bufferedReaderAt struct {
+	reader io.Reader
+	buffer []byte
+	offset int64
+	mutex  sync.Mutex
+}
+
+func NewBufferedReaderAt(r io.Reader, bufferSize int) *bufferedReaderAt {
+	return &bufferedReaderAt{
+		reader: r,
+		buffer: make([]byte, bufferSize),
+	}
+}
+
+func (b *bufferedReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if off < 0 {
+		return 0, nil
+	}
+
+	if off < b.offset {
+		return 0, nil
+	}
+
+	if off >= b.offset+int64(len(b.buffer)) {
+		b.offset = off
+		read, err := io.ReadFull(b.reader, b.buffer)
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			return 0, err
+		}
+		if read == 0 {
+			return 0, io.EOF
+		}
+	}
+
+	start := off - b.offset
+	available := len(b.buffer) - int(start)
+
+	if available <= 0 {
+		return 0, io.EOF
+	}
+
+	readLen := len(p)
+	if readLen > available {
+		readLen = available
+	}
+
+	copy(p, b.buffer[start:start+int64(readLen)])
+	return readLen, nil
+}

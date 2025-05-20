@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/images/fedora"
+	"github.com/walteh/ec1/pkg/images/puipui"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
@@ -20,6 +21,25 @@ import (
 
 // Create a real VM for testing
 func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	hv := vf.NewHypervisor()
+	pp := puipui.NewPuipuiProvider()
+
+	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
+
+	rvm, err := vmm.RunVirtualMachine(ctx, hv, pp, 2, memory.ToBytes())
+	require.NoError(t, err)
+
+	go func() {
+		t.Logf("vm running,waiting for vm to stop")
+		err := rvm.Wait()
+		assert.NoError(t, err)
+	}()
+
+	return rvm, pp
+
+}
+
+func setupFedoraVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
 	pp := fedora.NewFedoraProvider()
 
@@ -36,18 +56,6 @@ func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*
 
 	return rvm, pp
 
-	// timeout := time.After(30 * time.Second)
-	// slog.DebugContext(ctx, "waiting for test VM")
-	// select {
-	// case <-timeout:
-	// 	t.Fatalf("Timed out waiting for test VM")
-	// 	return nil
-	// case vm := <-hv.notify:
-	// 	return rvm.VM()
-	// case err := <-problemch:
-	// 	t.Fatalf("problem running vm: %v", err)
-	// 	return nil
-	// }
 }
 
 // Mock bootloader for testing

@@ -2,6 +2,9 @@ package host
 
 import (
 	"bytes"
+	"debug/elf"
+	"debug/pe"
+	"io"
 	"os"
 )
 
@@ -25,6 +28,28 @@ func isUncompressedArm64Kernel(buf []byte) bool {
 	return compareBytes(buf, pattern, offset)
 }
 
+// isPEFile checks if a file is a valid PE executable
+func isPEFile(r io.ReaderAt) (bool, error) {
+	_, err := pe.NewFile(r)
+	if err != nil {
+		// Not a PE file
+		return false, nil
+	}
+	return true, nil
+}
+
+// isELFFile checks if a file is a valid ELF executable
+func isELFFile(r io.ReaderAt) (bool, error) {
+	_, err := elf.NewFile(r)
+	if err != nil {
+		// Not an ELF file
+		return false, nil
+	}
+	return true, nil
+}
+
+// IsKernelUncompressed checks if the provided file is an uncompressed kernel
+// that can be directly used by the Virtualization Framework.
 func IsKernelUncompressed(filename string) (bool, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -32,7 +57,33 @@ func IsKernelUncompressed(filename string) (bool, error) {
 	}
 	defer file.Close()
 
+	// Check if it's a PE file, which is the format used by EFI executables
+	// (this is the format of the Fedora FCOS kernel)
+	isPE, err := isPEFile(file)
+	if err != nil {
+		return false, err
+	}
+	if isPE {
+		// PE files are inherently uncompressed executable formats
+		return true, nil
+	}
+
+	// Check if it's an uncompressed ELF file
+	isELF, err := isELFFile(file)
+	if err != nil {
+		return false, err
+	}
+	if isELF {
+		// ELF files are inherently uncompressed executable formats
+		return true, nil
+	}
+
+	// Check if it's an ARM64 boot image using the original method
 	buf := make([]byte, 2048)
+	_, err = file.Seek(0, 0) // Rewind the file
+	if err != nil {
+		return false, err
+	}
 	_, err = file.Read(buf)
 	if err != nil {
 		return false, err

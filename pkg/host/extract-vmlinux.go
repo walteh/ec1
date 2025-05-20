@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"debug/elf"
+	"debug/pe"
 	"errors"
 	"fmt"
 	"io"
@@ -66,6 +67,9 @@ var magicHeaders = []magicHeader{
 	},
 }
 
+// PE32+ file header magic for EFI applications
+var peHeaderMagic = []byte{0x4d, 0x5a} // MZ
+
 // ARM64 boot image header magic: "LINUX ARM64 KERNEL" (with nulls between)
 var arm64Magic = []byte{
 	0x41, 0x52, 0x4d, 0x64, // ARMd
@@ -75,6 +79,19 @@ var arm64Magic = []byte{
 func isELF(r io.ReaderAt) bool {
 	_, err := elf.NewFile(r)
 	return err == nil
+}
+
+// isPE checks if the file is a PE32+ EFI application
+func isPE(r io.ReaderAt) bool {
+	file, err := pe.NewFile(r)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Check if it's actually an ARM64 PE binary by examining machine type
+	// ARM64 machine type is 0xAA64
+	return file.Machine == 0xAA64
 }
 
 // isArm64BootImage checks if the file is an ARM64 kernel boot image
@@ -93,9 +110,28 @@ func isArm64BootImage(r io.ReaderAt) bool {
 	return bytes.Equal(buf[0x38:0x38+4], arm64Magic)
 }
 
-// isValidKernel checks if the file is a valid kernel (either ELF or ARM64 boot image)
+// isValidKernel checks if the file is a valid kernel (ELF, PE32+ EFI, or ARM64 boot image)
 func isValidKernel(r io.ReaderAt) bool {
-	return isELF(r) || isArm64BootImage(r)
+	return isELF(r) || isArm64BootImage(r) || isPE(r)
+}
+
+// isValidKernelWithSize checks if the file is a valid kernel and also verifies
+// it's a reasonable size for a kernel
+func isValidKernelWithSize(r io.ReaderAt, size int64) bool {
+	// For PE files, they can be smaller than typical Linux kernels
+	// Let's lower the threshold for these files
+	if isPE(r) && size >= 128*1024 { // 128KB for PE files
+		return true
+	}
+
+	// For other kernel types, check if it's a valid format
+	if isELF(r) || isArm64BootImage(r) {
+		// Ensure the kernel is a reasonable size
+		// Most kernels are at least several megabytes
+		return size >= 1*1024*1024 // At least 1MB
+	}
+
+	return false
 }
 
 // findSignatures efficiently scans a file for magic signatures using parallel processing
@@ -200,11 +236,19 @@ func simpleDecompress(ctx context.Context, file *os.File, pos int64, header magi
 	}
 
 	// Set a timeout context for the entire operation
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second) // Increased timeout
 	defer cancel()
 
 	// Channel to signal when decompression is done or failed
 	done := make(chan struct{})
+
+	// Variables to track found kernels
+	type foundKernel struct {
+		data []byte
+		size int64
+	}
+	var foundKernels []foundKernel
+	var kernelMutex sync.Mutex
 
 	// Start the decompression process
 	go func() {
@@ -244,26 +288,51 @@ func simpleDecompress(ctx context.Context, file *os.File, pos int64, header magi
 					}
 					totalWritten += int64(n)
 
-					// Every 20MB, check if we have a valid kernel
-					if totalWritten%20_000_000 < 4*1024*1024 && totalWritten > 0 {
+					// Check regularly, but not too often
+					if totalWritten%16_000_000 < 4*1024*1024 && totalWritten > 0 {
 						outFile.Sync()
 
 						// Check if we have a valid kernel
 						checkFile, err := os.Open(tmpName)
 						if err == nil {
-							defer checkFile.Close()
+							fileInfo, _ := checkFile.Stat()
+							fileSize := fileInfo.Size()
+
 							if isValidKernel(checkFile) {
-								slog.InfoContext(ctx, "found valid kernel during decompression",
-									"format", header.name, "bytes", totalWritten)
-								return
+								// We found something that looks like a kernel...
+								slog.InfoContext(ctx, "found potential kernel during decompression",
+									"format", header.name, "bytes", totalWritten, "type", getKernelType(checkFile))
+
+								// Check if it's a valid kernel with appropriate size
+								checkFile.Seek(0, 0) // Rewind for next check
+								if isValidKernelWithSize(checkFile, fileSize) {
+									// Read the data for this potentially valid kernel
+									checkFile.Seek(0, 0)
+									data, err := io.ReadAll(checkFile)
+									if err == nil {
+										kernelMutex.Lock()
+										foundKernels = append(foundKernels, foundKernel{
+											data: data,
+											size: fileSize,
+										})
+										kernelMutex.Unlock()
+
+										slog.InfoContext(ctx, "saved kernel candidate",
+											"format", header.name, "size_mb", fileSize/1024/1024,
+											"type", getKernelType(checkFile))
+									}
+								}
 							}
+							checkFile.Close()
 						}
 					}
 				}
 
 				if err != nil {
 					if err != io.EOF {
-						slog.ErrorContext(ctx, "error reading from decompressor", "error", err)
+						slog.ErrorContext(ctx, "error reading from decompressor", "error", err, "bytes_decompressed", totalWritten)
+					} else {
+						slog.InfoContext(ctx, "finished decompression", "format", header.name, "bytes_decompressed", totalWritten)
 					}
 					return
 				}
@@ -274,20 +343,48 @@ func simpleDecompress(ctx context.Context, file *os.File, pos int64, header magi
 	// Wait for the decompression to complete or timeout
 	select {
 	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			slog.InfoContext(ctx, "decompression timed out", "format", header.name)
+		}
 		return nil, false
 	case <-done:
 		// Decompression completed, check if we got a valid kernel
 	}
 
-	// Check if we have a valid kernel
+	// If we found any kernel candidates, return the largest one
+	kernelMutex.Lock()
+	defer kernelMutex.Unlock()
+
+	if len(foundKernels) > 0 {
+		// Find the largest kernel
+		var bestKernel foundKernel
+		for _, k := range foundKernels {
+			if k.size > bestKernel.size {
+				bestKernel = k
+			}
+		}
+
+		slog.InfoContext(ctx, "selected largest kernel candidate",
+			"format", header.name, "size_mb", bestKernel.size/1024/1024,
+			"candidates", len(foundKernels))
+
+		return bestKernel.data, true
+	}
+
+	// Check if the final output is a valid kernel, as a fallback
 	checkFile, err := os.Open(tmpName)
 	if err != nil {
 		return nil, false
 	}
 	defer checkFile.Close()
 
-	if isValidKernel(checkFile) {
-		slog.InfoContext(ctx, "found valid kernel", "format", header.name)
+	fileInfo, _ := checkFile.Stat()
+	fileSize := fileInfo.Size()
+
+	if isValidKernelWithSize(checkFile, fileSize) {
+		slog.InfoContext(ctx, "found valid kernel in final check",
+			"format", header.name, "size_mb", fileSize/1024/1024,
+			"type", getKernelType(checkFile))
 
 		// Read the data and return it
 		checkFile.Seek(0, 0)
@@ -301,6 +398,18 @@ func simpleDecompress(ctx context.Context, file *os.File, pos int64, header magi
 
 	slog.InfoContext(ctx, "no valid kernel found in decompressed data", "format", header.name)
 	return nil, false
+}
+
+// getKernelType returns a string describing the detected kernel type
+func getKernelType(r io.ReaderAt) string {
+	if isPE(r) {
+		return "PE32+ EFI"
+	} else if isELF(r) {
+		return "ELF"
+	} else if isArm64BootImage(r) {
+		return "ARM64 Boot Image"
+	}
+	return "Unknown"
 }
 
 // extractVmlinuxNative attempts to extract vmlinux from a kernel image
@@ -323,14 +432,22 @@ func ExtractVmlinuxNative(ctx context.Context, imagePath string) (io.ReadCloser,
 	if fileSize > 0 {
 		fileReader := io.NewSectionReader(file, 0, fileSize)
 		if isValidKernel(fileReader) {
-			slog.InfoContext(ctx, "file is already a valid kernel, returning as-is")
-			// File is already a valid kernel, read and return it
-			data := make([]byte, fileSize)
-			_, err := file.ReadAt(data, 0)
-			if err != nil && err != io.EOF {
-				return nil, fmt.Errorf("reading uncompressed file: %w", err)
+			// Check for appropriate size too
+			fileReader.Seek(0, 0) // Rewind for next check
+			if isValidKernelWithSize(fileReader, fileSize) {
+				slog.InfoContext(ctx, "file is already a valid kernel, returning as-is",
+					"size_mb", fileSize/1024/1024, "type", getKernelType(fileReader))
+				// File is already a valid kernel, read and return it
+				data := make([]byte, fileSize)
+				_, err := file.ReadAt(data, 0)
+				if err != nil && err != io.EOF {
+					return nil, fmt.Errorf("reading uncompressed file: %w", err)
+				}
+				return io.NopCloser(bytes.NewReader(data)), nil
+			} else {
+				slog.InfoContext(ctx, "file looks like a kernel but is too small, trying decompression",
+					"size_kb", fileSize/1024)
 			}
-			return io.NopCloser(bytes.NewReader(data)), nil
 		}
 	}
 

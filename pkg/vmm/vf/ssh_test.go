@@ -257,3 +257,29 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	require.NotNil(t, mi)
 
 }
+
+func TestGuestInitWrapperVSockFedora(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+
+	// Create a real VM for testing
+	rvm, _ := setupFedoraVM(t, ctx, 1024)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	<-time.After(100 * time.Millisecond)
+
+	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
+	require.NoError(t, err, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+
+	require.NotNil(t, mi)
+
+}

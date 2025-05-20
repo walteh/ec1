@@ -7,11 +7,11 @@
 		{
 			"name": "vz",
 			"path": "../vz"
-		},
-		{
-			"name": "kata-containers",
-			"path": "../kata-containers/src/runtime"
-		},
+		}
+		// {
+		// 	"name": "kata-containers",
+		// 	"path": "../kata-containers/src/runtime"
+		// },
 		// {
 		// 	"name": "nswrap",
 		// 	"path": "../../../git.wow.st/gmp/nswrap"
@@ -20,30 +20,30 @@
 		// 	"name": "gvisor",
 		// 	"path": "../gvisor"
 		// },
-		{
-			"name": "gvisor-tap-vsock",
-			"path": "../gvisor-tap-vsock"
-		},
-		{
-			"name": "firecracker",
-			"path": "../firecracker"
-		},
+		// {
+		// 	"name": "gvisor-tap-vsock",
+		// 	"path": "../gvisor-tap-vsock"
+		// },
+		// {
+		// 	"name": "firecracker",
+		// 	"path": "../firecracker"
+		// },
 		// {
 		// 	"name": "containerd",
 		// 	"path": "../containerd"
 		// },
-		{
-			"name": "vsock-guest-exec",
-			"path": "../vsock-guest-exec"
-		},
+		// {
+		// 	"name": "vsock-guest-exec",
+		// 	"path": "../vsock-guest-exec"
+		// },
 		// {
 		// 	"name": "ignition",
 		// 	"path": "../ignition"
 		// },
-		{
-			"name": "wrk",
-			"path": "../../../tmp/ksa2/wrk"
-		}
+		// {
+		// 	"name": "wrk",
+		// 	"path": "../../../tmp/ksa2/wrk"
+		// }
 	],
 	"extensions": {
 		"recommendations": [

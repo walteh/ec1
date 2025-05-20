@@ -51,13 +51,11 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/kata-containers/kata-containers/src/runtime v0.0.0-00010101000000-000000000000
 	github.com/kdomanski/iso9660 v0.4.0
-	github.com/klauspost/compress v1.18.1-0.20250502091416-dee68d8e897e
 	github.com/lima-vm/go-qcow2reader v0.6.0
 	github.com/lmittmann/tint v1.0.7
 	github.com/mdlayher/vsock v1.2.1
 	github.com/mholt/archives v0.1.2
 	github.com/opencontainers/runtime-spec v1.2.1
-	github.com/pierrec/lz4/v4 v4.1.21
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
 	github.com/prometheus/procfs v0.15.1
@@ -68,7 +66,6 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/superblocksteam/run v0.0.7
 	github.com/u-root/u-root v0.14.0
-	github.com/ulikunitz/xz v0.5.12
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/veqryn/slog-context v0.8.0
 	github.com/walteh/run v0.0.0-20250510150917-6f8074766f03
@@ -82,6 +79,7 @@ require (
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 	gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
+	kraftkit.sh v0.11.6
 )
 
 require (
@@ -146,7 +144,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
@@ -181,6 +179,7 @@ require (
 	github.com/intel/goresctrl v0.8.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.18.1-0.20250502091416-dee68d8e897e // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -219,6 +218,7 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
+	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/xattr v0.4.9 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -243,6 +243,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
+	github.com/ulikunitz/xz v0.5.12 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 	github.com/vishvananda/netlink v1.3.1-0.20250303224720-0e7078ed04c8 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
@@ -251,7 +252,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	gitlab.com/nvidia/cloud-native/go-nvlib v0.0.0-20220601114329-47893b162965 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect
-	go.mongodb.org/mongo-driver v1.14.0 // indirect
+	go.mongodb.org/mongo-driver v1.17.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect

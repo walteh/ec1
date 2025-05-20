@@ -43,9 +43,9 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 					return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
 				}
 			}
-
-			rootfsPath := filepath.Join(bootCacheDir, linuxVMIProvider.RootfsPath())
-			if rootfsPath != "" {
+			rootfsFileName := linuxVMIProvider.RootfsPath()
+			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
+			if rootfsFileName != "" {
 				if initramfsFileName == "" {
 					rootfsPath, err = bootloader.PrepareRootFS(ctx, rootfsPath)
 					if err != nil {
@@ -64,17 +64,17 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				return nil, nil, errors.New("kernel file name is empty")
 			}
 			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
-			kernelPath, err = bootloader.PrepareKernel(ctx, kernelPath)
-			if err != nil {
-				return nil, nil, errors.Errorf("preparing kernel: %w", err)
-			}
+			// kernelPath, err = bootloader.PrepareKernel(ctx, kernelPath)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("preparing kernel: %w", err)
+			// }
 
 			slog.InfoContext(ctx, "kernel path", "path", kernelPath)
 
 			return &bootloader.LinuxBootloader{
 				InitrdPath:    initramfsPath,
 				VmlinuzPath:   kernelPath,
-				KernelCmdLine: linuxVMIProvider.KernelArgs(),
+				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0",
 			}, devices, nil
 		}
 		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil

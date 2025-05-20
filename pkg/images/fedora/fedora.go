@@ -115,7 +115,7 @@ func (prov *FedoraProvider) InitramfsPath() (path string) {
 }
 
 func (prov *FedoraProvider) KernelArgs() (args string) {
-	return ""
+	return "CONFIG_EFI_ZBOOT=1"
 }
 
 func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {
