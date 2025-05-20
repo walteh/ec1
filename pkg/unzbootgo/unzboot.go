@@ -118,66 +118,21 @@ type FakeGzipReader struct {
 	header []byte
 }
 
-func NewFakeGzipReader(r io.Reader) *FakeGzipReader {
-	// Simple gzip header (magic number + compression method + flags + mod time + XFL + OS)
-	header := []byte{
-		0x1f, 0x8b, // Magic number
-		// 0x08,                   // Compression method (deflate)
-		// 0x00,                   // Flags
-		// 0x00, 0x00, 0x00, 0x00, // Modification time
-		// 0x00, // Extra flags
-		// 0xff, // OS (unknown)
-	}
-
-	return &FakeGzipReader{
-		reader: r,
-		header: header,
-		count:  0,
-	}
-}
-
-// Read implements io.Reader interface, adding the gzip header to the first bytes read.
-func (r *FakeGzipReader) Read(p []byte) (n int, err error) {
-	if r.count < int64(len(r.header)) {
-		// Still need to return header bytes
-		headerBytesLeft := int64(len(r.header)) - r.count
-		headerBytesToCopy := int(headerBytesLeft)
-		if headerBytesToCopy > len(p) {
-			headerBytesToCopy = len(p)
-		}
-
-		// Copy header bytes to buffer
-		copy(p[:headerBytesToCopy], r.header[r.count:r.count+int64(headerBytesToCopy)])
-		r.count += int64(headerBytesToCopy)
-
-		// If we filled the buffer with header bytes, return
-		if headerBytesToCopy == len(p) {
-			return headerBytesToCopy, nil
-		}
-
-		// Otherwise, continue to read from the underlying reader
-		bytesRead, err := r.reader.Read(p[headerBytesToCopy:])
-		return headerBytesToCopy + bytesRead, err
-	}
-
-	// Header has been fully sent, just read from the underlying reader
-	return r.reader.Read(p)
-}
-
 // ProcessKernel examines the provided data and if it's an EFI zboot image,
 // extracts and decompresses the contained kernel. Returns either the original
 // data or the extracted kernel data.
 func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 
-	all, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, errors.Errorf("reading all: %w", err)
-	}
+	// all, err := io.ReadAll(reader)
+	// if err != nil {
+	// 	return nil, errors.Errorf("reading all: %w", err)
+	// }
 
 	// Parse the header
 	header := LinuxEFIZbootHeader{}
-	bufferedReader := bufio.NewReader(bytes.NewReader(all))
-	if err := binary.Read(bufferedReader, binary.LittleEndian, &header); err != nil {
+	readCounter := &ReadCounter{Reader: reader}
+	// bufferedReader := NewFakeSeeker(readCounter, int64(header.PayloadOffset))
+	if err := binary.Read(readCounter, binary.LittleEndian, &header); err != nil {
 		return nil, errors.Errorf("reading header: %w", err)
 	}
 
@@ -196,34 +151,43 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 		return reader, nil
 	}
 
-	sectionReader := io.NewSectionReader(bytes.NewReader(all), int64(header.PayloadOffset), int64(header.PayloadSize))
-
-	discarded, err := bufferedReader.Discard(int(header.PayloadOffset) - bufferedReader.Buffered())
+	// sectionReader := io.NewSectionReader(bytes.NewReader(all), int64(header.PayloadOffset), int64(header.PayloadSize))
+	countBefore := readCounter.Count()
+	discarded, err := io.ReadFull(readCounter, make([]byte, int(header.PayloadOffset)-int(countBefore)))
 	if err != nil {
 		return nil, errors.Errorf("discarding to payload offset: %w", err)
 	}
+	// discarded, err := bufferedReader.Discard(int(header.PayloadOffset) - int(countBefore))
+	// if err != nil {
+	// 	return nil, errors.Errorf("discarding to payload offset: %w", err)
+	// }
+	countAfter := readCounter.Count()
 
-	peeked, err := bufferedReader.Peek(256)
-	if err != nil {
-		return nil, errors.Errorf("peeking at payload: %w", err)
-	}
+	// peeked, err := bufferedReader.Peek(256)
+	// if err != nil {
+	// 	return nil, errors.Errorf("peeking at payload: %w", err)
+	// }
 
-	slog.InfoContext(ctx, "peeked",
-		"bytes", peeked,
+	slog.InfoContext(ctx, "discarding payload offset",
+		// "bytes", peeked,
+		"discarded", discarded,
+		"count before", countBefore,
+		"count after", countAfter,
 		"payload offset", header.PayloadOffset,
 		"payload size", header.PayloadSize,
-		"reader size", bufferedReader.Buffered(),
+		// "reader size", bufferedReader.Buffered(),
 	)
 
-	slog.InfoContext(ctx, "discarded",
-		"bytes", discarded,
-		"payload offset", header.PayloadOffset,
-		"payload size", header.PayloadSize,
-		"reader size", bufferedReader.Buffered(),
-		"header", header,
-		"compression type", string(header.CompressionType[:]),
-		"pe header offset", header.PEHeaderOffset,
-	)
+	// slog.InfoContext(ctx, "discarded",
+	// 	"bytes discarded", discarded,
+	// 	"payload offset", header.PayloadOffset,
+	// 	"payload size", header.PayloadSize,
+	// 	// "buffered offset", bufferedReader.Buffered(),
+	// 	// "buffered size", bufferedReader.Size(),
+	// 	"header", header,
+	// 	"compression type", string(header.CompressionType[:]),
+	// 	"pe header offset", header.PEHeaderOffset,
+	// )
 
 	// // find the gzip header
 	// gzipHeaderOffset := bytes.Index(peeked, []byte{0x1f, 0x8b})
@@ -237,12 +201,12 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	// 	return nil, errors.Errorf("discarding to gzip header: %w", err)
 	// }
 
-	// _ = io.LimitReader(bufferedReader, int64(header.PayloadSize)-int64(gzipHeaderOffset))
+	payload := io.LimitReader(readCounter, int64(header.PayloadSize))
 
 	// Extract compressed payload
-	// payload := io.NewSectionReader(reader, int64(header.PayloadOffset), int64(header.PayloadSize))
+	// // payload := io.NewSectionReader(reader, int64(header.PayloadOffset), int64(header.PayloadSize))
 
-	// // Identify and decompress the payload
+	// // // Identify and decompress the payload
 	// format, decompressedReader, err := archives.Identify(ctx, "", payload)
 	// if err != nil {
 	// 	return nil, errors.Errorf("identifying compression format: %w", err)
@@ -254,7 +218,7 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	}
 
 	// if comp, ok := format.(archives.Compression); ok {
-	decompressedReader, err := compressor(sectionReader)
+	decompressedReader, err := compressor(payload)
 	if err != nil {
 		return nil, errors.Errorf("decompression failed: %w", err)
 	}
