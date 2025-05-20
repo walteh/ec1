@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
 
 	"github.com/coreos/stream-metadata-go/fedoracoreos"
 
-	types_exp "github.com/coreos/ignition/v2/config/v3_6_experimental/types"
-
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
-	"github.com/walteh/ec1/pkg/provisioner/ignition"
+	"github.com/walteh/ec1/pkg/unzbootgo"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -64,30 +63,32 @@ func (prov *FedoraProvider) Version() string {
 
 func (prov *FedoraProvider) Downloads() map[string]string {
 
-	initrd := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s`
+	coreos := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s`
+	// rawFedora := ` https://download.fedoraproject.org/pub/fedora/linux/releases/<release>/Everything/<architecture>/os/images/pxeboot/%[1]`
 
 	arch := host.CurrentKernelArch()
 
 	return map[string]string{
-		"kernel":            fmt.Sprintf(initrd, fedoraVersion, arch, "kernel", ""),
-		"initramfs.img":     fmt.Sprintf(initrd, fedoraVersion, arch, "initramfs", ".img"),
-		"rootfs.img":        fmt.Sprintf(initrd, fedoraVersion, arch, "rootfs", ".img"),
-		"kernel.sig":        fmt.Sprintf(initrd, fedoraVersion, arch, "kernel", ".sig"),
-		"initramfs.img.sig": fmt.Sprintf(initrd, fedoraVersion, arch, "initramfs", ".img.sig"),
-		"rootfs.img.sig":    fmt.Sprintf(initrd, fedoraVersion, arch, "rootfs", ".img.sig"),
+		"kernel":            fmt.Sprintf(coreos, fedoraVersion, arch, "kernel", ""),
+		"initramfs.img":     fmt.Sprintf(coreos, fedoraVersion, arch, "initramfs", ".img"),
+		"rootfs.img":        fmt.Sprintf(coreos, fedoraVersion, arch, "rootfs", ".img"),
+		"kernel.sig":        fmt.Sprintf(coreos, fedoraVersion, arch, "kernel", ".sig"),
+		"initramfs.img.sig": fmt.Sprintf(coreos, fedoraVersion, arch, "initramfs", ".img.sig"),
+		"rootfs.img.sig":    fmt.Sprintf(coreos, fedoraVersion, arch, "rootfs", ".img.sig"),
 		"fedora.gpg":        "https://fedoraproject.org/fedora.gpg",
 	}
 }
 
 func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+	// Extract the kernel if it's an EFI application
+	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["kernel"])
+	if err != nil {
+		slog.Error("failed to process kernel", "error", err)
+		// Not an EFI application or extraction failed, return the original
+		return cacheDir, nil
+	}
 
-	// initramfs, ok := cacheDir["initramfs.img"]
-	// if !ok {
-	// 	return nil, errors.New("initramfs.img not found")
-	// }
-
-	// // extract the image
-	// diskf, err :=
+	cacheDir["kernel"] = kernelReader
 
 	return cacheDir, nil
 }
@@ -115,12 +116,13 @@ func (prov *FedoraProvider) InitramfsPath() (path string) {
 }
 
 func (prov *FedoraProvider) KernelArgs() (args string) {
-	return "CONFIG_EFI_ZBOOT=1"
+	return "coreos.live.rootfs_url=/dev/nvme0n1p1"
 }
 
 func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {
-	cfg := &types_exp.Config{}
-	return []vmm.BootProvisioner{ignition.NewIgnitionBootConfigProvider(cfg)}
+	return []vmm.BootProvisioner{
+		// ignition.NewIgnitionBootConfigProvider(cfg),
+	}
 }
 
 func (fedora *FedoraProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {

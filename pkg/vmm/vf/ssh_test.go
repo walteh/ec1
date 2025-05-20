@@ -262,7 +262,7 @@ func TestGuestInitWrapperVSockFedora(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 
 	// Create a real VM for testing
-	rvm, _ := setupFedoraVM(t, ctx, 1024)
+	rvm, _ := setupFedoraVM(t, ctx, 1024*10)
 	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return

@@ -26,6 +26,7 @@ import (
 	"github.com/walteh/ec1/pkg/gvnet"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/port"
+	"github.com/walteh/ec1/pkg/unzbootgo"
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
@@ -34,6 +35,7 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
+		extraArgs := ""
 		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
 			initramfsFileName := linuxVMIProvider.InitramfsPath()
 			initramfsPath := filepath.Join(bootCacheDir, initramfsFileName)
@@ -44,6 +46,7 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				}
 			}
 			rootfsFileName := linuxVMIProvider.RootfsPath()
+			// rootfsFileName = ""
 			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
 			if rootfsFileName != "" {
 				if initramfsFileName == "" {
@@ -57,6 +60,7 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
 				}
 				devices = append(devices, blkDev)
+				extraArgs = "  root=/dev/vda1 rw rootfstype=ext4 rootdelay=5"
 			}
 
 			kernelFileName := linuxVMIProvider.KernelPath()
@@ -64,17 +68,19 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				return nil, nil, errors.New("kernel file name is empty")
 			}
 			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
-			// kernelPath, err = bootloader.PrepareKernel(ctx, kernelPath)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("preparing kernel: %w", err)
-			// }
+
+			err = unzbootgo.ExtractKernel(kernelPath, kernelPath+".ec1")
+			if err != nil {
+				// Not an EFI application or extraction failed, return the original
+				return nil, nil, errors.Errorf("extracting kernel: %w", err)
+			}
 
 			slog.InfoContext(ctx, "kernel path", "path", kernelPath)
 
 			return &bootloader.LinuxBootloader{
 				InitrdPath:    initramfsPath,
 				VmlinuzPath:   kernelPath,
-				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0",
+				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0" + extraArgs,
 			}, devices, nil
 		}
 		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil

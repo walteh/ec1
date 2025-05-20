@@ -206,7 +206,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Filter out any existing init.ec1 files
 	var filteredRecords []cpio.Record
 	for _, rec := range records {
-		fmt.Println("rec.Name", rec.Name)
+		// fmt.Println("rec.Name", rec.Name)
 		if rec.Name == "init" {
 			rec.Name = "init.real"
 		}
@@ -225,8 +225,8 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 
 	outputWriter := io.Writer(outputFile)
 
-	if format, ok := format.(archives.Compression); ok {
-		outputWriterd, err := format.OpenWriter(outputWriter)
+	if _, ok := format.(archives.Compression); ok {
+		outputWriterd, err := (&archives.Gz{}).OpenWriter(outputWriter)
 		if err != nil {
 			return "", errors.Errorf("opening compression writer: %w", err)
 		}
@@ -235,6 +235,8 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	}
 
 	cpioWriter := cpio.Newc.Writer(outputWriter)
+
+	// archive := cpio.ArchiveFromRecords(filteredRecords)
 
 	// Write all records to the output file
 	if err := cpio.WriteRecords(cpioWriter, filteredRecords); err != nil {
