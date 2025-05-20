@@ -237,7 +237,7 @@ func TestMeminfo(t *testing.T) {
 
 }
 
-func TestGuestInitWrapperVSock(t *testing.T) {
+func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 
 	// Create a real VM for testing
@@ -257,6 +257,36 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	})
 
 	<-time.After(100 * time.Millisecond)
+
+	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
+	require.NoError(t, err, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+
+	require.NotNil(t, mi)
+
+}
+
+func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+
+	// Create a real VM for testing
+	rvm, _ := setupCoreOSVM(t, ctx, 1024*10)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	t.Cleanup(func() {
+		catConsoleFile(t, ctx, rvm.VM())
+	})
+
+	<-time.After(3000 * time.Millisecond)
 
 	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
 	require.NoError(t, err, "Failed to get meminfo")
@@ -306,34 +336,4 @@ func catConsoleFile(t *testing.T, ctx context.Context, rvm vmm.VirtualMachine) {
 	}
 
 	t.Log(buildDiffReport(t, "console.log", "", "", string(content)))
-}
-
-func TestGuestInitWrapperVSockFedora(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
-
-	// Create a real VM for testing
-	rvm, _ := setupFedoraVM(t, ctx, 1024*10)
-	if rvm == nil {
-		t.Skip("Could not create test VM")
-		return
-	}
-
-	slog.DebugContext(ctx, "waiting for test VM to be running")
-
-	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
-	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
-
-	t.Cleanup(func() {
-		catConsoleFile(t, ctx, rvm.VM())
-	})
-
-	<-time.After(3000 * time.Millisecond)
-
-	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
-	require.NoError(t, err, "Failed to get meminfo")
-
-	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
-
-	require.NotNil(t, mi)
-
 }

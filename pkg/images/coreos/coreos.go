@@ -1,4 +1,4 @@
-package fedora
+package coreos
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
-const fedoraVersion = "42.20250427.3.0"
-const fedoraReleaseStream = fedoracoreos.StreamStable
+const coreosVersion = "42.20250427.3.0"
+const coreosReleaseStream = fedoracoreos.StreamStable
 
 // stream, err := fedoracoreos.FetchStream(fedoraReleaseStream)
 // if err != nil {
@@ -32,36 +32,36 @@ const fedoraReleaseStream = fedoracoreos.StreamStable
 
 // root := archInfo.Artifacts["metal"].Formats["pxe"]
 
-func (prov *FedoraProvider) SupportsEFI() bool {
+func (prov *CoreOSProvider) SupportsEFI() bool {
 	return true
 }
 
-func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
+func (prov *CoreOSProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }
 
 var (
-	_ vmm.VMIProvider             = &FedoraProvider{}
-	_ vmm.DownloadableVMIProvider = &FedoraProvider{}
-	_ vmm.LinuxVMIProvider        = &FedoraProvider{}
+	_ vmm.VMIProvider             = &CoreOSProvider{}
+	_ vmm.DownloadableVMIProvider = &CoreOSProvider{}
+	_ vmm.LinuxVMIProvider        = &CoreOSProvider{}
 )
 
-type FedoraProvider struct {
+type CoreOSProvider struct {
 }
 
-func NewFedoraProvider() *FedoraProvider {
-	return &FedoraProvider{}
+func NewProvider() *CoreOSProvider {
+	return &CoreOSProvider{}
 }
 
-func (prov *FedoraProvider) Name() string {
-	return "fedora"
+func (prov *CoreOSProvider) Name() string {
+	return "coreos"
 }
 
-func (prov *FedoraProvider) Version() string {
-	return semver.Canonical(fmt.Sprintf("v%s", fedoraVersion))
+func (prov *CoreOSProvider) Version() string {
+	return semver.Canonical(fmt.Sprintf("v%s", coreosVersion))
 }
 
-func (prov *FedoraProvider) Downloads() map[string]string {
+func (prov *CoreOSProvider) Downloads() map[string]string {
 
 	coreos := `https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/%[1]s/%[2]s/fedora-coreos-%[1]s-live-%[3]s.%[2]s%[4]s`
 	// rawFedora := ` https://download.fedoraproject.org/pub/fedora/linux/releases/<release>/Everything/<architecture>/os/images/pxeboot/%[1]`
@@ -69,17 +69,17 @@ func (prov *FedoraProvider) Downloads() map[string]string {
 	arch := host.CurrentKernelArch()
 
 	return map[string]string{
-		"kernel":            fmt.Sprintf(coreos, fedoraVersion, arch, "kernel", ""),
-		"initramfs.img":     fmt.Sprintf(coreos, fedoraVersion, arch, "initramfs", ".img"),
-		"rootfs.img":        fmt.Sprintf(coreos, fedoraVersion, arch, "rootfs", ".img"),
-		"kernel.sig":        fmt.Sprintf(coreos, fedoraVersion, arch, "kernel", ".sig"),
-		"initramfs.img.sig": fmt.Sprintf(coreos, fedoraVersion, arch, "initramfs", ".img.sig"),
-		"rootfs.img.sig":    fmt.Sprintf(coreos, fedoraVersion, arch, "rootfs", ".img.sig"),
+		"kernel":            fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ""),
+		"initramfs.img":     fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img"),
+		"rootfs.img":        fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img"),
+		"kernel.sig":        fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ".sig"),
+		"initramfs.img.sig": fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img.sig"),
+		"rootfs.img.sig":    fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img.sig"),
 		"fedora.gpg":        "https://fedoraproject.org/fedora.gpg",
 	}
 }
 
-func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["kernel"])
 	if err != nil {
@@ -93,7 +93,7 @@ func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 	return cacheDir, nil
 }
 
-func (prov *FedoraProvider) InitScript(ctx context.Context) (string, error) {
+func (prov *CoreOSProvider) InitScript(ctx context.Context) (string, error) {
 	script := `
 #!/bin/sh
 
@@ -103,37 +103,37 @@ echo "Hello, world!"
 	return script, nil
 }
 
-func (prov *FedoraProvider) RootfsPath() (path string) {
+func (prov *CoreOSProvider) RootfsPath() (path string) {
 	return "rootfs.img"
 }
 
-func (prov *FedoraProvider) KernelPath() (path string) {
+func (prov *CoreOSProvider) KernelPath() (path string) {
 	return "kernel"
 }
 
-func (prov *FedoraProvider) InitramfsPath() (path string) {
+func (prov *CoreOSProvider) InitramfsPath() (path string) {
 	return "initramfs.img"
 }
 
-func (prov *FedoraProvider) KernelArgs() (args string) {
+func (prov *CoreOSProvider) KernelArgs() (args string) {
 	return "coreos.live.rootfs_url=/dev/nvme0n1p1"
 }
 
-func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {
+func (prov *CoreOSProvider) BootProvisioners() []vmm.BootProvisioner {
 	return []vmm.BootProvisioner{
 		// ignition.NewIgnitionBootConfigProvider(cfg),
 	}
 }
 
-func (fedora *FedoraProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+func (fedora *CoreOSProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
 	return []vmm.RuntimeProvisioner{}
 }
 
-func (fedora *FedoraProvider) ShutdownCommand() string {
+func (fedora *CoreOSProvider) ShutdownCommand() string {
 	return "sudo shutdown -h now"
 }
 
-func (fedora *FedoraProvider) SSHConfig() *ssh.ClientConfig {
+func (fedora *CoreOSProvider) SSHConfig() *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User: "vfkituser",
 		Auth: []ssh.AuthMethod{ssh.Password("vfkittest")},
