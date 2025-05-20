@@ -6,14 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/fatih/color"
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -247,6 +252,10 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
+	t.Cleanup(func() {
+		catConsoleFile(t, ctx, rvm.VM())
+	})
+
 	<-time.After(100 * time.Millisecond)
 
 	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
@@ -256,6 +265,47 @@ func TestGuestInitWrapperVSock(t *testing.T) {
 
 	require.NotNil(t, mi)
 
+}
+
+func buildDiffReport(t *testing.T, title string, header1 string, header2 string, diffContent string) string {
+	var result strings.Builder
+
+	// Add report header
+	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("\n\n============= %s START =============\n\n", title))
+	result.WriteString(fmt.Sprintf("%s\n\n", color.YellowString("%s", t.Name())))
+
+	// Add type/value information headers if provided
+	if header1 != "" {
+		result.WriteString(header1 + "\n")
+	}
+	if header2 != "" {
+		result.WriteString(header2 + "\n\n\n")
+	}
+
+	// Add diff content
+	result.WriteString(diffContent + "\n\n")
+
+	// Add report footer
+	result.WriteString(color.New(color.FgHiYellow, color.Faint).Sprintf("============= %s END ===============\n\n", title))
+
+	return result.String()
+}
+
+func catConsoleFile(t *testing.T, ctx context.Context, rvm vmm.VirtualMachine) {
+	cd, err := host.EmphiricalVMCacheDir(ctx, rvm.ID())
+	if err != nil {
+		t.Logf("Failed to get vm cache dir: %v", err)
+		return
+	}
+	fullPath := filepath.Join(cd, "console.log")
+
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Logf("Failed to read console.log: %v", err)
+		return
+	}
+
+	t.Log(buildDiffReport(t, "console.log", "", "", string(content)))
 }
 
 func TestGuestInitWrapperVSockFedora(t *testing.T) {
@@ -273,7 +323,11 @@ func TestGuestInitWrapperVSockFedora(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	<-time.After(100 * time.Millisecond)
+	t.Cleanup(func() {
+		catConsoleFile(t, ctx, rvm.VM())
+	})
+
+	<-time.After(3000 * time.Millisecond)
 
 	mi, err := vmm.ProcMemInfo(ctx, rvm.VM())
 	require.NoError(t, err, "Failed to get meminfo")

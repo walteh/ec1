@@ -46,7 +46,6 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 				}
 			}
 			rootfsFileName := linuxVMIProvider.RootfsPath()
-			// rootfsFileName = ""
 			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
 			if rootfsFileName != "" {
 				if initramfsFileName == "" {
@@ -55,12 +54,12 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 						return nil, nil, errors.Errorf("preparing rootfs: %w", err)
 					}
 				}
-				blkDev, err := virtio.VirtioBlkNew(rootfsPath)
+				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
 				if err != nil {
 					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
 				}
 				devices = append(devices, blkDev)
-				extraArgs = "  root=/dev/vda1 rw rootfstype=ext4 rootdelay=5"
+				extraArgs = "  root=/dev/nvme0n1p1"
 			}
 
 			kernelFileName := linuxVMIProvider.KernelPath()

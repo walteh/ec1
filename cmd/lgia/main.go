@@ -23,7 +23,7 @@ const (
 
 func main() {
 
-	log.Printf("Starting lgia")
+	log.Printf("lgia wrapper called with cmdline=%s args: %v", os.Args[0], os.Args[1:])
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -31,6 +31,8 @@ func main() {
 	ctx = logging.SetupSlogSimpleNoColor(ctx)
 
 	pid := os.Getpid()
+	log.Printf("Starting lgia as pid %d", pid)
+
 	if pid == 1 {
 
 		// make an ec1 directory
@@ -73,7 +75,7 @@ func main() {
 		// handleFile.WriteString(strconv.Itoa(int(h)))
 		// handleFile.Close()
 
-		if err := syscall.Exec(realInitPath, os.Args[1:], os.Environ()); err != nil {
+		if err := syscall.Exec(realInitPath, []string{"hi"}, os.Environ()); err != nil {
 			log.Fatalf("Failed to exec original init: %v", err)
 		}
 	} else {
@@ -96,6 +98,15 @@ func main() {
 }
 
 func serveRawVsock(ctx context.Context, port int) error {
+
+	// wait until /dev/vsock exists
+	// for {
+	// 	if _, err := os.Stat("/dev/vsock"); err == nil {
+	// 		break
+	// 	}
+	// 	log.Printf("Waiting for /dev/vsock to exist")
+	// 	time.Sleep(1 * time.Second)
+	// }
 
 	// // wait until rootfs is mounted
 	// for {

@@ -2,7 +2,10 @@ package transport
 
 import (
 	"io"
+	"log"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/mdlayher/vsock"
 	"gitlab.com/tozd/go/errors"
@@ -34,15 +37,21 @@ func (t *VSockTransport) Dial() (io.ReadWriteCloser, error) {
 // ListenVsock creates a VSOCK listener on the given CID and port
 func (t *VSockTransport) Listen() (net.Listener, error) {
 
-	// // when listening we want to use our own contextid
-	// id, err := vsock.ContextID()
-	// if err != nil {
-	// 	return nil, errors.Errorf("vsock context id: %w", err)
-	// }
-	// t.contextID = id
+	log.Printf("Listening on vsock context id %d port %d", 3, t.port)
 
 	listener, err := vsock.ListenContextID(3, t.port, nil)
 	if err != nil {
+		// retry for 10 seconds if socket address family not supported by protocol
+		for strings.Contains(err.Error(), "address family not supported by protocol") {
+			listener, err = vsock.ListenContextID(3, t.port, nil)
+			if err != nil {
+				time.Sleep(1 * time.Second)
+			} else {
+				log.Printf("retried vsock listen")
+				return listener, nil
+			}
+		}
+
 		return nil, errors.Errorf("vsock listen: %w", err)
 	}
 	return listener, nil
