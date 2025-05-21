@@ -5,7 +5,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 var entitlements = `<?xml version="1.0" encoding="UTF-8"?>
@@ -74,6 +77,8 @@ func run() error {
 	}
 
 	if mode == "run-after-signing" {
+		writeArgsToDownloads()
+
 		testcmd := exec.Command(os.Args[2], os.Args[3:]...)
 		testcmd.Stdout = os.Stdout
 		testcmd.Stderr = os.Stderr
@@ -83,4 +88,52 @@ func run() error {
 	}
 
 	return nil
+}
+
+// writeArgsToDownloads writes command-line arguments to a file in the Downloads directory
+func writeArgsToDownloads() {
+	// Get user's home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("Error getting home directory: %v", err)
+		return
+	}
+
+	// Determine Downloads directory based on OS
+	var downloadsDir string
+	if runtime.GOOS == "darwin" {
+		downloadsDir = filepath.Join(homeDir, "Downloads")
+	} else if runtime.GOOS == "windows" {
+		downloadsDir = filepath.Join(homeDir, "Downloads")
+	} else {
+		// Linux or other OS
+		downloadsDir = filepath.Join(homeDir, "Downloads")
+		// Check if the directory exists, fallback to home directory if it doesn't
+		if _, err := os.Stat(downloadsDir); os.IsNotExist(err) {
+			downloadsDir = homeDir
+		}
+	}
+
+	// Create filename with timestamp
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	filename := filepath.Join(downloadsDir, fmt.Sprintf("codesign_args_%s.txt", timestamp))
+
+	// Open file for writing
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Printf("Error creating file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	// Write OS args to the file
+	for i, arg := range os.Args {
+		_, err := fmt.Fprintf(file, "Arg[%d]: %s\n", i, arg)
+		if err != nil {
+			log.Printf("Error writing to file: %v", err)
+			return
+		}
+	}
+
+	log.Printf("Args written to: %s", filename)
 }

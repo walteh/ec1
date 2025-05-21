@@ -3,7 +3,6 @@
 package unzbootgo
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -15,6 +14,9 @@ import (
 
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
+
+	"github.com/walteh/ec1/pkg/ext/iox"
+	"github.com/walteh/ec1/pkg/magic"
 )
 
 const (
@@ -97,21 +99,6 @@ func ExtractKernel(inputFile, outputFile string) error {
 }
 
 // ReaderAt combines io.ReaderAt and io.Reader interfaces
-type ReadCounter struct {
-	// io.ReaderAt
-	count int64
-	io.Reader
-}
-
-func (r *ReadCounter) Read(p []byte) (n int, err error) {
-	n, err = r.Reader.Read(p)
-	r.count += int64(n)
-	return
-}
-
-func (r *ReadCounter) Count() int64 {
-	return r.count
-}
 
 type FakeGzipReader struct {
 	reader io.Reader
@@ -122,7 +109,7 @@ type FakeGzipReader struct {
 // ProcessKernel examines the provided data and if it's an EFI zboot image,
 // extracts and decompresses the contained kernel. Returns either the original
 // data or the extracted kernel data.
-func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
+func ProcessKernel(ctx context.Context, reader io.Reader) (io.ReadCloser, error) {
 
 	// check if it needs uncompressed
 	format, reader, err := archives.Identify(ctx, "", reader)
@@ -138,7 +125,7 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 				return nil, errors.Errorf("opening compressed kernel: %w", err)
 			}
 
-			validationReader, err := validateARM64Kernel(decompressedReader)
+			validationReader, err := magic.ARM64LinuxKernelValidationReader(decompressedReader)
 			if err != nil {
 				return nil, errors.Errorf("validating ARM64 kernel: %w", err)
 			}
@@ -153,7 +140,7 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 
 	// Parse the header
 	header := LinuxEFIZbootHeader{}
-	readCounter := &ReadCounter{Reader: reader}
+	readCounter := iox.NewReadCounter(iox.PreservedNopCloser(reader))
 	// bufferedReader := NewFakeSeeker(readCounter, int64(header.PayloadOffset))
 	if err := binary.Read(readCounter, binary.LittleEndian, &header); err != nil {
 		return nil, errors.Errorf("reading header: %w", err)
@@ -172,7 +159,7 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 		}
 		slog.Info("not an EFI zboot image, returning as is")
 
-		validationReader, err := validateARM64Kernel(reader)
+		validationReader, err := magic.ARM64LinuxKernelValidationReader(reader)
 		if err != nil {
 			return nil, errors.Errorf("validating ARM64 kernel: %w", err)
 		}
@@ -254,7 +241,7 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	// }
 
 	// Verify ARM64 kernel
-	validationReader, err := validateARM64Kernel(decompressedReader)
+	validationReader, err := magic.ARM64LinuxKernelValidationReader(decompressedReader)
 	if err != nil {
 		return nil, errors.Errorf("validating ARM64 kernel: %w", err)
 	}
@@ -264,24 +251,6 @@ func ProcessKernel(ctx context.Context, reader io.Reader) (io.Reader, error) {
 
 // validateARM64Kernel verifies if the decompressed data is a valid ARM64 kernel
 // by checking for the ARM64 magic bytes at the expected offset
-func validateARM64Kernel(r io.Reader) (io.Reader, error) {
-	// Create a buffered reader to peek ahead
-	br := bufio.NewReaderSize(r, ARM64MagicOffset+4)
-
-	// Peek ahead to get the magic bytes
-	peek, err := br.Peek(ARM64MagicOffset + 4)
-	if err != nil {
-		return nil, errors.Errorf("peeking for ARM64 magic: %w", err)
-	}
-
-	// Check for ARM64 magic
-	if !bytes.Equal(peek[ARM64MagicOffset:ARM64MagicOffset+4], ARM64Magic) {
-		return nil, errors.New("not a valid ARM64 kernel")
-	}
-
-	// Return the reader (with the peeked bytes still available to read)
-	return br, nil
-}
 
 // decompressGzip decompresses data with gzip compression
 // func decompressGzip(data []byte) ([]byte, error) {

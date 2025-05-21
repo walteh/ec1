@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/bootloader"
@@ -21,6 +22,10 @@ const (
 type Hypervisor[VM VirtualMachine] interface {
 	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl bootloader.Bootloader) (VM, error)
 	OnCreate() <-chan VM
+	EncodeLinuxInitramfs(ctx context.Context, initramfs io.ReadCloser) (io.ReadCloser, error)
+	EncodeLinuxKernel(ctx context.Context, kernel io.ReadCloser) (io.ReadCloser, error)
+	EncodeLinuxRootfs(ctx context.Context, rootfs io.ReadCloser) (io.ReadCloser, error)
+	InitramfsCompression() archives.Compression
 }
 
 type RunningVM[VM VirtualMachine] struct {
@@ -84,20 +89,26 @@ func (r *RunningVM[VM]) WaitOnVmStopped() error {
 	return <-r.wait
 }
 
-func (r *RunningVM[VM]) WaitOnVMReadyToExec() {
+func (r *RunningVM[VM]) WaitOnVMReadyToExec() <-chan struct{} {
+	ch := make(chan struct{})
+
 	if r.manager.State() == StateConnected {
-		return
+		close(ch)
+		return ch
 	}
 	check := r.manager.AddStateNotifier()
-	defer close(check)
-	for {
-		select {
-		case <-check:
-			if r.manager.State() == StateConnected {
-				return
+	go func() {
+		defer close(check)
+		for {
+			select {
+			case <-check:
+				if r.manager.State() == StateConnected {
+					close(ch)
+				}
 			}
 		}
-	}
+	}()
+	return ch
 }
 
 func (r *RunningVM[VM]) VM() VM {

@@ -2,13 +2,17 @@ package vf
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"sync"
 
 	"github.com/Code-Hex/vz/v3"
+	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/ext/archivesx"
+	"github.com/walteh/ec1/pkg/magic"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -75,3 +79,34 @@ func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 // func (hpv *Hypervisor) ListenNetworkBlockDevices(ctx context.Context, vm vmm.VirtualMachine) error {
 // 	panic("not implemented")
 // }
+
+func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.ReadCloser) (io.ReadCloser, error) {
+
+	// convert to gzip
+	arc, err := archivesx.CreateCompressorPipeline(ctx, &archives.Gz{}, initramfs)
+	if err != nil {
+		return nil, errors.Errorf("creating compressor pipeline: %w", err)
+	}
+
+	// counter := iox.NewReadCounter(arc)
+	// counter.SetDebug(true)
+
+	return arc, nil
+}
+
+func (hpv *Hypervisor) EncodeLinuxKernel(ctx context.Context, kernel io.ReadCloser) (io.ReadCloser, error) {
+	// ensure kernel is valid
+	validationReader, err := magic.ARM64LinuxKernelValidationReader(kernel)
+	if err != nil {
+		return nil, errors.Errorf("checking linux kernel: %w", err)
+	}
+	return validationReader, nil
+}
+
+func (hpv *Hypervisor) EncodeLinuxRootfs(ctx context.Context, rootfs io.ReadCloser) (io.ReadCloser, error) {
+	return rootfs, nil
+}
+
+func (hpv *Hypervisor) InitramfsCompression() archives.Compression {
+	return &archives.Gz{}
+}

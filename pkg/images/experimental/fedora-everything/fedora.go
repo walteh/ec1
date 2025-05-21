@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
+
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
@@ -55,18 +56,18 @@ func (prov *FedoraEverythingProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *FedoraEverythingProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+func (prov *FedoraEverythingProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["vmlinuz"])
 	if err != nil {
-		slog.Error("failed to process kernel", "error", err)
-		// Not an EFI application or extraction failed, return the original
-		return cacheDir, nil
+		return nil, errors.Errorf("processing kernel: %w", err)
 	}
 
-	cacheDir["vmlinuz"] = kernelReader
+	out := make(map[string]io.ReadCloser)
 
-	return cacheDir, nil
+	out["vmlinuz"] = kernelReader
+
+	return out, nil
 }
 
 func (prov *FedoraEverythingProvider) InitScript(ctx context.Context) (string, error) {

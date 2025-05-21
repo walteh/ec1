@@ -211,20 +211,26 @@ func PrepareEmptyInitramfs(ctx context.Context, dir string) (string, error) {
 
 }
 
-func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, error) {
+func PrepareInitramfsCpio(ctx context.Context, rdr io.Reader) (io.ReadCloser, error) {
 	// Create a new file next to the original with .ec1 suffix
-	outputPath := initramfsPath + ".ec1"
 
 	// Open the CPIO initramfs file for reading
-	cpioFile, err := os.Open(initramfsPath)
+	inputFile, err := os.CreateTemp("", "initramfs.cpio.gz")
 	if err != nil {
-		return "", errors.Errorf("opening initramfs file %s: %w", initramfsPath, err)
+		return nil, errors.Errorf("opening initramfs file %s: %w", inputFile.Name(), err)
 	}
-	defer cpioFile.Close()
+	defer inputFile.Close()
 
-	format, rdr, err := archives.Identify(ctx, initramfsPath, cpioFile)
+	_, err = io.Copy(inputFile, rdr)
+	if err != nil {
+		return nil, errors.Errorf("copying initramfs: %w", err)
+	}
+
+	// defer outputFile.Close()
+
+	format, rdr, err := archives.Identify(ctx, "", inputFile)
 	if err != nil && err != archives.NoMatch {
-		return "", errors.Errorf("identifying initramfs file %s: %w", initramfsPath, err)
+		return nil, errors.Errorf("identifying initramfs file %s: %w", inputFile.Name(), err)
 	}
 
 	noMatch := err == archives.NoMatch
@@ -233,12 +239,12 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 			slog.InfoContext(ctx, "initramfs is compressed", "format", fmt.Sprintf("%T", format))
 			rdrz, err := format.OpenReader(rdr)
 			if err != nil {
-				return "", errors.Errorf("opening compression reader: %w", err)
+				return nil, errors.Errorf("opening compression reader: %w", err)
 			}
 			defer rdrz.Close()
 			rdr = rdrz
 		} else {
-			return "", errors.Errorf("initramfs file %s is not a compression format: %s", initramfsPath, format)
+			return nil, errors.Errorf("initramfs file %s is not a compression format: %s", inputFile.Name(), format)
 		}
 	}
 
@@ -251,7 +257,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Get the uncompressed init binary
 	uncompressedInitBinData, err := UncompressInitBin(ctx)
 	if err != nil {
-		return "", errors.Errorf("uncompressing init binary: %w", err)
+		return nil, errors.Errorf("uncompressing init binary: %w", err)
 	}
 
 	// Path for our custom init
@@ -260,7 +266,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	// Read all records from the input CPIO
 	records, err := cpio.ReadAllRecords(cpioReader)
 	if err != nil {
-		return "", errors.Errorf("reading CPIO records: %w", err)
+		return nil, errors.Errorf("reading CPIO records: %w", err)
 	}
 
 	// Filter out any existing init.ec1 files
@@ -277,9 +283,9 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	customInitRecord := cpio.StaticFile(customInitPath, string(uncompressedInitBinData), 0755)
 	filteredRecords = append(filteredRecords, customInitRecord)
 
-	outputFile, err := os.Create(outputPath)
+	outputFile, err := os.CreateTemp("", "initramfs.cpio.gz.ec1")
 	if err != nil {
-		return "", errors.Errorf("creating output file %s: %w", outputPath, err)
+		return nil, errors.Errorf("creating output file %s: %w", outputFile.Name(), err)
 	}
 	defer outputFile.Close()
 
@@ -288,7 +294,7 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 	if _, ok := format.(archives.Compression); ok {
 		outputWriterd, err := (&archives.Gz{}).OpenWriter(outputWriter)
 		if err != nil {
-			return "", errors.Errorf("opening compression writer: %w", err)
+			return nil, errors.Errorf("opening compression writer: %w", err)
 		}
 		defer outputWriterd.Close()
 		outputWriter = outputWriterd
@@ -300,17 +306,22 @@ func PrepareInitramfsCpio(ctx context.Context, initramfsPath string) (string, er
 
 	// Write all records to the output file
 	if err := cpio.WriteRecords(cpioWriter, filteredRecords); err != nil {
-		return "", errors.Errorf("writing CPIO records: %w", err)
+		return nil, errors.Errorf("writing CPIO records: %w", err)
 	}
 
 	// Write trailer to finalize the archive
 	if err := cpio.WriteTrailer(cpioWriter); err != nil {
-		return "", errors.Errorf("writing CPIO trailer: %w", err)
+		return nil, errors.Errorf("writing CPIO trailer: %w", err)
 	}
 
-	slog.InfoContext(ctx, "custom init added to initramfs", "customInitPath", "/"+customInitPath, "outputPath", outputPath)
+	open, err := os.Open(outputFile.Name())
+	if err != nil {
+		return nil, errors.Errorf("opening output file %s: %w", outputFile.Name(), err)
+	}
 
-	return outputPath, nil
+	slog.InfoContext(ctx, "custom init added to initramfs", "customInitPath", "/"+customInitPath, "outputPath", outputFile)
+
+	return open, nil
 }
 
 func PrepareKernel(ctx context.Context, kernelPath string) (string, error) {

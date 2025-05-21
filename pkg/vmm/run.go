@@ -5,14 +5,20 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -22,77 +28,123 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/ext/iox"
+	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/gvnet"
 	"github.com/walteh/ec1/pkg/host"
+	"github.com/walteh/ec1/pkg/initramfs"
 	"github.com/walteh/ec1/pkg/port"
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvider, bootCacheDir string) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.ReadCloser) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
 	var err error
 	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
 		extraArgs := ""
 		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
-			initramfsFileName := linuxVMIProvider.InitramfsPath()
-			initramfsPath := filepath.Join(bootCacheDir, initramfsFileName)
-			if initramfsFileName != "" {
-				initramfsPath, err = bootloader.PrepareInitramfsCpio(ctx, initramfsPath)
-				if err != nil {
-					return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
+
+			entries := []slog.Attr{}
+
+			if linuxVMIProvider.InitramfsPath() == "" {
+				return nil, nil, errors.New("initramfs path is empty - ec1 does not yet support this yet")
+			}
+
+			initramfsReader, ok := mem[linuxVMIProvider.InitramfsPath()]
+			if !ok {
+				return nil, nil, errors.Errorf("initramfs file not found: %s", linuxVMIProvider.InitramfsPath())
+			}
+
+			initramfsReader, err = initramfs.InjectInitBinaryToInitramfsCpio(ctx, initramfsReader)
+			if err != nil {
+				return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
+			}
+
+			initramfsReader, err = hpv.EncodeLinuxInitramfs(ctx, initramfsReader)
+			if err != nil {
+				return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
+			}
+
+			initramfsPath := filepath.Join(wrkdir, "initramfs")
+
+			slog.InfoContext(ctx, "writing initramfs")
+			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, initramfsReader, 0644)
+			if err != nil {
+				return nil, nil, errors.Errorf("creating initramfs file: %w", err)
+			}
+
+			slog.InfoContext(ctx, "initramfs size", "size", initrdSize)
+
+			entries = append(entries, slog.Group("initramfs", "path", initramfsPath, "size", initrdSize))
+
+			initramfsReader.Close()
+
+			if linuxVMIProvider.RootfsPath() != "" {
+				rootfsReader, ok := mem[linuxVMIProvider.RootfsPath()]
+				if !ok {
+					return nil, nil, errors.Errorf("rootfs file not found: %s", linuxVMIProvider.RootfsPath())
 				}
-			} else {
-				initramfsPath = ""
-				isoPath, err := bootloader.PrepareEmptyIso(ctx, bootCacheDir)
+
+				rootfsReader, err = hpv.EncodeLinuxRootfs(ctx, rootfsReader)
 				if err != nil {
-					return nil, nil, errors.Errorf("preparing empty iso: %w", err)
+					return nil, nil, errors.Errorf("encoding linux rootfs: %w", err)
 				}
-				// add a new disk to the vm
-				blkDev, err := virtio.VirtioBlkNew(isoPath)
+
+				rootfsPath := filepath.Join(wrkdir, "rootfs")
+				rootfsSize, err := osx.WriteFileFromReader(ctx, rootfsPath, rootfsReader, 0644)
 				if err != nil {
-					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
+					return nil, nil, errors.Errorf("creating rootfs file: %w", err)
 				}
+
+				entries = append(entries, slog.Group("rootfs", "path", rootfsPath, "size", rootfsSize))
+
+				rootfsReader.Close()
+
+				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
+				if err != nil {
+					return nil, nil, errors.Errorf("creating rootfs file: %w", err)
+				}
+
 				devices = append(devices, blkDev)
-				extraArgs = "  init=/dev/vda/init"
 
-				// NEXT: try mounting antoher disk with our wrapper in it and adding init= to the kernel cmdline
-				// initramfsPath, err = bootloader.PrepareEmptyInitramfs(ctx, bootCacheDir)
-				// if err != nil {
-				// 	return nil, nil, errors.Errorf("preparing rootfs: %w", err)
-				// }
+				extraArgs = "  root=/dev/nvme0n1p2"
 			}
 
-			rootfsFileName := linuxVMIProvider.RootfsPath()
-			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
-			if rootfsFileName != "" {
-				blkDev, err := virtio.VirtioBlkNew(rootfsPath)
-				if err != nil {
-					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
-				}
-				devices = append(devices, blkDev)
-				extraArgs = "  root=/dev/vdb"
+			if linuxVMIProvider.KernelPath() == "" {
+				return nil, nil, errors.New("kernel path is empty - ec1 does not yet support this yet")
 			}
 
-			kernelFileName := linuxVMIProvider.KernelPath()
-			if kernelFileName == "" {
-				return nil, nil, errors.New("kernel file name is empty")
+			kernelReader, ok := mem[linuxVMIProvider.KernelPath()]
+			if !ok {
+				return nil, nil, errors.Errorf("kernel file not found: %s", linuxVMIProvider.KernelPath())
 			}
-			kernelPath := filepath.Join(bootCacheDir, kernelFileName)
 
-			// err = unzbootgo.ExtractKernel(kernelPath, kernelPath+".ec1")
-			// if err != nil {
-			// 	// Not an EFI application or extraction failed, return the original
-			// 	return nil, nil, errors.Errorf("extracting kernel: %w", err)
-			// }
+			kernelReader, err = hpv.EncodeLinuxKernel(ctx, kernelReader)
+			if err != nil {
+				return nil, nil, errors.Errorf("encoding linux kernel: %w", err)
+			}
 
-			slog.InfoContext(ctx, "kernel path", "path", kernelPath)
+			kernelPath := filepath.Join(wrkdir, "vmlinuz")
+
+			kernelSize, err := osx.WriteFileFromReader(ctx, kernelPath, kernelReader, 0644)
+			if err != nil {
+				return nil, nil, errors.Errorf("creating kernel file: %w", err)
+			}
+
+			entries = append(entries, slog.Group("kernel", "path", kernelPath, "size", kernelSize))
+
+			kernelReader.Close()
+
+			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
+
+			slog.LogAttrs(ctx, slog.LevelInfo, "linux boot loader ready", entries...)
 
 			return &bootloader.LinuxBootloader{
 				InitrdPath:    initramfsPath,
 				VmlinuzPath:   kernelPath,
-				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs,
+				KernelCmdLine: cmdLine,
 			}, devices, nil
 		}
 		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
@@ -134,6 +186,27 @@ func addSSHKeyToVM(ctx context.Context, workingDir string) error {
 	return nil
 }
 
+func cacheKeyFromMap(m map[string]string, vmi VMIProvider) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	keys = append(keys, reflect.TypeOf(vmi).String())
+	dat := sha256.Sum256([]byte(strings.Join(keys, "-")))
+	return hex.EncodeToString(dat[:])
+}
+
+func osCreationFunc(path string) (io.WriteCloser, error) {
+	return os.Create(path)
+}
+
+func osDirCreationFunc(prefix string) func(path string) (io.WriteCloser, error) {
+	return func(path string) (io.WriteCloser, error) {
+		return os.Create(filepath.Join(prefix, path))
+	}
+}
+
 func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
 
@@ -142,6 +215,11 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 	workingDir, err := host.EmphiricalVMCacheDir(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	globalCacheDir, err := host.CacheDirPrefix()
+	if err != nil {
+		return nil, errors.Errorf("creating global cache directory: %w", err)
 	}
 
 	err = os.MkdirAll(workingDir, 0755)
@@ -159,60 +237,121 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 	// create an ssh private key for this vm
 
-	if diskImageURLVMIProvider, ok := vmi.(DownloadableVMIProvider); ok {
-		files, err := host.DownloadAndExtractVMI(ctx, diskImageURLVMIProvider.Downloads())
-		if err != nil {
-			return nil, errors.Errorf("downloading and extracting VMI: %w", err)
-		}
-
-		// fdupforcache := fdup()
-
-		extrfles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
-		if err != nil {
-			return nil, errors.Errorf("extracting downloads: %w", err)
-		}
-
-		// err = host.SaveDownloadedFilesToCache(ctx, diskImageURLVMIProvider.Downloads(), fdupforcache)
-		// if err != nil {
-		// 	return nil, errors.Errorf("saving downloaded files to cache: %w", err)
-		// }
-
-		for name, file := range extrfles {
-			filePath := filepath.Join(workingDir, name)
-			out, err := os.Create(filePath)
-			if err != nil {
-				return nil, errors.Errorf("creating file: %w", err)
-			}
-			defer out.Close()
-			_, err = io.Copy(out, file)
-			if err != nil {
-				return nil, errors.Errorf("writing file: %w", err)
-			}
-		}
-
-		// if customExtractor, ok := vmi.(CustomExtractorVMIProvider); ok {
-		// 	err = customExtractor.CustomExtraction(ctx, workingDir)
-		// 	if err != nil {
-		// 		return nil, errors.Errorf("custom extraction: %w", err)
-		// 	}
-		// }
-
-		// if diskImageRawFileNameVMIProvider, ok := vmi.(DiskImageRawFileNameVMIProvider); ok {
-		// 	diskImageToRun := filepath.Join(workingDir, diskImageRawFileNameVMIProvider.DiskImageRawFileName())
-
-		// 	if _, err := os.Stat(diskImageToRun); os.IsNotExist(err) {
-		// 		return nil, errors.Errorf("disk image does not exist: %s", diskImageToRun)
-		// 	}
-
-		// 	blkDev, err := virtio.VirtioBlkNew(diskImageToRun)
-		// 	if err != nil {
-		// 		return nil, errors.Errorf("creating virtio block device: %w", err)
-		// 	}
-
-		// 	devices = append(devices, blkDev)
-		// }
-
+	diskImageURLVMIProvider, ok := vmi.(DownloadableVMIProvider)
+	if !ok {
+		return nil, errors.New("vmi does not support downloads, ec1 does not yet support this")
 	}
+
+	dls := diskImageURLVMIProvider.Downloads()
+
+	files, err := host.DownloadAndExtractVMI(ctx, dls)
+	if err != nil {
+		return nil, errors.Errorf("downloading and extracting VMI: %w", err)
+	}
+
+	cacheKey := cacheKeyFromMap(dls, vmi)
+
+	extractionCacheDir := filepath.Join(globalCacheDir, "extractions", cacheKey)
+
+	// create cache directory if it doesn't exist
+	err = os.MkdirAll(extractionCacheDir, 0755)
+	if err != nil && !os.IsExist(err) {
+		return nil, errors.Errorf("creating cache directory: %w", err)
+	}
+
+	// load files from cache
+	entries, err := os.ReadDir(extractionCacheDir)
+	if err != nil {
+		return nil, errors.Errorf("reading cache directory: %w", err)
+	}
+
+	// open files from cache
+	for _, entry := range entries {
+		filePath := filepath.Join(extractionCacheDir, entry.Name())
+		files[entry.Name()], err = os.Open(filePath)
+		if err != nil {
+			return nil, errors.Errorf("opening file: %w", err)
+		}
+	}
+
+	// extract files
+	extractedFiles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
+	if err != nil {
+		return nil, errors.Errorf("extracting downloads: %w", err)
+	}
+
+	tmpExtractDir, err := os.MkdirTemp("", "ec1-extract")
+	if err != nil {
+		return nil, errors.Errorf("creating temporary extraction directory: %w", err)
+	}
+
+	for name := range extractedFiles {
+		pr, pw := io.Pipe()
+		fr := extractedFiles[name]
+		tr := io.TeeReader(fr, pw)
+		extractedFiles[name] = iox.PreservedNopCloser(tr)
+
+		// we almost are able to do this in the above for loop, but in cases we reuse the cache
+		// we need to make sure we are not reading and writing to the same file
+		// so instead we do the next best thing and do in a background go routine
+		go func() {
+			defer pw.Close()
+			defer fr.Close()
+			defer pr.Close()
+
+			_, err = osx.WriteFileFromReader(ctx, filepath.Join(tmpExtractDir, name), pr, 0644)
+			if err != nil {
+				slog.WarnContext(ctx, "problem writing file to extraction cache, this is ignored", "file", name, "error", err)
+			}
+		}()
+	}
+
+	bl, bldev, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
+	if err != nil {
+		return nil, errors.Errorf("getting boot loader config: %w", err)
+	}
+	devices = append(devices, bldev...)
+
+	// cmd.Exec a checksum.txt of the working directory, save it to the extraction cache dir
+	// find . -type f -not -name "checksums.txt" -print0 | xargs -0 shasum -a 256 > checksums.txt
+	cmd := exec.Command("sh", "-c", "find . -type f -not -name 'checksums.txt' -print0 | xargs -0 shasum -a 256 > checksums.txt")
+	cmd.Dir = workingDir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, errors.Errorf("getting sha256 checksum of working directory: %w: %s", err, string(output))
+	}
+
+	// checksumFile := filepath.Join(workingDir, "checksums.txt")
+	// err = os.WriteFile(checksumFile, output, 0644)
+	// if err != nil {
+	// 	return nil, errors.Errorf("writing checksum file: %w", err)
+	// }
+
+	// slog.InfoContext(ctx, "sha256 checksum of working directory", "checksum", string(output))
+
+	// we don't want to save the files if they were not valid
+	go func() {
+		defer os.RemoveAll(tmpExtractDir)
+		err = osx.Copy(ctx, tmpExtractDir, extractionCacheDir)
+		if err != nil {
+			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
+		}
+	}()
+
+	// // copy extracted files to the extraction cache dir
+	// for name := range extractedFiles {
+	// 	pr, pw := io.Pipe()
+	// 	extractedFiles[name] = iox.PreservedNopCloser(io.TeeReader(extractedFiles[name], pw))
+	// 	// we almost are able to do this in the above for loop, but in cases we reuse the cache
+	// 	// we need to make sure we are not reading and writing to the same file
+	// 	// so instead we do the next best thing and do in a background go routine
+	// 	go func() {
+	// 		_, err = osx.WriteFileFromReader(ctx, filepath.Join(extractionCacheDir, name), pr, 0644)
+	// 		if err != nil {
+	// 			slog.WarnContext(ctx, "problem writing file to extraction cache, this is ignored", "file", name, "error", err)
+	// 		}
+	// 	}()
+	// }
 
 	devices = append(devices, &virtio.VirtioSerial{
 		LogFile: filepath.Join(workingDir, "console.log"),
@@ -247,12 +386,6 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		}
 		provisioners = append(provisioners, runtimeProvisioner)
 	}
-
-	bl, bldev, err := EmphericalBootLoaderConfigForGuest(ctx, vmi, workingDir)
-	if err != nil {
-		return nil, errors.Errorf("getting boot loader config: %w", err)
-	}
-	devices = append(devices, bldev...)
 
 	opts := NewVMOptions{
 		Vcpus:        vcpus,

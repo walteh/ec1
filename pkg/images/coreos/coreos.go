@@ -10,7 +10,9 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/coreos/stream-metadata-go/fedoracoreos"
+	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/ext/archivesx"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/unzbootgo"
@@ -75,18 +77,39 @@ func (prov *CoreOSProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
-	// Extract the kernel if it's an EFI application
-	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["kernel"])
+func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
+
+	wrk := map[string]io.ReadCloser{}
+
+	var err error
+	wrk["kernel.coreos-extract"], err = prov.Kernel(ctx, cacheDir)
 	if err != nil {
-		slog.Error("failed to process kernel", "error", err)
-		// Not an EFI application or extraction failed, return the original
-		return cacheDir, nil
+		return nil, errors.Errorf("processing kernel: %w", err)
 	}
 
-	cacheDir["kernel"] = kernelReader
+	wrk["initramfs.coreos-extract"], err = prov.Initramfs(ctx, cacheDir)
+	if err != nil {
+		return nil, errors.Errorf("processing initramfs: %w", err)
+	}
 
-	return cacheDir, nil
+	wrk["rootfs.coreos-extract"], err = prov.Rootfs(ctx, cacheDir)
+	if err != nil {
+		return nil, errors.Errorf("processing rootfs: %w", err)
+	}
+
+	return wrk, nil
+}
+
+func (prov *CoreOSProvider) RootfsPath() (path string) {
+	return "rootfs.coreos-extract"
+}
+
+func (prov *CoreOSProvider) KernelPath() (path string) {
+	return "kernel.coreos-extract"
+}
+
+func (prov *CoreOSProvider) InitramfsPath() (path string) {
+	return "initramfs.coreos-extract"
 }
 
 func (prov *CoreOSProvider) InitScript(ctx context.Context) (string, error) {
@@ -95,20 +118,37 @@ func (prov *CoreOSProvider) InitScript(ctx context.Context) (string, error) {
 
 echo "Hello, world!"
 `
-
 	return script, nil
 }
 
-func (prov *CoreOSProvider) RootfsPath() (path string) {
-	return "rootfs.img"
+func (prov *CoreOSProvider) Rootfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+	return io.NopCloser(mem["rootfs.img"]), nil
 }
 
-func (prov *CoreOSProvider) KernelPath() (path string) {
-	return "kernel"
+func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+
+	kernelReader, err := unzbootgo.ProcessKernel(ctx, mem["kernel"])
+	if err != nil {
+		slog.Error("failed to process kernel", "error", err)
+		return nil, err
+	}
+
+	return kernelReader, nil
 }
 
-func (prov *CoreOSProvider) InitramfsPath() (path string) {
-	return "initramfs.img"
+func (prov *CoreOSProvider) Initramfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+
+	// just decompress the initramfs, it is either gz or xz
+	read, compressed, err := archivesx.IdentifyAndDecompress(ctx, "", mem["initramfs.img"])
+	if err != nil {
+		return nil, errors.Errorf("decompressing initramfs: %w", err)
+	}
+
+	if !compressed {
+		return nil, errors.New("initramfs is not compressed ... expected gzip or xz")
+	}
+
+	return read, nil
 }
 
 func (prov *CoreOSProvider) KernelArgs() (args string) {

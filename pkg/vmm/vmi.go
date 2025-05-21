@@ -24,7 +24,7 @@ type VMIProvider interface {
 
 type DownloadableVMIProvider interface {
 	Downloads() map[string]string
-	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error)
+	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error)
 }
 
 type RootFSProvider interface {
@@ -39,5 +39,12 @@ type LinuxVMIProvider interface {
 	RootfsPath() (path string)
 	KernelPath() (path string)
 	InitramfsPath() (path string)
+	KernelArgs() (args string)
+}
+
+type LinuxVMIProvider2 interface {
+	Rootfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error)
+	Kernel(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error)
+	Initramfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error)
 	KernelArgs() (args string)
 }

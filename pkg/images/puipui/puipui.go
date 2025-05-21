@@ -2,7 +2,6 @@ package puipui
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/ext/iox"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -22,6 +22,11 @@ import (
 // const puipuiCPUs = 2
 
 const puipuiVersion = "v1.0.3"
+
+const (
+	extractedCpioName   = "initramfs.ec1-extract.cpio.gz"
+	extractedKernelName = "kernel.ec1-extract"
+)
 
 var (
 	_ vmm.VMIProvider             = &PuiPuiProvider{}
@@ -70,11 +75,11 @@ func (prov *PuiPuiProvider) Version() string {
 }
 
 func (prov *PuiPuiProvider) InitramfsPath() (path string) {
-	return "initramfs.cpio.gz"
+	return extractedCpioName
 }
 
 func (prov *PuiPuiProvider) KernelPath() (path string) {
-	return "kernel"
+	return extractedKernelName
 }
 
 func (prov *PuiPuiProvider) KernelArgs() (args string) {
@@ -101,8 +106,17 @@ func (prov *PuiPuiProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
-	out := make(map[string]io.Reader)
+func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
+	out := make(map[string]io.ReadCloser)
+
+	_, cpioExists := cacheDir[extractedCpioName]
+	_, kernelExists := cacheDir[extractedKernelName]
+
+	if cpioExists && kernelExists {
+		out[extractedCpioName] = iox.PreservedNopCloser(cacheDir[extractedCpioName])
+		out[extractedKernelName] = iox.PreservedNopCloser(cacheDir[extractedKernelName])
+		return out, nil
+	}
 
 	// extract the files
 	fmtz := archives.CompressedArchive{
@@ -111,15 +125,9 @@ func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 		Extraction:  archives.Tar{},
 	}
 
-	files := make(map[string]io.Reader)
+	files := make(map[string]io.ReadCloser)
 
-	all, err := io.ReadAll(cacheDir["root"])
-	if err != nil {
-		return nil, errors.Errorf("reading file: %w", err)
-	}
-
-	err = fmtz.Extract(ctx, bytes.NewReader(all), func(ctx context.Context, info archives.FileInfo) error {
-		fmt.Printf("info: %+v\n", info)
+	err := fmtz.Extract(ctx, cacheDir["root"], func(ctx context.Context, info archives.FileInfo) error {
 		rdr, err := info.Open()
 		if err != nil {
 			return errors.Errorf("opening file: %w", err)
@@ -129,46 +137,28 @@ func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 		if err != nil {
 			return errors.Errorf("reading file: %w", err)
 		}
-		files[info.Name()] = bytes.NewReader(data)
+		files[info.Name()] = iox.PreservedNopCloser(bytes.NewReader(data))
 		return nil
 	})
 	if err != nil {
 		return nil, errors.Errorf("extracting files: %w", err)
 	}
 
-	for name, _ := range files {
-		fmt.Printf("name: %s\n", name)
-
+	for name, file := range files {
+		switch name {
+		case "initramfs.cpio.gz":
+			out[extractedCpioName] = file
+		case "Image.gz": // only for arm64
+			out[extractedKernelName], err = (&archives.Gz{}).OpenReader(file)
+			if err != nil {
+				return nil, errors.Errorf("ungzipping kernel: %w", err)
+			}
+		case "bzImage": // only for amd64
+			out[extractedKernelName] = file
+		}
 	}
-
-	if host.CurrentKernelArch() == "aarch64" {
-		for name, file := range files {
-			switch name {
-			case "initramfs.cpio.gz":
-				out["initramfs.cpio.gz"] = file
-			case "Image.gz":
-				gzipped, err := gzip.NewReader(file)
-				if err != nil {
-					return nil, errors.Errorf("ungzipping kernel: %w", err)
-				}
-				out["kernel"] = gzipped
-			}
-		}
-		if len(out) != 2 {
-			return nil, errors.Errorf("expected 2 files, got %d", len(out))
-		}
-	} else {
-		for name, file := range files {
-			switch name {
-			case "initramfs.cpio.gz":
-				out["initramfs.cpio.gz"] = file
-			case "bzImage":
-				out["kernel"] = file
-			}
-		}
-		if len(out) != 2 {
-			return nil, errors.Errorf("expected 2 files, got %d", len(out))
-		}
+	if len(out) != 2 {
+		return nil, errors.Errorf("expected 2 files, got %d", len(out))
 	}
 
 	return out, nil

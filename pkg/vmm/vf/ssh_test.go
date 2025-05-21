@@ -13,14 +13,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/initramfs"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func init() {
-	_, _ = bootloader.UncompressInitBin(context.Background())
+	_, _ = initramfs.LoadInitBinToMemory(context.Background())
 }
 
 func TestSSH(t *testing.T) {
@@ -247,7 +247,11 @@ func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	rvm.WaitOnVMReadyToExec()
+	select {
+	case <-rvm.WaitOnVMReadyToExec():
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for vm to be ready to exec")
+	}
 
 	t.Logf("ready to exec")
 
