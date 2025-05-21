@@ -44,6 +44,19 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 					return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
 				}
 			} else {
+				initramfsPath = ""
+				isoPath, err := bootloader.PrepareEmptyIso(ctx, bootCacheDir)
+				if err != nil {
+					return nil, nil, errors.Errorf("preparing empty iso: %w", err)
+				}
+				// add a new disk to the vm
+				blkDev, err := virtio.VirtioBlkNew(isoPath)
+				if err != nil {
+					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
+				}
+				devices = append(devices, blkDev)
+				extraArgs = "  init=/dev/vda/init"
+
 				// NEXT: try mounting antoher disk with our wrapper in it and adding init= to the kernel cmdline
 				// initramfsPath, err = bootloader.PrepareEmptyInitramfs(ctx, bootCacheDir)
 				// if err != nil {
@@ -54,12 +67,12 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 			rootfsFileName := linuxVMIProvider.RootfsPath()
 			rootfsPath := filepath.Join(bootCacheDir, rootfsFileName)
 			if rootfsFileName != "" {
-				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
+				blkDev, err := virtio.VirtioBlkNew(rootfsPath)
 				if err != nil {
 					return nil, nil, errors.Errorf("creating virtio block device: %w", err)
 				}
 				devices = append(devices, blkDev)
-				extraArgs = "  root=/dev/nvme0n1p1"
+				extraArgs = "  root=/dev/vdb"
 			}
 
 			kernelFileName := linuxVMIProvider.KernelPath()
@@ -79,7 +92,7 @@ func EmphericalBootLoaderConfigForGuest(ctx context.Context, provider VMIProvide
 			return &bootloader.LinuxBootloader{
 				InitrdPath:    initramfsPath,
 				VmlinuzPath:   kernelPath,
-				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0" + extraArgs,
+				KernelCmdLine: linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs,
 			}, devices, nil
 		}
 		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil

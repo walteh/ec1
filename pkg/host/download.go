@@ -3,7 +3,6 @@ package host
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -33,29 +32,23 @@ func DownloadAndExtractVMI(ctx context.Context, downloads map[string]string) (ma
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			slog.InfoContext(ctx, "downloading and extracting file", "name", name, "url", url)
 			rdr, err := downloadAndExtractFileFromURL(ctx, name, url)
 			if err != nil {
 				errs <- errors.Errorf("downloading and extracting file %s: %w", name, err)
 				return
 			}
-			slog.InfoContext(ctx, "downloaded and extracted file", "name", name, "url", url)
 			mutex.Lock()
-			// save as read seeker
 			files[name] = rdr
 			mutex.Unlock()
 		}()
 	}
 
 	go func() {
-		fmt.Printf("waiting for group\n")
 		group.Wait()
-		fmt.Printf("group done\n")
 		close(errs)
 	}()
 
 	errout := []error{}
-	fmt.Printf("waiting for errs\n")
 	for err := range errs {
 		errout = append(errout, err)
 	}
@@ -83,20 +76,13 @@ func downloadAndExtractFileFromURL(ctx context.Context, name string, url string)
 
 	if _, err := os.Stat(extractedCachedZip); err != nil {
 
-		// tmpfile, err := os.Create(extractedCachedZip)
-		// if err != nil {
-		// 	return nil, errors.Errorf("creating temp file: %w", err)
-		// }
-
-		// tmpfile.Close()
-
 		err = downloadURLToFile(ctx, url, extractedCachedZip)
 		if err != nil {
 			// os.Remove(tmpfile.Name())
 			return nil, errors.Errorf("downloading url to file: %w", err)
 		}
 
-		slog.InfoContext(ctx, "downloaded file", "url", url, "file", extractedCachedZip)
+		// slog.InfoContext(ctx, "downloaded file", "url", url, "file", extractedCachedZip)
 
 	}
 
@@ -104,8 +90,6 @@ func downloadAndExtractFileFromURL(ctx context.Context, name string, url string)
 	if err != nil {
 		return nil, errors.Errorf("opening file: %w", err)
 	}
-
-	slog.InfoContext(ctx, "opening file", "file", extractedCachedZip)
 
 	// z, err := (archives.Gz{}).OpenReader(rdrf)
 	// if err != nil {
@@ -210,7 +194,7 @@ func downloadAndExtractFileFromURL(ctx context.Context, name string, url string)
 // }
 
 func downloadURLToFile(ctx context.Context, url string, file string) error {
-	slog.InfoContext(ctx, "downloading url to file", "url", url, "file", file)
+	slog.DebugContext(ctx, "downloading url to file", "url", url, "file", file)
 
 	// move the file to the cache
 	err := os.MkdirAll(filepath.Dir(file), 0755)

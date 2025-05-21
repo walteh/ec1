@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/kdomanski/iso9660"
 	"github.com/mholt/archives"
 	"github.com/u-root/u-root/pkg/cpio"
 	"gitlab.com/tozd/go/errors"
@@ -147,6 +148,35 @@ func (r *InMemoryReaderAt) ReadAt(p []byte, off int64) (int, error) {
 
 	copy(p, r.buffer[off:])
 	return len(p), nil
+}
+
+func PrepareEmptyIso(ctx context.Context, dir string) (string, error) {
+	iso, err := iso9660.NewWriter()
+	if err != nil {
+		return "", errors.Errorf("creating iso writer: %w", err)
+	}
+	uncompressedInitBinData, err := UncompressInitBin(ctx)
+	if err != nil {
+		return "", errors.Errorf("uncompressing init binary: %w", err)
+	}
+
+	err = iso.AddFile(bytes.NewReader(uncompressedInitBinData), "init")
+	if err != nil {
+		return "", errors.Errorf("adding init file to iso: %w", err)
+	}
+
+	tmp, err := os.Create(filepath.Join(dir, "init.ec1.iso"))
+	if err != nil {
+		return "", errors.Errorf("creating temp file: %w", err)
+	}
+	defer tmp.Close()
+
+	err = iso.WriteTo(tmp, "init.ec1.volume")
+	if err != nil {
+		return "", errors.Errorf("writing iso: %w", err)
+	}
+
+	return tmp.Name(), nil
 }
 
 func PrepareEmptyInitramfs(ctx context.Context, dir string) (string, error) {

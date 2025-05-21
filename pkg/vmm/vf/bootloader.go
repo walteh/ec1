@@ -21,10 +21,17 @@ func toVzLinuxBootloader(bootloader *bootloader.LinuxBootloader) (vz.BootLoader,
 		}
 	}
 
+	opts := []vz.LinuxBootLoaderOption{}
+	if bootloader.InitrdPath != "" {
+		opts = append(opts, vz.WithInitrd(bootloader.InitrdPath))
+	}
+	if bootloader.KernelCmdLine != "" {
+		opts = append(opts, vz.WithCommandLine(bootloader.KernelCmdLine))
+	}
+
 	return vz.NewLinuxBootLoader(
 		bootloader.VmlinuzPath,
-		vz.WithCommandLine(bootloader.KernelCmdLine),
-		vz.WithInitrd(bootloader.InitrdPath),
+		opts...,
 	)
 }
 

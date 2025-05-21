@@ -83,47 +83,8 @@ func (prov *UbuntuProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 		return cacheDir, nil
 	}
 
-	slog.Info("kernel taken care of")
-
 	cacheDir["vmlinuz"] = kernelReader
 
-	// tmpOutFile, err := os.CreateTemp("", "rootfs.img")
-	// if err != nil {
-	// 	slog.Error("failed to create temp file", "error", err)
-	// 	return cacheDir, nil
-	// }
-	// // defer os.Remove(tmpOutFile.Name())
-
-	// rootfsReader := cacheDir["rootfs.img"]
-	// if _, ok := rootfsReader.(io.ReaderAt); !ok {
-
-	// 	tmpFile, err := os.CreateTemp("", "rootfs.img")
-	// 	if err != nil {
-	// 		slog.Error("failed to create temp file", "error", err)
-	// 		return cacheDir, nil
-	// 	}
-	// 	defer func() {
-	// 		tmpFile.Close()
-	// 		os.Remove(tmpFile.Name())
-	// 	}()
-	// 	// write to the temp file
-	// 	_, err = io.Copy(tmpFile, rootfsReader)
-	// 	if err != nil {
-	// 		slog.Error("failed to copy rootfs to temp file", "error", err)
-	// 		return cacheDir, nil
-	// 	}
-	// 	rootfsReader = tmpFile
-	// }
-	// // defer os.Remove(tmpFile.Name())
-
-	// err = host.ConvertQcow2ToRaw(ctx, rootfsReader.(io.ReaderAt), tmpOutFile)
-	// if err != nil {
-	// 	slog.Error("failed to convert rootfs to raw", "error", err)
-	// 	return cacheDir, nil
-	// }
-
-	// cacheDir["rootfs.img"] = tmpOutFile
-	// TODO: add the kernel args
 	return cacheDir, nil
 }
 
