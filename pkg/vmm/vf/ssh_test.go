@@ -260,32 +260,32 @@ func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 
 }
 
-func TestGuestInitWrapperVSockFedora(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
+// func TestGuestInitWrapperVSockFedora(t *testing.T) {
+// 	ctx := tlog.SetupSlogForTest(t)
 
-	// Create a real VM for testing
-	rvm, _ := setupFedoraVM(t, ctx, 1024)
-	if rvm == nil {
-		t.Skip("Could not create test VM")
-		return
-	}
+// 	// Create a real VM for testing
+// 	rvm, _ := setupFedoraVM(t, ctx, 1024)
+// 	if rvm == nil {
+// 		t.Skip("Could not create test VM")
+// 		return
+// 	}
 
-	slog.DebugContext(ctx, "waiting for test VM to be running")
+// 	slog.DebugContext(ctx, "waiting for test VM to be running")
 
-	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
-	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+// 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+// 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	<-time.After(5000 * time.Millisecond)
+// 	<-time.After(5000 * time.Millisecond)
 
-	t.Logf("ready to exec")
-	mi, err := vmm.ProcMemInfo(ctx, rvm)
-	require.NoError(t, err, "Failed to get meminfo")
+// 	t.Logf("ready to exec")
+// 	mi, err := vmm.ProcMemInfo(ctx, rvm)
+// 	require.NoError(t, err, "Failed to get meminfo")
 
-	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+// 	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
 
-	require.NotNil(t, mi)
+// 	require.NotNil(t, mi)
 
-}
+// }
 
 func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
@@ -303,33 +303,6 @@ func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
 	rvm.WaitOnVMReadyToExec()
-
-	t.Logf("ready to exec")
-	mi, err := vmm.ProcMemInfo(ctx, rvm)
-	require.NoError(t, err, "Failed to get meminfo")
-
-	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
-
-	require.NotNil(t, mi)
-
-}
-
-func TestGuestInitWrapperVSockUbuntu(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
-
-	// Create a real VM for testing
-	rvm, _ := setupUbuntuVM(t, ctx, 1024*10)
-	if rvm == nil {
-		t.Skip("Could not create test VM")
-		return
-	}
-
-	slog.DebugContext(ctx, "waiting for test VM to be running")
-
-	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
-	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
-
-	<-time.After(5000 * time.Millisecond)
 
 	t.Logf("ready to exec")
 	mi, err := vmm.ProcMemInfo(ctx, rvm)

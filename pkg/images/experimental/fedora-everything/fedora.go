@@ -1,4 +1,4 @@
-package fedora
+package fedoraeverything
 
 import (
 	"context"
@@ -17,32 +17,32 @@ import (
 
 const fedoraVersion = "42"
 
-func (prov *FedoraProvider) GuestKernelType() guest.GuestKernelType {
+func (prov *FedoraEverythingProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }
 
 var (
-	_ vmm.VMIProvider             = &FedoraProvider{}
-	_ vmm.DownloadableVMIProvider = &FedoraProvider{}
-	_ vmm.LinuxVMIProvider        = &FedoraProvider{}
+	_ vmm.VMIProvider             = &FedoraEverythingProvider{}
+	_ vmm.DownloadableVMIProvider = &FedoraEverythingProvider{}
+	_ vmm.LinuxVMIProvider        = &FedoraEverythingProvider{}
 )
 
-type FedoraProvider struct {
+type FedoraEverythingProvider struct {
 }
 
-func NewProvider() *FedoraProvider {
-	return &FedoraProvider{}
+func NewProvider() *FedoraEverythingProvider {
+	return &FedoraEverythingProvider{}
 }
 
-func (prov *FedoraProvider) Name() string {
+func (prov *FedoraEverythingProvider) Name() string {
 	return "fedora"
 }
 
-func (prov *FedoraProvider) Version() string {
+func (prov *FedoraEverythingProvider) Version() string {
 	return semver.Canonical(fmt.Sprintf("v%s", fedoraVersion))
 }
 
-func (prov *FedoraProvider) Downloads() map[string]string {
+func (prov *FedoraEverythingProvider) Downloads() map[string]string {
 
 	rawFedora := `https://download.fedoraproject.org/pub/fedora/linux/releases/%[1]s/Everything/%[2]s/os/images/pxeboot/%[3]s%[4]s`
 
@@ -55,7 +55,7 @@ func (prov *FedoraProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+func (prov *FedoraEverythingProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["vmlinuz"])
 	if err != nil {
@@ -69,7 +69,7 @@ func (prov *FedoraProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 	return cacheDir, nil
 }
 
-func (prov *FedoraProvider) InitScript(ctx context.Context) (string, error) {
+func (prov *FedoraEverythingProvider) InitScript(ctx context.Context) (string, error) {
 	script := `
 #!/bin/sh
 
@@ -79,37 +79,37 @@ echo "Hello, world!"
 	return script, nil
 }
 
-func (prov *FedoraProvider) RootfsPath() (path string) {
+func (prov *FedoraEverythingProvider) RootfsPath() (path string) {
 	return ""
 }
 
-func (prov *FedoraProvider) KernelPath() (path string) {
+func (prov *FedoraEverythingProvider) KernelPath() (path string) {
 	return "vmlinuz"
 }
 
-func (prov *FedoraProvider) InitramfsPath() (path string) {
+func (prov *FedoraEverythingProvider) InitramfsPath() (path string) {
 	return "initrd.img"
 }
 
-func (prov *FedoraProvider) KernelArgs() (args string) {
+func (prov *FedoraEverythingProvider) KernelArgs() (args string) {
 	return "vsock.ko virtio_vsock.ko modprobe.blacklist=floppy"
 }
 
-func (prov *FedoraProvider) BootProvisioners() []vmm.BootProvisioner {
+func (prov *FedoraEverythingProvider) BootProvisioners() []vmm.BootProvisioner {
 	return []vmm.BootProvisioner{
 		// ignition.NewIgnitionBootConfigProvider(cfg),
 	}
 }
 
-func (fedora *FedoraProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+func (fedora *FedoraEverythingProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
 	return []vmm.RuntimeProvisioner{}
 }
 
-func (fedora *FedoraProvider) ShutdownCommand() string {
+func (fedora *FedoraEverythingProvider) ShutdownCommand() string {
 	return "sudo shutdown -h now"
 }
 
-func (fedora *FedoraProvider) SSHConfig() *ssh.ClientConfig {
+func (fedora *FedoraEverythingProvider) SSHConfig() *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User: "vfkituser",
 		Auth: []ssh.AuthMethod{ssh.Password("vfkittest")},

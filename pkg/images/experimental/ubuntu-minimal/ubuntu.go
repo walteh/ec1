@@ -1,4 +1,4 @@
-package ubuntu
+package ubuntuminimal
 
 import (
 	"context"
@@ -19,32 +19,32 @@ const ubuntuVersion = "24.10" // Ubuntu Oracular Oriole
 const ubuntuCodename = "oracular"
 const ubuntuRelease = "20250429" // Release date, adjust as needed
 
-func (prov *UbuntuProvider) GuestKernelType() guest.GuestKernelType {
+func (prov *UbuntuMinimalProvider) GuestKernelType() guest.GuestKernelType {
 	return guest.GuestKernelTypeLinux
 }
 
 var (
-	_ vmm.VMIProvider             = &UbuntuProvider{}
-	_ vmm.DownloadableVMIProvider = &UbuntuProvider{}
-	_ vmm.LinuxVMIProvider        = &UbuntuProvider{}
+	_ vmm.VMIProvider             = &UbuntuMinimalProvider{}
+	_ vmm.DownloadableVMIProvider = &UbuntuMinimalProvider{}
+	_ vmm.LinuxVMIProvider        = &UbuntuMinimalProvider{}
 )
 
-type UbuntuProvider struct {
+type UbuntuMinimalProvider struct {
 }
 
-func NewProvider() *UbuntuProvider {
-	return &UbuntuProvider{}
+func NewProvider() *UbuntuMinimalProvider {
+	return &UbuntuMinimalProvider{}
 }
 
-func (prov *UbuntuProvider) Name() string {
+func (prov *UbuntuMinimalProvider) Name() string {
 	return "ubuntu"
 }
 
-func (prov *UbuntuProvider) Version() string {
+func (prov *UbuntuMinimalProvider) Version() string {
 	return semver.Canonical(fmt.Sprintf("v%s", ubuntuVersion))
 }
 
-func (prov *UbuntuProvider) Downloads() map[string]string {
+func (prov *UbuntuMinimalProvider) Downloads() map[string]string {
 	arch := host.CurrentKernelArch()
 
 	// Convert aarch64 to arm64 for Ubuntu naming convention
@@ -73,7 +73,7 @@ func (prov *UbuntuProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *UbuntuProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+func (prov *UbuntuMinimalProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["vmlinuz"])
@@ -88,7 +88,7 @@ func (prov *UbuntuProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 	return cacheDir, nil
 }
 
-func (prov *UbuntuProvider) InitScript(ctx context.Context) (string, error) {
+func (prov *UbuntuMinimalProvider) InitScript(ctx context.Context) (string, error) {
 	script := `
 #!/bin/sh
 
@@ -100,40 +100,40 @@ modprobe vmw_vsock_virtio_transport
 	return script, nil
 }
 
-func (prov *UbuntuProvider) RootfsPath() (path string) {
+func (prov *UbuntuMinimalProvider) RootfsPath() (path string) {
 	return "squashfs"
 }
 
-func (prov *UbuntuProvider) KernelPath() (path string) {
+func (prov *UbuntuMinimalProvider) KernelPath() (path string) {
 	return "vmlinuz"
 }
 
-func (prov *UbuntuProvider) InitramfsPath() (path string) {
+func (prov *UbuntuMinimalProvider) InitramfsPath() (path string) {
 	// Ubuntu cloud images do use a separate initramfs
 	return ""
 }
 
-func (prov *UbuntuProvider) KernelArgs() (args string) {
+func (prov *UbuntuMinimalProvider) KernelArgs() (args string) {
 	// Kernel args for Ubuntu with vsock support
 	// Explicitly specify the root device properly
 	return ""
 }
 
-func (prov *UbuntuProvider) BootProvisioners() []vmm.BootProvisioner {
+func (prov *UbuntuMinimalProvider) BootProvisioners() []vmm.BootProvisioner {
 	return []vmm.BootProvisioner{
 		// Add any Ubuntu-specific boot provisioners here
 	}
 }
 
-func (prov *UbuntuProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
+func (prov *UbuntuMinimalProvider) RuntimeProvisioners() []vmm.RuntimeProvisioner {
 	return []vmm.RuntimeProvisioner{}
 }
 
-func (prov *UbuntuProvider) ShutdownCommand() string {
+func (prov *UbuntuMinimalProvider) ShutdownCommand() string {
 	return "sudo shutdown -h now"
 }
 
-func (prov *UbuntuProvider) SSHConfig() *ssh.ClientConfig {
+func (prov *UbuntuMinimalProvider) SSHConfig() *ssh.ClientConfig {
 	return &ssh.ClientConfig{
 		User: "ubuntu",                                 // Default user for Ubuntu cloud images
 		Auth: []ssh.AuthMethod{ssh.Password("ubuntu")}, // Default password is usually "ubuntu"
