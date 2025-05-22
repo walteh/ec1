@@ -10,40 +10,40 @@ import (
 )
 
 func PreservedNopCloser(r io.Reader) io.ReadCloser {
-	if rc, ok := r.(io.ReadCloser); ok {
-		return rc
-	}
+	// if rc, ok := r.(io.ReadCloser); ok {
+	// 	return rc
+	// }
 	return io.NopCloser(r)
 }
 
 type ContextReader struct {
 	ctx context.Context
-	io.ReadCloser
+	io.Reader
 }
 
-func NewContextReader(ctx context.Context, r io.ReadCloser) *ContextReader {
-	return &ContextReader{ctx: ctx, ReadCloser: r}
+func NewContextReader(ctx context.Context, r io.Reader) *ContextReader {
+	return &ContextReader{ctx: ctx, Reader: r}
 }
 
 func (r *ContextReader) Read(p []byte) (n int, err error) {
 	if r.ctx.Err() != nil {
 		return 0, r.ctx.Err()
 	}
-	return r.ReadCloser.Read(p)
+	return r.Reader.Read(p)
 }
 
 type ReadCounter struct {
 	count int64
-	io.ReadCloser
+	io.Reader
 	debug bool
 }
 
-func NewReadCounter(r io.ReadCloser) *ReadCounter { return &ReadCounter{ReadCloser: r} }
+func NewReadCounter(r io.Reader) *ReadCounter { return &ReadCounter{Reader: r} }
 
 func (r *ReadCounter) Count() int64 { return r.count }
 
 func (r *ReadCounter) Read(p []byte) (n int, err error) {
-	n, err = r.ReadCloser.Read(p)
+	n, err = r.Reader.Read(p)
 	r.count += int64(n)
 	if r.debug {
 		slog.Debug("read", "count", r.count, "n", n, "err", err)
@@ -54,6 +54,7 @@ func (r *ReadCounter) Read(p []byte) (n int, err error) {
 func (r *ReadCounter) SetDebug(debug bool) { r.debug = debug }
 
 func CreateWriterPipeline(ctx context.Context, reader io.Reader, writerFunc func(io.Writer) (io.WriteCloser, error)) (io.ReadCloser, error) {
+
 	pipeReader, pipeWriter := io.Pipe()
 
 	wrtr, err := writerFunc(pipeWriter)

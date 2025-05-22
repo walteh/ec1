@@ -11,8 +11,7 @@ import (
 	"github.com/walteh/ec1/pkg/ext/iox"
 )
 
-func WriteFileFromReader(ctx context.Context, path string, reader io.ReadCloser, perm os.FileMode) (int64, error) {
-	defer reader.Close()
+func WriteFileFromReader(ctx context.Context, path string, reader io.Reader, perm os.FileMode) (int64, error) {
 
 	// Don't close the reader - let the caller handle that
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
@@ -29,8 +28,7 @@ func WriteFileFromReader(ctx context.Context, path string, reader io.ReadCloser,
 	return written, nil
 }
 
-func WriteFromReaderToFilePaths(ctx context.Context, reader io.ReadCloser, paths ...string) error {
-	defer reader.Close()
+func WriteFromReaderToFilePaths(ctx context.Context, reader io.Reader, paths ...string) error {
 
 	if len(paths) == 0 {
 		return nil

@@ -306,7 +306,9 @@ func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	rvm.WaitOnVMReadyToExec()
+	if err := rvm.WaitOnVMReadyToExec(); err != nil {
+		t.Fatalf("timeout waiting for vm to be ready to exec: %v", err)
+	}
 
 	t.Logf("ready to exec")
 	mi, err := vmm.ProcMemInfo(ctx, rvm)

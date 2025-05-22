@@ -386,7 +386,7 @@ func TestCreateWriterPipeline_TransformingWriter(t *testing.T) {
 func TestCreateWriterPipeline_ConcurrentReads(t *testing.T) {
 	// This test verifies that the first reader to read from the pipeline gets the data
 	ctx := tlog.SetupSlogForTestWithContext(t, t.Context())
-	
+
 	// Create test data
 	testData := bytes.Repeat([]byte("concurrent test data "), 1000) // Smaller size for faster test
 	reader := bytes.NewReader(testData)
@@ -399,13 +399,13 @@ func TestCreateWriterPipeline_ConcurrentReads(t *testing.T) {
 		}, nil
 	})
 	require.NoError(t, err, "Failed to create writer pipeline")
-	
+
 	// With the improved implementation, we can't have multiple goroutines reading from the same pipeline
 	// So we'll read once and verify the data is correct
 	data, err := io.ReadAll(readCloser)
 	require.NoError(t, err, "Failed to read from pipeline")
 	require.Equal(t, testData, data, "Data read from pipeline doesn't match expected data")
-	
+
 	// Ensure we get EOF when trying to read again
 	n, err := readCloser.Read(make([]byte, 10))
 	require.Equal(t, 0, n, "Should read 0 bytes after complete read")

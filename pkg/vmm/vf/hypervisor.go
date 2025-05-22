@@ -80,8 +80,7 @@ func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 // 	panic("not implemented")
 // }
 
-func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.ReadCloser) (io.ReadCloser, error) {
-	defer initramfs.Close()
+func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.Reader) (io.ReadCloser, error) {
 	// convert to gzip
 	arc, err := archivesx.CreateCompressorPipeline(ctx, &archives.Gz{
 		// Multithreaded:      true,
@@ -97,7 +96,7 @@ func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.Re
 	return arc, nil
 }
 
-func (hpv *Hypervisor) EncodeLinuxKernel(ctx context.Context, kernel io.ReadCloser) (io.ReadCloser, error) {
+func (hpv *Hypervisor) EncodeLinuxKernel(ctx context.Context, kernel io.Reader) (io.ReadCloser, error) {
 	// ensure kernel is valid
 	validationReader, err := magic.ARM64LinuxKernelValidationReader(kernel)
 	if err != nil {
@@ -106,8 +105,8 @@ func (hpv *Hypervisor) EncodeLinuxKernel(ctx context.Context, kernel io.ReadClos
 	return validationReader, nil
 }
 
-func (hpv *Hypervisor) EncodeLinuxRootfs(ctx context.Context, rootfs io.ReadCloser) (io.ReadCloser, error) {
-	return rootfs, nil
+func (hpv *Hypervisor) EncodeLinuxRootfs(ctx context.Context, rootfs io.Reader) (io.ReadCloser, error) {
+	return io.NopCloser(rootfs), nil
 }
 
 func (hpv *Hypervisor) InitramfsCompression() archives.Compression {

@@ -22,9 +22,9 @@ const (
 type Hypervisor[VM VirtualMachine] interface {
 	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl bootloader.Bootloader) (VM, error)
 	OnCreate() <-chan VM
-	EncodeLinuxInitramfs(ctx context.Context, initramfs io.ReadCloser) (io.ReadCloser, error)
-	EncodeLinuxKernel(ctx context.Context, kernel io.ReadCloser) (io.ReadCloser, error)
-	EncodeLinuxRootfs(ctx context.Context, rootfs io.ReadCloser) (io.ReadCloser, error)
+	EncodeLinuxInitramfs(ctx context.Context, initramfs io.Reader) (io.ReadCloser, error)
+	EncodeLinuxKernel(ctx context.Context, kernel io.Reader) (io.ReadCloser, error)
+	EncodeLinuxRootfs(ctx context.Context, rootfs io.Reader) (io.ReadCloser, error)
 	InitramfsCompression() archives.Compression
 }
 

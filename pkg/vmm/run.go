@@ -67,7 +67,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
 			}
 
-			initramfsPath := filepath.Join(wrkdir, "initramfs")
+			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
 			slog.InfoContext(ctx, "writing initramfs")
 			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, initramfsReader, 0644)
@@ -137,7 +137,8 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			kernelReader.Close()
 
-			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
+			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
+			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs
 
 			slog.LogAttrs(ctx, slog.LevelInfo, "linux boot loader ready", entries...)
 

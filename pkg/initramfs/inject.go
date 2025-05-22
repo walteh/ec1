@@ -9,8 +9,6 @@ import (
 
 	"gitlab.com/tozd/go/errors"
 	"go.pdmccormick.com/initramfs"
-
-	"github.com/walteh/ec1/pkg/ext/archivesx"
 )
 
 // InjectInitBinaryToInitramfsCpio injects the init binary into a CPIO format initramfs
@@ -23,14 +21,14 @@ func InjectInitBinaryToInitramfsCpio(ctx context.Context, rdr io.Reader) (io.Rea
 	}
 
 	// Decompress the initramfs if it's compressed
-	rdr, compressed, err := archivesx.IdentifyAndDecompress(ctx, "", rdr)
-	if err != nil {
-		return nil, errors.Errorf("identifying and decompressing initramfs file: %w", err)
-	}
+	// rdr, compressed, err := archivesx.IdentifyAndDecompress(ctx, "", rdr)
+	// if err != nil {
+	// 	return nil, errors.Errorf("identifying and decompressing initramfs file: %w", err)
+	// }
 
-	if !compressed {
-		return nil, errors.Errorf("this function only works with compressed initramfs files")
-	}
+	// if !compressed {
+	// 	return nil, errors.Errorf("this function only works with compressed initramfs files")
+	// }
 
 	slog.InfoContext(ctx, "custom init added to initramfs", "customInitPath", "/"+customInitPath)
 
@@ -51,12 +49,14 @@ func InjectInitBinaryToInitramfsCpio(ctx context.Context, rdr io.Reader) (io.Rea
 	// First add our custom init file to the beginning
 	if err = iw.WriteHeader(&initramfs.Header{
 		Filename: "init",
-		Mode:     0755,
+		// executable
+		Mode:     initramfs.Mode_File | initramfs.GroupExecute | initramfs.UserExecute | initramfs.OtherExecute,
 		Mtime:    time.Now(),
 		Uid:      0,
 		Gid:      0,
 		NumLinks: 1,
 		DataSize: uint32(len(decompressedInitBinData)),
+		Magic:    initramfs.Magic_070701,
 	}); err != nil {
 		return nil, errors.Errorf("writing header for custom init: %w", err)
 	}
@@ -86,7 +86,8 @@ func InjectInitBinaryToInitramfsCpio(ctx context.Context, rdr io.Reader) (io.Rea
 		// Rename the original init to init.real
 		if rec.Filename == customInitPath {
 			rec.Filename = "init.real"
-			slog.InfoContext(ctx, "renaming original init to init.real")
+
+			slog.InfoContext(ctx, "renaming original init to init.real", "mode", rec.Mode)
 		}
 
 		// Write the header for this record

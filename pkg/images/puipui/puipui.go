@@ -24,7 +24,7 @@ import (
 const puipuiVersion = "v1.0.3"
 
 const (
-	extractedCpioName   = "initramfs.ec1-extract.cpio.gz"
+	extractedCpioName   = "initramfs.ec1-extract.cpio"
 	extractedKernelName = "kernel.ec1-extract"
 )
 
@@ -147,7 +147,11 @@ func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 	for name, file := range files {
 		switch name {
 		case "initramfs.cpio.gz":
-			out[extractedCpioName] = file
+			rdr, err := (&archives.Gz{}).OpenReader(file)
+			if err != nil {
+				return nil, errors.Errorf("opening initramfs: %w", err)
+			}
+			out[extractedCpioName] = rdr
 		case "Image.gz": // only for arm64
 			out[extractedKernelName], err = (&archives.Gz{}).OpenReader(file)
 			if err != nil {

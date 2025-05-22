@@ -10,8 +10,6 @@ import (
 	"github.com/walteh/ec1/pkg/ext/iox"
 )
 
-
-
 type Manipulator interface {
 	Manipulate(ctx context.Context, reader io.Reader) (io.ReadCloser, error)
 }
