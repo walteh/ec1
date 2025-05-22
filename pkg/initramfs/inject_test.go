@@ -151,8 +151,15 @@ func testFastInjectFileToCpio(t *testing.T, mockInitBinary string, cpioPath io.R
 
 	// var mockInitBinary = "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
 
-	fastReader, err := initramfs.FastInjectFileToCpio(ctx, cpioPath, initramfs.NewExecHeader("init"), []byte(mockInitBinary))
+	fastReader := initramfs.StreamInjectHyper(ctx, cpioPath, initramfs.NewExecHeader("init"), []byte(mockInitBinary))
 	require.NoError(t, err)
+
+	cpioPath.Seek(0, io.SeekStart)
+
+	fastData, err := io.ReadAll(fastReader)
+	require.NoError(t, err)
+
+	fmt.Println("fast countTrailingZeroBytes", countTrailingZeroBytes(fastData))
 
 	cpioPath.Seek(0, io.SeekStart)
 
@@ -164,11 +171,6 @@ func testFastInjectFileToCpio(t *testing.T, mockInitBinary string, cpioPath io.R
 
 	// rdrz, rfle := tlog.TeeToDownloadsFolder(rdr, "FAST.initramfs.cpio")
 	// defer rfle.Close()
-
-	fastData, err := io.ReadAll(fastReader)
-	require.NoError(t, err)
-
-	fmt.Println("fast countTrailingZeroBytes", countTrailingZeroBytes(fastData))
 
 	slowData, err := io.ReadAll(slowReader)
 	require.NoError(t, err)
@@ -258,10 +260,58 @@ func BenchmarkFastInjectFileToCpio(b *testing.B) {
 	f := openLargeCpio(b)
 	defer f.Close()
 
+	b.Run("stream", func(b *testing.B) {
+		for b.Loop() {
+			f.Seek(0, io.SeekStart)
+			reader := initramfs.StreamInject(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			_, err := io.Copy(io.Discard, reader)
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("stream-optimized", func(b *testing.B) {
+		for b.Loop() {
+			f.Seek(0, io.SeekStart)
+			reader := initramfs.StreamInjectOptimized(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			_, err := io.Copy(io.Discard, reader)
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("stream-ultra", func(b *testing.B) {
+		for b.Loop() {
+			f.Seek(0, io.SeekStart)
+			reader := initramfs.StreamInjectUltra(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			_, err := io.Copy(io.Discard, reader)
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("stream-hyper", func(b *testing.B) {
+		for b.Loop() {
+			f.Seek(0, io.SeekStart)
+			reader := initramfs.StreamInjectHyper(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			_, err := io.Copy(io.Discard, reader)
+			require.NoError(b, err)
+		}
+	})
+
 	b.Run("fast", func(b *testing.B) {
 		for b.Loop() {
 			f.Seek(0, io.SeekStart)
-			_, err := initramfs.FastInjectFileToCpio(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			reader, err := initramfs.FastInjectFileToCpio(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			require.NoError(b, err)
+			_, err = io.Copy(io.Discard, reader)
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("fast-hyper", func(b *testing.B) {
+		for b.Loop() {
+			f.Seek(0, io.SeekStart)
+			reader, err := initramfs.FastInjectFileToCpioHyper(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			require.NoError(b, err)
+			_, err = io.Copy(io.Discard, reader)
 			require.NoError(b, err)
 		}
 	})
@@ -269,7 +319,8 @@ func BenchmarkFastInjectFileToCpio(b *testing.B) {
 	b.Run("slow", func(b *testing.B) {
 		for b.Loop() {
 			f.Seek(0, io.SeekStart)
-			_, err := initramfs.InjectFileToCpio(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			reader, err := initramfs.InjectFileToCpio(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+			_, err = io.Copy(io.Discard, reader)
 			require.NoError(b, err)
 		}
 	})

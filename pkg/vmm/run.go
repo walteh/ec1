@@ -70,10 +70,10 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			// 	return nil, nil, errors.Errorf("reading initramfs: %w", err)
 			// }
 
-			slowReader, err := initramfs.InjectFileToCpio(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
-			if err != nil {
-				return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
-			}
+			slowReader := initramfs.StreamInjectHyper(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
+			// }
 
 			// fastReader, err = initramfs.FastInjectFileToCpio(ctx, bytes.NewReader(all), initramfs.NewExecHeader("init"), decompressedInitBinData)
 			// if err != nil {
@@ -108,6 +108,8 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			// }
 
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
+
+			slog.InfoContext(ctx, "fastReader done")
 
 			slog.InfoContext(ctx, "writing initramfs")
 			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, fastReader, 0644)

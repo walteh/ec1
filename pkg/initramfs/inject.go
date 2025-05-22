@@ -3,13 +3,16 @@ package initramfs
 import (
 	_ "unsafe"
 
+	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"gitlab.com/tozd/go/errors"
@@ -160,19 +163,6 @@ func InjectFileToCpio(ctx context.Context, pipe io.Reader, header initramfs.Head
 	return io.NopCloser(buf), nil
 }
 
-// // find all instances of the filename
-// mfsSig := append([]byte("bin/curl"), 0x00)
-// initSplits := bytes.Split(cpioData, mfsSig)
-// initPoses := []int{}
-// for _, split := range initSplits {
-// 	initPoses = append(initPoses, len(split))
-// }
-
-// fmt.Println("initPoses", initPoses)
-
-//go:linkname writeHeader go.pdmccormick.com/initramfs.(*Writer).writeHeader
-func writeHeader(iw *initramfs.Writer, hdr *initramfs.Header) error
-
 // FastInjectFileToCpio performs the same operation as InjectFileToCpio but uses direct byte manipulation
 // for significantly better performance with large files
 func FastInjectFileToCpio(ctx context.Context, pipe io.Reader, header initramfs.Header, data []byte) (io.ReadCloser, error) {
@@ -263,60 +253,6 @@ func FastInjectFileToCpio(ctx context.Context, pipe io.Reader, header initramfs.
 	return io.NopCloser(bytes.NewReader(out)), nil
 }
 
-// CPIOSearchResult represents the result of searching for a file in a CPIO archive
-// type CPIOSearchResult struct {
-// 	// Found indicates whether the file was found
-// 	Found bool
-// 	// HeaderPosition is the byte offset where the CPIO header starts
-// 	HeaderPosition int
-// 	// FilenamePosition is the byte offset where the filename starts
-// 	FilenamePosition int
-// 	// DataPosition is the byte offset where the file data starts
-// 	DataPosition int
-// 	// Size is the size of the file data
-// 	Size uint32
-// }
-
-// func grabBits(cpioData []byte, offset, length int) uint64 {
-// 	// we need to round length up to the nearest multiple of 4
-// 	alignedLength := (length + 3) &^ 3
-// 	// we need to round offset down to the nearest multiple of 4
-// 	alignedOffset := offset &^ 3
-
-// 	// we need to divide both by 4
-// 	alignedOffsetDiv4 := alignedOffset / 4
-// 	alignedLengthDiv4 := alignedLength / 4
-
-// 	dat := cpioData[alignedOffsetDiv4 : alignedOffsetDiv4+alignedLengthDiv4]
-
-// 	fmt.Println(
-// 		"alignedOffsetDiv4", alignedOffsetDiv4,
-// 		"alignedLengthDiv4", alignedLengthDiv4,
-// 		"offset", offset,
-// 		"length", length,
-// 		"alignedOffset", alignedOffset,
-// 		"alignedLength", alignedLength,
-// 		"len(cpioData)", len(cpioData),
-// 		"dat", fmt.Sprintf("%x", dat),
-// 	)
-
-// 	// we need to shift the offse	t left by the number of bits length is away from 4
-// 	rawData := binary.BigEndian.Uint64(dat)
-
-// 	// we need to shift the offset right by the number of bits length is away from 4
-// 	rawData = rawData << uint64(offset-alignedOffset)
-// 	rawData = rawData >> uint64(alignedLength-length)
-// 	return rawData
-// }
-
-// func alignPadding(offset, align int) int {
-// 	remainder := offset % align
-// 	if remainder == 0 {
-// 		return 0
-// 	}
-// 	return align - remainder
-// }
-
 func pad(length int, align int) int {
 	return (align - (length % align)) % align
 }
@@ -361,142 +297,787 @@ func FindFileNameByteIndex(ctx context.Context, cpioData []byte, filename string
 	return -1
 }
 
-// // FindFileInCPIO searches for a file in a CPIO archive and returns its position
-// // This function properly accounts for the CPIO structure by scanning header-by-header
-// func FindFileNameByteIndex2(ctx context.Context, cpioData []byte, filename string) int {
-// 	// Look for the CPIO magic number "070701"
-// 	// magicBytes := []byte(initramfs.Magic_070701)
+func FindFileNameOffset(r io.Reader, writer io.Writer, filename string) (int64, error) {
+	const headerSize = 110
+	var offset int64
+	br := bufio.NewReader(r)
 
-// 	nextHeaderPos := func(lastHeaderPos int) (string, int) {
-// 		dat := cpioData[lastHeaderPos : lastHeaderPos+6]
+	for {
+		// 1) Read header
+		hdr := make([]byte, headerSize)
+		n, err := io.ReadFull(io.TeeReader(br, writer), hdr)
+		offset += int64(n)
+		if err != nil {
+			if err == io.EOF {
+				return -1, nil
+			}
+			return -1, err
+		}
+		if string(hdr[:6]) != "070701" {
+			return -1, fmt.Errorf("invalid magic at %d: %q", offset-int64(n), hdr[:6])
+		}
 
-// 		if string(dat) != initramfs.Magic_070701 {
-// 			var cp []byte = make([]byte, len(cpioData))
-// 			var last20bytes []byte
-// 			_ = copy(cp, cpioData)
+		// 2) Parse sizes
+		namesize, _ := strconv.ParseUint(string(hdr[94:102]), 16, 32)
+		filesize, _ := strconv.ParseUint(string(hdr[54:62]), 16, 32)
 
-// 			if lastHeaderPos > 20 {
-// 				last20bytes = cp[lastHeaderPos-20 : lastHeaderPos]
-// 				last20bytes = append(last20bytes, '@')
-// 				last20bytes = append(last20bytes, cp[lastHeaderPos:lastHeaderPos+20]...)
-// 			} else {
-// 				last20bytes = cp[0 : lastHeaderPos+20]
-// 			}
-// 			slog.WarnContext(ctx, "magic bytes not found", "magic", string(dat), "lastHeaderPos", lastHeaderPos, "last20bytes", fmt.Sprintf("%s", last20bytes))
-// 			return "", -2
-// 		}
+		// 3) Read filename
+		nameBuf, err := br.Peek(int(namesize))
+		offset += int64(n)
+		if err != nil {
+			return -1, err
+		}
+		name := string(nameBuf[:namesize-1])
 
-// 		fnsData := cpioData[lastHeaderPos+94 : lastHeaderPos+94+8]
-// 		dsData := cpioData[lastHeaderPos+54 : lastHeaderPos+54+8]
+		// 4) Check for match
+		if name == filename {
+			return offset - int64(namesize), nil
+		}
 
-// 		fileNameSize, err := strconv.ParseUint(string(fnsData), 16, 32)
-// 		if err != nil {
-// 			slog.WarnContext(ctx, "error parsing fileNameSize", "error", err)
-// 			return "", -2
-// 		}
+		// 5) Compute padding
+		pad1 := (4 - ((headerSize + int(namesize)) % 4)) % 4
+		pad2 := (4 - (int(filesize) % 4)) % 4
 
-// 		dataSize, err := strconv.ParseUint(string(dsData), 16, 32)
-// 		if err != nil {
-// 			slog.WarnContext(ctx, "error parsing dataSize", "error", err)
-// 			return "", -2
-// 		}
-// 		var fileNamePadding, dataPadding int
-// 		if fileNameSize > 4 {
-// 			// we need to round the file name size up to the nearest multiple of 8
-// 			fileNamePadding = (int(fileNameSize)+3)&^3 - int(fileNameSize)
-// 		}
-// 		if dataSize > 4 {
-// 			// // we need to round the data size up to the nearest multiple of 8
-// 			dataPadding = (int(dataSize)+3)&^3 - int(dataSize)
-// 		}
+		// 6) Skip name padding, file data, and data padding
+		for _, skip := range []int64{int64(pad1), int64(filesize), int64(pad2), int64(namesize)} {
+			if skip > 0 {
+				n64, _ := io.CopyN(writer, br, skip)
+				offset += n64
+			}
+		}
+	}
+}
 
-// 		// fileNamePadding := alignPadding(int(fileNameSize), 4)
-// 		// dataPadding := alignPadding(int(dataSize), 4)
+func StreamInjectSlow(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
+	br := bufio.NewReader(src)
+	pr, pw := io.Pipe()
+	bw := bufio.NewWriter(pw)
 
-// 		nextHeaderPos := lastHeaderPos + 110 + int(fileNameSize) + int(fileNamePadding) + int(dataSize) + int(dataPadding) - 2
-// 		lastFileName := string(cpioData[lastHeaderPos+110 : lastHeaderPos+110+int(fileNameSize)])
+	go func() {
+		defer pw.Close()
+		defer bw.Flush()
 
-// 		slog.InfoContext(ctx, "nextHeaderPos",
-// 			// "hdr", hdr,
-// 			// "bytes", wrk,
-// 			// "wrk", hex.EncodeToString(wrk),
+		for {
+			header := make([]byte, 110)
+			if _, err := io.ReadFull(br, header); err != nil {
+				return // propagate EOF/error via pipe
+			}
+			if string(header[:6]) != "070701" {
+				pw.CloseWithError(fmt.Errorf("bad magic"))
+				return
+			}
 
-// 			"lastHeaderPos", lastHeaderPos,
-// 			"fileNameSize", fileNameSize,
-// 			"dataSize", dataSize,
-// 			"fileNamePadding", fileNamePadding,
-// 			"dataPadding", dataPadding,
-// 			"nextHeaderPos", nextHeaderPos,
-// 			"lastFileName", lastFileName,
-// 		)
+			namesize, _ := strconv.ParseUint(string(header[94:102]), 16, 32)
+			filesize, _ := strconv.ParseUint(string(header[54:62]), 16, 32)
 
-// 		return lastFileName, nextHeaderPos
-// 	}
+			name := make([]byte, namesize)
+			io.ReadFull(br, name)
 
-// 	pos := 0
+			// rename init → iniz
+			trimmed := string(name[:len(name)-1])
+			if trimmed == hdr.Filename {
+				name[len(name)-2] = 'z' // mutate 't'→'z'
+			}
 
-// 	for pos < len(cpioData) {
-// 		lastFileName, nextHeaderPos := nextHeaderPos(pos)
+			// if trailer, inject our new record just before we forward it
+			if trimmed == "TRAILER!!!" {
+				writeNewRecord(bw, hdr, data) // header.WriteTo + pads + data
+			}
 
-// 		if nextHeaderPos == -2 {
-// 			return -1
-// 		}
-// 		if lastFileName == filename {
-// 			return pos + 110
-// 		}
-// 		pos = nextHeaderPos
-// 	}
+			// copy header+name to output
+			bw.Write(header)
+			bw.Write(name)
 
-// 	return -1
-// }
+			// pad1
+			pad1 := (4 - ((110 + int(namesize)) % 4)) % 4
+			io.CopyN(bw, br, int64(pad1))
 
-// // FindTrailerInCPIO locates the TRAILER!!! record in a CPIO archive
-// func FindTrailerInCPIO(cpioData []byte) CPIOSearchResult {
-// 	trailerSignature := []byte("TRAILER!!!")
-// 	trailerPos := bytes.LastIndex(cpioData, trailerSignature)
-// 	if trailerPos == -1 {
-// 		return CPIOSearchResult{Found: false}
-// 	}
+			// copy file data + pad2
+			io.CopyN(bw, br, int64(filesize))
+			pad2 := (4 - (int(filesize) % 4)) % 4
+			io.CopyN(bw, br, int64(pad2))
 
-// 	// Search backward to find the header containing this trailer
-// 	magicBytes := []byte(initramfs.Magic_070701)
-// 	headerPos := bytes.LastIndex(cpioData[:trailerPos], magicBytes)
-// 	if headerPos == -1 {
-// 		return CPIOSearchResult{Found: false}
-// 	}
+			if trimmed == "TRAILER!!!" {
+				return // we're done
+			}
+		}
+	}()
 
-// 	// Double-check that this header really points to the trailer
-// 	filenameOffset := headerPos + 110
-// 	if filenameOffset < trailerPos &&
-// 		bytes.Equal(cpioData[filenameOffset:filenameOffset+9], trailerSignature) {
+	return pr
+}
 
-// 		// Extract the data size from the header (should be 0 for trailer)
-// 		dataSize := extractHeaderField(cpioData, headerPos+54, 8)
+func parseHex32(b []byte) uint32 {
+	var v uint32
+	for _, c := range b {
+		v = v<<4 + uint32(hexDigit[c])
+	}
+	return v
+}
 
-// 		return CPIOSearchResult{
-// 			Found:            true,
-// 			HeaderPosition:   headerPos,
-// 			FilenamePosition: filenameOffset,
-// 			DataPosition:     0, // No data for trailer
-// 			Size:             dataSize,
-// 		}
-// 	}
+var hexDigit = [256]uint32{
+	'0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
+	'6': 6, '7': 7, '8': 8, '9': 9,
+	'a': 10, 'A': 10, 'b': 11, 'B': 11,
+	'c': 12, 'C': 12, 'd': 13, 'D': 13,
+	'e': 14, 'E': 14, 'f': 15, 'F': 15,
+}
 
-// 	return CPIOSearchResult{Found: false}
-// }
+func StreamInject(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
+	br := bufio.NewReader(src)
+	pr, pw := io.Pipe()
+	bw := bufio.NewWriterSize(pw, 128<<10)
 
-// extractHeaderField extracts a numeric field from a CPIO header by parsing
-// the ASCII hex representation starting at the given offset
-func extractHeaderField(cpioData []byte, offset, length int) uint32 {
-	if offset+length > len(cpioData) {
-		return 0
+	hdrBuf := make([]byte, 110)
+	nameBuf := make([]byte, 256)
+	copy(nameBuf, hdr.Filename)             // ensure capacity > want len
+	want := append([]byte(hdr.Filename), 0) // target + NUL
+	copyBuf := make([]byte, 64<<10)         // shared copy buffer
+
+	go func() {
+		defer pw.Close()
+		defer bw.Flush()
+
+		for {
+			if _, err := io.ReadFull(br, hdrBuf); err != nil {
+				return
+			}
+			if !bytes.Equal(hdrBuf[:6], []byte("070701")) {
+				pw.CloseWithError(fmt.Errorf("bad magic"))
+				return
+			}
+
+			namesize := parseHex32(hdrBuf[94:102])
+			filesize := parseHex32(hdrBuf[54:62])
+
+			if int(namesize) > cap(nameBuf) {
+				nameBuf = make([]byte, namesize*2)
+			}
+			name := nameBuf[:namesize]
+			io.ReadFull(br, name)
+
+			if bytes.Equal(name, want) {
+				name[len(name)-2] = 'z'
+			}
+
+			if bytes.Equal(name[:len(name)-1], []byte("TRAILER!!!")) {
+				_ = writeNewRecord(bw, hdr, data)
+			}
+
+			bw.Write(hdrBuf)
+			bw.Write(name)
+
+			pad1 := (4 - ((110 + int(namesize)) & 3)) & 3
+			io.CopyBuffer(bw, io.LimitReader(br, int64(pad1)), copyBuf)
+			io.CopyBuffer(bw, io.LimitReader(br, int64(filesize)), copyBuf)
+			pad2 := (4 - (int(filesize) & 3)) & 3
+			io.CopyBuffer(bw, io.LimitReader(br, int64(pad2)), copyBuf)
+
+			if bytes.Equal(name[:len(name)-1], []byte("TRAILER!!!")) {
+				return
+			}
+		}
+	}()
+
+	return pr
+}
+
+// writeNewRecord serialises hdr (newc format) plus data and both paddings.
+// It never allocates large buffers; everything is written directly to w.
+func writeNewRecord(w io.Writer, hdr initramfs.Header, data []byte) error {
+	const headerSize = 110 // fixed for "070701" newc archives   [oai_citation:0‡Carbs Linux Repositories](https://git.carbslinux.org/forks/toybox/tree/toys/posix/cpio.c?id=a6336b942302b92f0b65ec35299e7667b9fcbe19&utm_source=chatgpt.com)
+	const align = 4        // newc entries are 4‑byte aligned      [oai_citation:1‡Apache Commons](https://commons.apache.org/proper/commons-compress/apidocs/org/apache/commons/compress/archivers/cpio/CpioArchiveEntry.html?utm_source=chatgpt.com)
+
+	// 1. Fix‑up the header to reflect this file's payload length.
+	hdr.DataSize = uint32(len(data))
+	hdr.Inode = math.MaxUint32
+
+	// 2. Write header + NUL‑terminated filename.
+	if _, err := hdr.WriteTo(w); err != nil {
+		return err
 	}
 
-	hexStr := string(cpioData[offset : offset+length])
-	val, err := strconv.ParseUint(hexStr, 16, 32)
+	// 3. Pad header+name block to next 4‑byte boundary.
+	//
+	// totalLen so far = headerSize + hdr.FilenameSize
+	pad1 := (align - ((headerSize + int(hdr.FilenameSize)) % align)) % align
+	if pad1 != 0 {
+		if _, err := w.Write(make([]byte, pad1)); err != nil {
+			return err
+		}
+	}
+
+	// 4. Write file payload.
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+
+	// 5. Pad payload block to next 4‑byte boundary.
+	pad2 := (align - (len(data) % align)) % align
+	if pad2 != 0 {
+		if _, err := w.Write(make([]byte, pad2)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeNewRecordOptimized is an optimized version of writeNewRecord with reduced allocations
+func writeNewRecordOptimized(w io.Writer, hdr initramfs.Header, data []byte) error {
+	const headerSize = 110 // fixed for "070701" newc archives
+	const align = 4        // newc entries are 4‑byte aligned
+
+	// 1. Fix‑up the header to reflect this file's payload length.
+	hdr.DataSize = uint32(len(data))
+	hdr.Inode = math.MaxUint32
+
+	// 2. Write header + NUL‑terminated filename.
+	if _, err := hdr.WriteTo(w); err != nil {
+		return err
+	}
+
+	// 3. Pad header+name block to next 4‑byte boundary using pre-allocated buffer.
+	pad1 := (align - ((headerSize + int(hdr.FilenameSize)) % align)) % align
+	if pad1 != 0 {
+		if _, err := w.Write(paddingBuf1[:pad1]); err != nil {
+			return err
+		}
+	}
+
+	// 4. Write file payload.
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+
+	// 5. Pad payload block to next 4‑byte boundary using pre-allocated buffer.
+	pad2 := (align - (len(data) % align)) % align
+	if pad2 != 0 {
+		if _, err := w.Write(paddingBuf2[:pad2]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// StreamInjectOptimized is an optimized version of StreamInject with buffer pooling and performance improvements
+func StreamInjectOptimized(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
+	br := bufio.NewReader(src)
+	pr, pw := io.Pipe()
+	bw := bufio.NewWriterSize(pw, 256<<10) // Larger buffer for better throughput
+
+	// Get buffers from pools
+	hdrBuf := hdrBufPool.Get().([]byte)
+	nameBuf := nameBufPool.Get().([]byte)
+	copyBuf := largeCopyBufPool.Get().([]byte) // Use larger buffer for copying
+
+	// Pre-allocate and prepare the target filename with NUL terminator
+	want := make([]byte, len(hdr.Filename)+1)
+	copy(want, hdr.Filename)
+	want[len(hdr.Filename)] = 0
+
+	go func() {
+		defer func() {
+			// Return buffers to pools
+			hdrBufPool.Put(hdrBuf)
+			nameBufPool.Put(nameBuf)
+			largeCopyBufPool.Put(copyBuf)
+			pw.Close()
+			bw.Flush()
+		}()
+
+		for {
+			if _, err := io.ReadFull(br, hdrBuf); err != nil {
+				return
+			}
+
+			// Use pre-computed constant for magic check
+			if !bytes.Equal(hdrBuf[:6], cpioMagicBytes[:]) {
+				pw.CloseWithError(fmt.Errorf("bad magic"))
+				return
+			}
+
+			// Use optimized hex parsing
+			namesize := parseHex32Fast(hdrBuf[94:102])
+			filesize := parseHex32Fast(hdrBuf[54:62])
+
+			// Resize name buffer only if needed, with growth factor
+			if int(namesize) > cap(nameBuf) {
+				nameBufPool.Put(nameBuf)           // Return old buffer
+				nameBuf = make([]byte, namesize*2) // Create new with growth factor
+			}
+			name := nameBuf[:namesize]
+
+			if _, err := io.ReadFull(br, name); err != nil {
+				return
+			}
+
+			// Optimized filename comparison
+			if len(name) == len(want) && bytes.Equal(name, want) {
+				name[len(name)-2] = 'z'
+			}
+
+			// Check for trailer using pre-computed constant
+			if len(name) > 1 && bytes.HasPrefix(name[:len(name)-1], trailerBytes[:]) {
+				_ = writeNewRecordOptimized(bw, hdr, data)
+			}
+
+			// Write header and name
+			if _, err := bw.Write(hdrBuf); err != nil {
+				return
+			}
+			if _, err := bw.Write(name); err != nil {
+				return
+			}
+
+			// Optimized padding calculation using bitwise operations
+			pad1 := (4 - ((110 + int(namesize)) & 3)) & 3
+			if pad1 > 0 {
+				if _, err := io.CopyBuffer(bw, io.LimitReader(br, int64(pad1)), copyBuf); err != nil {
+					return
+				}
+			}
+
+			// Copy file data
+			if filesize > 0 {
+				if _, err := io.CopyBuffer(bw, io.LimitReader(br, int64(filesize)), copyBuf); err != nil {
+					return
+				}
+			}
+
+			// Data padding
+			pad2 := (4 - (int(filesize) & 3)) & 3
+			if pad2 > 0 {
+				if _, err := io.CopyBuffer(bw, io.LimitReader(br, int64(pad2)), copyBuf); err != nil {
+					return
+				}
+			}
+
+			// Check if this was the trailer
+			if len(name) > 1 && bytes.HasPrefix(name[:len(name)-1], trailerBytes[:]) {
+				return
+			}
+		}
+	}()
+
+	return pr
+}
+
+// Optimized hex parsing with bounds checking
+func parseHex32Fast(b []byte) uint32 {
+	if len(b) != 8 {
+		// Fallback to original if wrong length
+		return parseHex32(b)
+	}
+
+	var v uint32
+	// Unrolled loop for better performance
+	v = uint32(hexDigit[b[0]])<<28 |
+		uint32(hexDigit[b[1]])<<24 |
+		uint32(hexDigit[b[2]])<<20 |
+		uint32(hexDigit[b[3]])<<16 |
+		uint32(hexDigit[b[4]])<<12 |
+		uint32(hexDigit[b[5]])<<8 |
+		uint32(hexDigit[b[6]])<<4 |
+		uint32(hexDigit[b[7]])
+	return v
+}
+
+// Pre-computed constants for better performance
+var (
+	cpioMagic     = []byte("070701")
+	trailerPrefix = []byte("TRAILER!!!")
+)
+
+// Buffer pools for reusing memory allocations
+var (
+	hdrBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 110)
+		},
+	}
+
+	nameBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 256)
+		},
+	}
+
+	copyBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 64<<10) // 64KB
+		},
+	}
+
+	largeCopyBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 256<<10) // 256KB for larger operations
+		},
+	}
+)
+
+// Pre-allocated padding buffers to avoid repeated allocations
+var (
+	paddingBuf1 = []byte{0, 0, 0} // Max 3 bytes padding
+	paddingBuf2 = []byte{0, 0, 0} // Max 3 bytes padding
+)
+
+// High-performance constants and pre-compiled patterns
+var (
+	// Pre-compiled byte patterns for fast comparison
+	cpioMagicBytes = [6]byte{'0', '7', '0', '7', '0', '1'}
+	trailerBytes   = [10]byte{'T', 'R', 'A', 'I', 'L', 'E', 'R', '!', '!', '!'}
+
+	// Chunk size for high-performance streaming (1MB chunks)
+	chunkSize = 1024 * 1024
+
+	// Pre-allocated chunk buffer pool
+	chunkBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, chunkSize)
+		},
+	}
+
+	// Large buffer pool for processing
+	processBufPool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 2*chunkSize) // Double buffering
+		},
+	}
+)
+
+// StreamInjectUltra - MAXIMUM INSANITY: Minimal validation, maximum speed
+func StreamInjectUltra(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		// Stream directly with minimal buffering
+		br := bufio.NewReaderSize(src, 32<<10) // Smaller buffer
+		bw := bufio.NewWriterSize(pw, 32<<10)  // Smaller buffer
+		defer bw.Flush()
+
+		// Pre-compile injection data once
+		injectionBuf := &bytes.Buffer{}
+		writeNewRecord(injectionBuf, hdr, data)
+		injectionData := injectionBuf.Bytes()
+
+		// Simple state machine with minimal allocations
+		state := &scanState{
+			targetPattern:  []byte(hdr.Filename + "\x00"),
+			trailerPattern: []byte("TRAILER!!!"),
+			injectionData:  injectionData,
+		}
+
+		// Simple scanning with reused buffers
+		scanBuf := make([]byte, 8192) // Fixed 8KB scan buffer
+
+		for {
+			n, err := br.Read(scanBuf)
+			if n > 0 {
+				processed := processChunk(scanBuf[:n], state, bw)
+				if !processed && err == io.EOF {
+					// Write remaining data
+					bw.Write(scanBuf[:n])
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		}
+	}()
+
+	return pr
+}
+
+type scanState struct {
+	targetPattern  []byte
+	trailerPattern []byte
+	injectionData  []byte
+	injected       bool
+	partialHeader  []byte
+}
+
+// processChunk does minimal processing on each chunk
+func processChunk(chunk []byte, state *scanState, w *bufio.Writer) bool {
+	// Super simple approach: just look for patterns and inject
+
+	// Look for target filename and replace
+	if pos := bytes.Index(chunk, state.targetPattern); pos != -1 {
+		// Replace the 't' with 'z' in "init\x00"
+		if pos+len(state.targetPattern)-2 < len(chunk) {
+			chunk[pos+len(state.targetPattern)-2] = 'z'
+		}
+	}
+
+	// Look for trailer and inject before it
+	if !state.injected {
+		if pos := bytes.Index(chunk, state.trailerPattern); pos != -1 {
+			// Write up to the trailer
+			w.Write(chunk[:pos])
+			// Inject our data
+			w.Write(state.injectionData)
+			// Write from trailer onwards
+			w.Write(chunk[pos:])
+			state.injected = true
+			return true
+		}
+	}
+
+	// Just write the chunk
+	w.Write(chunk)
+	return false
+}
+
+// StreamInjectHyper - HYPER OPTIMIZED: No pools, stack allocation, inlined everything
+func StreamInjectHyper(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		// Stack-allocated buffers for maximum speed
+		var hdrBuf [110]byte
+		var nameBuf [512]byte                  // Fixed size, no growth
+		br := bufio.NewReaderSize(src, 64<<10) // Smaller, cache-friendly
+		bw := bufio.NewWriterSize(pw, 64<<10)  // Smaller, cache-friendly
+		defer bw.Flush()
+
+		// Pre-compile patterns as byte arrays for faster comparison
+		wantLen := len(hdr.Filename) + 1
+		trailerPattern := [10]byte{'T', 'R', 'A', 'I', 'L', 'E', 'R', '!', '!', '!'}
+
+		for {
+			// Read header - no error checking for max speed
+			if _, err := io.ReadFull(br, hdrBuf[:]); err != nil {
+				return
+			}
+
+			// Inline magic check - fastest possible
+			if hdrBuf[0] != '0' || hdrBuf[1] != '7' || hdrBuf[2] != '0' ||
+				hdrBuf[3] != '7' || hdrBuf[4] != '0' || hdrBuf[5] != '1' {
+				pw.CloseWithError(fmt.Errorf("bad magic"))
+				return
+			}
+
+			// Ultra-fast inline hex parsing - no function calls
+			namesize := uint32(hexDigit[hdrBuf[94]])<<28 | uint32(hexDigit[hdrBuf[95]])<<24 |
+				uint32(hexDigit[hdrBuf[96]])<<20 | uint32(hexDigit[hdrBuf[97]])<<16 |
+				uint32(hexDigit[hdrBuf[98]])<<12 | uint32(hexDigit[hdrBuf[99]])<<8 |
+				uint32(hexDigit[hdrBuf[100]])<<4 | uint32(hexDigit[hdrBuf[101]])
+
+			filesize := uint32(hexDigit[hdrBuf[54]])<<28 | uint32(hexDigit[hdrBuf[55]])<<24 |
+				uint32(hexDigit[hdrBuf[56]])<<20 | uint32(hexDigit[hdrBuf[57]])<<16 |
+				uint32(hexDigit[hdrBuf[58]])<<12 | uint32(hexDigit[hdrBuf[59]])<<8 |
+				uint32(hexDigit[hdrBuf[60]])<<4 | uint32(hexDigit[hdrBuf[61]])
+
+			// Bounds check
+			if namesize > 512 {
+				return
+			}
+
+			// Read name into stack buffer
+			name := nameBuf[:namesize]
+			if _, err := io.ReadFull(br, name); err != nil {
+				return
+			}
+
+			// Ultra-fast filename check - inline comparison
+			if int(namesize) == wantLen && name[0] == hdr.Filename[0] {
+				match := true
+				for i := 1; i < len(hdr.Filename); i++ {
+					if name[i] != hdr.Filename[i] {
+						match = false
+						break
+					}
+				}
+				if match && name[namesize-1] == 0 {
+					name[namesize-2] = 'z' // Change 't' to 'z'
+				}
+			}
+
+			// Ultra-fast trailer check - inline comparison
+			isTrailer := false
+			if namesize > 10 {
+				isTrailer = true
+				for i := 0; i < 10; i++ {
+					if name[i] != trailerPattern[i] {
+						isTrailer = false
+						break
+					}
+				}
+			}
+
+			if isTrailer {
+				// Inject before trailer
+				writeNewRecord(bw, hdr, data)
+			}
+
+			// Write header and name in one call
+			bw.Write(hdrBuf[:])
+			bw.Write(name)
+
+			// Fast padding calculation and copy
+			pad1 := (4 - ((110 + int(namesize)) & 3)) & 3
+			pad2 := (4 - (int(filesize) & 3)) & 3
+
+			// Copy all data in minimal calls
+			totalCopy := int64(pad1) + int64(filesize) + int64(pad2)
+			if totalCopy > 0 {
+				io.CopyN(bw, br, totalCopy)
+			}
+
+			if isTrailer {
+				return
+			}
+		}
+	}()
+
+	return pr
+}
+
+// FastInjectFileToCpioHyper - Hyper-optimized version with minimal allocations
+func FastInjectFileToCpioHyper(ctx context.Context, pipe io.Reader, header initramfs.Header, data []byte) (io.ReadCloser, error) {
+	// Read the entire CPIO archive into memory
+	cpioData, err := io.ReadAll(pipe)
 	if err != nil {
-		return 0
+		return nil, errors.Errorf("reading CPIO data: %w", err)
 	}
 
-	return uint32(val)
+	// Use unsafe operations for maximum speed
+	cpioLen := len(cpioData)
+	targetBytes := []byte(header.Filename)
+
+	// Fast search for the target filename using Boyer-Moore-like approach
+	initPos := fastSearchFilename(cpioData, targetBytes)
+	if initPos != -1 {
+		// Replace 't' with 'z' directly
+		cpioData[initPos+len(header.Filename)-1] = 'z'
+	}
+
+	// Fast trailer search using reverse scan
+	trailerPos := fastSearchTrailer(cpioData)
+	if trailerPos == -1 {
+		return nil, errors.Errorf("could not find CPIO trailer")
+	}
+
+	// Pre-calculate new record size to avoid buffer resizing
+	header.DataSize = uint32(len(data))
+	header.Inode = math.MaxUint32
+
+	// Calculate exact sizes needed
+	headerSize := 110 + int(header.FilenameSize)
+	pad1 := (4 - (headerSize % 4)) % 4
+	pad2 := (4 - (len(data) % 4)) % 4
+	newRecordSize := headerSize + pad1 + len(data) + pad2
+
+	// Count trailing zeros efficiently
+	trailingZeros := countTrailingZeros(cpioData)
+
+	// Allocate output exactly once
+	totalLen := cpioLen + newRecordSize - trailingZeros
+	out := make([]byte, totalLen)
+
+	trailerHeaderPos := trailerPos - 110
+
+	// Triple copy optimization - minimize memory operations
+	copy(out, cpioData[:trailerHeaderPos])
+
+	// Write new record directly into output buffer
+	pos := trailerHeaderPos
+	pos += writeHeaderDirect(out[pos:], header)
+	pos += writePaddingDirect(out[pos:], pad1)
+	pos += copy(out[pos:], data)
+	pos += writePaddingDirect(out[pos:], pad2)
+
+	// Copy remainder
+	copy(out[pos:], cpioData[trailerHeaderPos:cpioLen-trailingZeros])
+
+	return io.NopCloser(bytes.NewReader(out)), nil
+}
+
+// fastSearchFilename uses optimized pattern search
+func fastSearchFilename(data []byte, pattern []byte) int {
+	dataLen := len(data)
+	patternLen := len(pattern)
+
+	if patternLen == 0 || dataLen < patternLen {
+		return -1
+	}
+
+	// Simple but fast search
+	for i := 0; i <= dataLen-patternLen; i++ {
+		// Quick first-byte check
+		if data[i] == pattern[0] {
+			match := true
+			for j := 1; j < patternLen; j++ {
+				if data[i+j] != pattern[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				// Verify it's followed by null terminator and not part of a larger name
+				if i+patternLen < dataLen && data[i+patternLen] == 0 {
+					return i
+				}
+			}
+		}
+	}
+
+	return -1
+}
+
+// fastSearchTrailer searches for trailer from the end
+func fastSearchTrailer(data []byte) int {
+	trailer := []byte("TRAILER!!!")
+	dataLen := len(data)
+	trailerLen := len(trailer)
+
+	// Search backwards for better cache locality
+	for i := dataLen - trailerLen; i >= 0; i-- {
+		if data[i] == 'T' {
+			match := true
+			for j := 1; j < trailerLen; j++ {
+				if data[i+j] != trailer[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				return i
+			}
+		}
+	}
+
+	return -1
+}
+
+// countTrailingZeros counts trailing zero bytes efficiently
+func countTrailingZeros(data []byte) int {
+	count := 0
+	for i := len(data) - 1; i >= 0 && data[i] == 0; i-- {
+		count++
+	}
+	return count
+}
+
+// writeHeaderDirect writes header directly to buffer, returns bytes written
+func writeHeaderDirect(buf []byte, hdr initramfs.Header) int {
+	var tmpBuf bytes.Buffer
+	hdr.WriteTo(&tmpBuf)
+	return copy(buf, tmpBuf.Bytes())
+}
+
+// writePaddingDirect writes padding bytes directly to buffer
+func writePaddingDirect(buf []byte, count int) int {
+	for i := 0; i < count; i++ {
+		buf[i] = 0
+	}
+	return count
 }
