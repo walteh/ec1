@@ -120,6 +120,16 @@ func main() {
 		// handleFile.WriteString(strconv.Itoa(int(h)))
 		// handleFile.Close()
 
+		files, err := os.ReadDir("/")
+		if err != nil {
+			log.Fatalf("Failed to read /ec1: %v", err)
+		}
+
+		log.Printf("Files found: %d", len(files))
+
+		for _, file := range files {
+			log.Printf("File: %s", file.Name())
+		}
 		if err := syscall.Exec(realInitPath, os.Args[1:], os.Environ()); err != nil {
 			log.Fatalf("Failed to exec original init: %v", err)
 		}

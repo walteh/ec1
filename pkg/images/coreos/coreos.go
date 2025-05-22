@@ -10,9 +10,9 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/coreos/stream-metadata-go/fedoracoreos"
+	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/ext/archivesx"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/unzbootgo"
@@ -82,26 +82,39 @@ func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[s
 	wrk := map[string]io.ReadCloser{}
 
 	var err error
-	wrk["kernel.coreos-extract"], err = prov.Kernel(ctx, cacheDir)
-	if err != nil {
-		return nil, errors.Errorf("processing kernel: %w", err)
+	if kernel, cached := cacheDir["kernel.coreos-extract"]; !cached {
+		wrk["kernel.coreos-extract"], err = prov.Kernel(ctx, cacheDir)
+		if err != nil {
+			return nil, errors.Errorf("processing kernel: %w", err)
+		}
+	} else {
+		wrk["kernel.coreos-extract"] = io.NopCloser(kernel)
 	}
 
-	wrk["initramfs.coreos-extract"], err = prov.Initramfs(ctx, cacheDir)
-	if err != nil {
-		return nil, errors.Errorf("processing initramfs: %w", err)
+	if initramfs, cached := cacheDir["initramfs.coreos-extract.cpio"]; !cached {
+		wrk["initramfs.coreos-extract.cpio"], err = prov.Initramfs(ctx, cacheDir)
+		if err != nil {
+			return nil, errors.Errorf("processing initramfs: %w", err)
+		}
+	} else {
+		wrk["initramfs.coreos-extract.cpio"] = io.NopCloser(initramfs)
 	}
 
-	wrk["rootfs.coreos-extract"], err = prov.Rootfs(ctx, cacheDir)
-	if err != nil {
-		return nil, errors.Errorf("processing rootfs: %w", err)
+	if rootfs, cached := cacheDir["rootfs.coreos-extract.img"]; !cached {
+
+		wrk["rootfs.coreos-extract.img"], err = prov.Rootfs(ctx, cacheDir)
+		if err != nil {
+			return nil, errors.Errorf("processing rootfs: %w", err)
+		}
+	} else {
+		wrk["rootfs.coreos-extract.img"] = io.NopCloser(rootfs)
 	}
 
 	return wrk, nil
 }
 
 func (prov *CoreOSProvider) RootfsPath() (path string) {
-	return "rootfs.coreos-extract"
+	return "rootfs.coreos-extract.img"
 }
 
 func (prov *CoreOSProvider) KernelPath() (path string) {
@@ -109,7 +122,7 @@ func (prov *CoreOSProvider) KernelPath() (path string) {
 }
 
 func (prov *CoreOSProvider) InitramfsPath() (path string) {
-	return "initramfs.coreos-extract"
+	return "initramfs.coreos-extract.cpio"
 }
 
 func (prov *CoreOSProvider) InitScript(ctx context.Context) (string, error) {
@@ -139,14 +152,12 @@ func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader
 func (prov *CoreOSProvider) Initramfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
 
 	// just decompress the initramfs, it is either gz or xz
-	read, compressed, err := archivesx.IdentifyAndDecompress(ctx, "", mem["initramfs.img"])
+	read, err := (archives.Zstd{}).OpenReader(mem["initramfs.img"])
 	if err != nil {
 		return nil, errors.Errorf("decompressing initramfs: %w", err)
 	}
 
-	if !compressed {
-		return nil, errors.New("initramfs is not compressed ... expected gzip or xz")
-	}
+	slog.InfoContext(ctx, "decompressed initramfs")
 
 	return read, nil
 }

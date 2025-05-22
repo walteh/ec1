@@ -52,7 +52,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.New("initramfs path is empty - ec1 does not yet support this yet")
 			}
 
-			initramfsReader, ok := mem[linuxVMIProvider.InitramfsPath()]
+			fastReader, ok := mem[linuxVMIProvider.InitramfsPath()]
 			if !ok {
 				return nil, nil, errors.Errorf("initramfs file not found: %s", linuxVMIProvider.InitramfsPath())
 			}
@@ -62,29 +62,69 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("uncompressing init binary: %w", err)
 			}
 
-			initramfsReader, err = initramfs.InjectFileToCpio(ctx, initramfsReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
+			// fastTee1, fastFile1 := tlog.TeeToDownloadsFolder(fastReader, "initramfs.START.cpio")
+			// defer fastFile1.Close()
+
+			// all, err := io.ReadAll(fastTee1)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("reading initramfs: %w", err)
+			// }
+
+			slowReader, err := initramfs.InjectFileToCpio(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
 			if err != nil {
 				return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
 			}
 
-			initramfsReader, err = hpv.EncodeLinuxInitramfs(ctx, initramfsReader)
+			// fastReader, err = initramfs.FastInjectFileToCpio(ctx, bytes.NewReader(all), initramfs.NewExecHeader("init"), decompressedInitBinData)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
+			// }
+
+			// var c *tlog.BCompare
+			// t, ok := tctx.FromContext(ctx)
+			// if ok {
+			// 	c, slowReader, fastReader = tlog.NewBComare(t, slowReader, fastReader)
+			// }
+
+			// fastTee, fastFile := tlog.TeeToDownloadsFolder(fastReader, "initramfs.FAST.cpio")
+			// defer fastFile.Close()
+
+			// slowTee, slowFile := tlog.TeeToDownloadsFolder(slowReader, "initramfs.SLOW.cpio")
+			// defer slowFile.Close()
+
+			fastReader, err = hpv.EncodeLinuxInitramfs(ctx, slowReader)
 			if err != nil {
 				return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
 			}
 
+			// slowReader, err = hpv.EncodeLinuxInitramfs(ctx, slowTee)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
+			// }
+
+			// _, err = io.ReadAll(fastReader)
+			// if err != nil {
+			// 	return nil, nil, errors.Errorf("reading slow initramfs: %w", err)
+			// }
+
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
 			slog.InfoContext(ctx, "writing initramfs")
-			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, initramfsReader, 0644)
+			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, fastReader, 0644)
 			if err != nil {
 				return nil, nil, errors.Errorf("creating initramfs file: %w", err)
 			}
 
+			fastReader.Close()
+			slowReader.Close()
+
+			// if c != nil {
+			// 	c.Compare(t)
+			// }
+
 			slog.InfoContext(ctx, "initramfs size", "size", initrdSize)
 
 			entries = append(entries, slog.Group("initramfs", "path", initramfsPath, "size", initrdSize))
-
-			initramfsReader.Close()
 
 			if linuxVMIProvider.RootfsPath() != "" {
 				rootfsReader, ok := mem[linuxVMIProvider.RootfsPath()]
@@ -143,7 +183,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			kernelReader.Close()
 
 			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs
+			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0  init=/init" + extraArgs
 
 			slog.LogAttrs(ctx, slog.LevelInfo, "linux boot loader ready", entries...)
 

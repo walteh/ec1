@@ -77,7 +77,7 @@ func run() error {
 	}
 
 	if mode == "run-after-signing" {
-		writeArgsToDownloads()
+		// writeArgsToDownloads()
 
 		testcmd := exec.Command(os.Args[2], os.Args[3:]...)
 		testcmd.Stdout = os.Stdout
