@@ -83,7 +83,7 @@ func (prov *PuiPuiProvider) KernelPath() (path string) {
 }
 
 func (prov *PuiPuiProvider) KernelArgs() (args string) {
-	return ""
+	return " init=/init"
 }
 
 func (prov *PuiPuiProvider) RootfsPath() (path string) {

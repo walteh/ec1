@@ -81,9 +81,12 @@ func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 // }
 
 func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.ReadCloser) (io.ReadCloser, error) {
-
+	defer initramfs.Close()
 	// convert to gzip
-	arc, err := archivesx.CreateCompressorPipeline(ctx, &archives.Gz{}, initramfs)
+	arc, err := archivesx.CreateCompressorPipeline(ctx, &archives.Gz{
+		// Multithreaded:      true,
+		// DisableMultistream: false,
+	}, initramfs)
 	if err != nil {
 		return nil, errors.Errorf("creating compressor pipeline: %w", err)
 	}

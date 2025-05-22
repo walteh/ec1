@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log"
 	"log/slog"
 	"time"
 
@@ -14,13 +13,16 @@ import (
 	"github.com/walteh/ec1/pkg/ext/archivesx"
 )
 
+// InjectInitBinaryToInitramfsCpio injects the init binary into a CPIO format initramfs
+// It takes the original initramfs file as a reader and returns a reader with the modified file
 func InjectInitBinaryToInitramfsCpio(ctx context.Context, rdr io.Reader) (io.ReadCloser, error) {
-
+	// Load the custom init binary
 	decompressedInitBinData, err := LoadInitBinToMemory(ctx)
 	if err != nil {
 		return nil, errors.Errorf("uncompressing init binary: %w", err)
 	}
 
+	// Decompress the initramfs if it's compressed
 	rdr, compressed, err := archivesx.IdentifyAndDecompress(ctx, "", rdr)
 	if err != nil {
 		return nil, errors.Errorf("identifying and decompressing initramfs file: %w", err)
@@ -32,88 +34,83 @@ func InjectInitBinaryToInitramfsCpio(ctx context.Context, rdr io.Reader) (io.Rea
 
 	slog.InfoContext(ctx, "custom init added to initramfs", "customInitPath", "/"+customInitPath)
 
+	// Create a buffer for the new CPIO file
 	buf := bytes.NewBuffer(nil)
-	defer rdr.(io.ReadCloser).Close()
 
+	// Close the reader when done
+	defer func() {
+		if closer, ok := rdr.(io.ReadCloser); ok {
+			closer.Close()
+		}
+	}()
+
+	// Create CPIO reader and writer
 	ir := initramfs.NewReader(rdr)
 	iw := initramfs.NewWriter(buf)
 
+	// First add our custom init file to the beginning
 	if err = iw.WriteHeader(&initramfs.Header{
 		Filename: "init",
 		Mode:     0755,
 		Mtime:    time.Now(),
 		Uid:      0,
 		Gid:      0,
-		Magic:    "070707",
 		NumLinks: 1,
 		DataSize: uint32(len(decompressedInitBinData)),
 	}); err != nil {
-		return nil, errors.Errorf("writing header: %w", err)
+		return nil, errors.Errorf("writing header for custom init: %w", err)
 	}
 
-	slog.InfoContext(ctx, "wrote header")
-
+	// Write the init binary data
 	if _, err := io.Copy(iw, bytes.NewReader(decompressedInitBinData)); err != nil {
-		return nil, errors.Errorf("Copy %s: %w", "init", err)
+		return nil, errors.Errorf("writing init binary data: %w", err)
 	}
 
-	for _, rec := range ir.All() {
+	slog.InfoContext(ctx, "wrote custom init to new CPIO")
+
+	// Process all records from the original CPIO
+	for {
+		rec, err := ir.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, errors.Errorf("reading CPIO record: %w", err)
+		}
+
+		// End of archive
 		if rec.Trailer() {
 			break
 		}
+
+		// Rename the original init to init.real
 		if rec.Filename == customInitPath {
 			rec.Filename = "init.real"
+			slog.InfoContext(ctx, "renaming original init to init.real")
 		}
 
-		slog.InfoContext(ctx, "writing header", "filename", rec.Filename, "size", rec.DataSize)
-		err := iw.WriteHeader(&initramfs.Header{
-			Filename: rec.Filename,
-			Mode:     rec.Mode,
-			DataSize: rec.DataSize,
-			Mtime:    rec.Mtime,
-			Uid:      rec.Uid,
-			Gid:      rec.Gid,
-			Magic:    rec.Magic,
-			NumLinks: rec.NumLinks,
-		})
+		// Write the header for this record
+		err = iw.WriteHeader(rec)
 		if err != nil {
-			return nil, errors.Errorf("writing header: %w", err)
+			return nil, errors.Errorf("writing header for %s: %w", rec.Filename, err)
 		}
 
-		slog.InfoContext(ctx, "wrote header", "filename", rec.Filename, "size", rec.DataSize)
-
+		// If this record has data, copy it
 		if rec.DataSize > 0 {
-			if _, err := io.Copy(iw, ir); err != nil {
-				return nil, errors.Errorf("Copy %s: %w", rec.Filename, err)
+			_, err := io.CopyN(iw, ir, int64(rec.DataSize))
+			if err != nil {
+				return nil, errors.Errorf("copying data for %s: %w", rec.Filename, err)
 			}
 		}
 	}
 
-	slog.InfoContext(ctx, "wrote all records")
-
-	slog.InfoContext(ctx, "wrote init")
-
+	// Write the trailer to finalize the CPIO
 	if err = iw.WriteTrailer(); err != nil {
-		return nil, errors.Errorf("writing trailer: %w", err)
+		return nil, errors.Errorf("writing CPIO trailer: %w", err)
 	}
 
-	slog.InfoContext(ctx, "wrote initramfs")
+	slog.InfoContext(ctx, "completed writing new CPIO file")
 
-	isCompressed, compressType, err := ir.ContinueCompressed(nil)
-	if err != nil {
-		if err == io.EOF {
-
-			return io.NopCloser(bytes.NewReader(buf.Bytes())), nil
-		}
-
-		return nil, errors.Errorf("ContinueCompressed: %w", err)
-	}
-
-	slog.InfoContext(ctx, "ContinueCompressed", "isCompressed", isCompressed, "compressType", compressType)
-
-	if isCompressed {
-		log.Printf("Found %s compressed stream", compressType)
-	}
-
+	// Return the new CPIO file as a reader
 	return io.NopCloser(bytes.NewReader(buf.Bytes())), nil
 }

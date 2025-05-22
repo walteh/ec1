@@ -53,7 +53,7 @@ func (r *ReadCounter) Read(p []byte) (n int, err error) {
 
 func (r *ReadCounter) SetDebug(debug bool) { r.debug = debug }
 
-func CreateWriterPipelinez(ctx context.Context, reader io.Reader, writerFunc func(io.Writer) (io.WriteCloser, error)) (io.ReadCloser, error) {
+func CreateWriterPipeline(ctx context.Context, reader io.Reader, writerFunc func(io.Writer) (io.WriteCloser, error)) (io.ReadCloser, error) {
 	pipeReader, pipeWriter := io.Pipe()
 
 	wrtr, err := writerFunc(pipeWriter)
@@ -74,7 +74,7 @@ func CreateWriterPipelinez(ctx context.Context, reader io.Reader, writerFunc fun
 	return pipeReader, nil
 }
 
-func CreateWriterPipeline(ctx context.Context, reader io.Reader, writerFunc func(io.Writer) (io.WriteCloser, error)) (io.ReadCloser, error) {
+func CreateWriterPipelinez(ctx context.Context, reader io.Reader, writerFunc func(io.Writer) (io.WriteCloser, error)) (io.ReadCloser, error) {
 	// Create a pipe for data flow
 	pipeReader, pipeWriter := io.Pipe()
 
