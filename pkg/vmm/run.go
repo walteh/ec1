@@ -39,7 +39,7 @@ import (
 )
 
 func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.ReadCloser) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
-	var err error
+
 	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
@@ -57,7 +57,12 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("initramfs file not found: %s", linuxVMIProvider.InitramfsPath())
 			}
 
-			initramfsReader, err = initramfs.InjectInitBinaryToInitramfsCpio(ctx, initramfsReader)
+			decompressedInitBinData, err := LoadInitBinToMemory(ctx)
+			if err != nil {
+				return nil, nil, errors.Errorf("uncompressing init binary: %w", err)
+			}
+
+			initramfsReader, err = initramfs.InjectFileToCpio(ctx, initramfsReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
 			if err != nil {
 				return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
 			}

@@ -23,7 +23,7 @@ import (
 const (
 	vsockPort = 2019
 	// vsockExecPath = "/usr/local/bin/vsock_exec"
-	realInitPath = "/init.real"
+	realInitPath = "/iniz"
 )
 
 func main() {

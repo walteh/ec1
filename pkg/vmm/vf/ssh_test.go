@@ -13,14 +13,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/initramfs"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func init() {
-	_, _ = initramfs.LoadInitBinToMemory(context.Background())
+	_, _ = vmm.LoadInitBinToMemory(context.Background())
 }
 
 func TestSSH(t *testing.T) {
