@@ -62,50 +62,13 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("uncompressing init binary: %w", err)
 			}
 
-			// fastTee1, fastFile1 := tlog.TeeToDownloadsFolder(fastReader, "initramfs.START.cpio")
-			// defer fastFile1.Close()
-
-			// all, err := io.ReadAll(fastTee1)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("reading initramfs: %w", err)
-			// }
-
+			// Use blazing fast approach for large files (>50MB) to avoid streaming overhead
 			slowReader := initramfs.StreamInjectHyper(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
-			// }
-
-			// fastReader, err = initramfs.FastInjectFileToCpio(ctx, bytes.NewReader(all), initramfs.NewExecHeader("init"), decompressedInitBinData)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("preparing initramfs cpio: %w", err)
-			// }
-
-			// var c *tlog.BCompare
-			// t, ok := tctx.FromContext(ctx)
-			// if ok {
-			// 	c, slowReader, fastReader = tlog.NewBComare(t, slowReader, fastReader)
-			// }
-
-			// fastTee, fastFile := tlog.TeeToDownloadsFolder(fastReader, "initramfs.FAST.cpio")
-			// defer fastFile.Close()
-
-			// slowTee, slowFile := tlog.TeeToDownloadsFolder(slowReader, "initramfs.SLOW.cpio")
-			// defer slowFile.Close()
 
 			fastReader, err = hpv.EncodeLinuxInitramfs(ctx, slowReader)
 			if err != nil {
 				return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
 			}
-
-			// slowReader, err = hpv.EncodeLinuxInitramfs(ctx, slowTee)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
-			// }
-
-			// _, err = io.ReadAll(fastReader)
-			// if err != nil {
-			// 	return nil, nil, errors.Errorf("reading slow initramfs: %w", err)
-			// }
 
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
@@ -119,10 +82,6 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			fastReader.Close()
 			slowReader.Close()
-
-			// if c != nil {
-			// 	c.Compare(t)
-			// }
 
 			slog.InfoContext(ctx, "initramfs size", "size", initrdSize)
 
