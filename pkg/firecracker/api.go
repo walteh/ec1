@@ -1,4 +1,4 @@
-package fc
+package firecracker
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
-	"github.com/walteh/ec1/pkg/host"
+	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -60,12 +60,16 @@ func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hy
 		return nil, errors.New("vmi is not a LinuxVMIProvider")
 	}
 
-	cdf, err := host.EmphiricalVMCacheDir(ctx, id)
-	if err != nil {
-		return nil, errors.Errorf("getting empirical VM cache dir: %w", err)
-	}
+	// cdf, err := host.EmphiricalVMCacheDir(ctx, id)
+	// if err != nil {
+	// 	return nil, errors.Errorf("getting empirical VM cache dir: %w", err)
+	// }
 
-	bootloader := lvmi.BootLoaderConfig(cdf)
+	bootloader := &bootloader.LinuxBootloader{
+		VmlinuzPath:   lvmi.KernelPath(),
+		InitrdPath:    lvmi.InitramfsPath(),
+		KernelCmdLine: lvmi.KernelArgs(),
+	}
 
 	vm, err := hpv.NewVirtualMachine(ctx, id, vmm.NewVMOptions{}, bootloader)
 	if err != nil {

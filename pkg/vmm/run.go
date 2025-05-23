@@ -62,8 +62,16 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("uncompressing init binary: %w", err)
 			}
 
+			// Optional: Add timing wrapper for performance monitoring
+			// timedReader := tstream.NewTimingReader(ctx, fastReader, "initramfs-input")
+			// defer timedReader.Close()
+
 			// Use blazing fast approach for large files (>50MB) to avoid streaming overhead
 			slowReader := initramfs.StreamInjectHyper(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
+
+			// Optional: Add timing wrapper for compression monitoring
+			// timedSlowReader := tstream.NewTimingReader(ctx, slowReader, "initramfs-processing")
+			// defer timedSlowReader.Close()
 
 			fastReader, err = hpv.EncodeLinuxInitramfs(ctx, slowReader)
 			if err != nil {

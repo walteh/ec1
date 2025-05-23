@@ -1,0 +1,39 @@
+---
+description: Background context for EC1 Fast MicroVM project - always applied
+globs: 
+alwaysApply: true
+---
+
+# EC1 Fast MicroVM Project Context
+
+## Mission: Build the world's fastest Firecracker-compatible microVM implementation
+
+### Core Advantages
+- **Init injection for SSH-free command execution** (revolutionary!)
+- **Sub-100ms boot times** (industry-leading target)
+- **Apple VZ backend** (high-performance foundation)
+- **Stream performance testing** (catches bottlenecks automatically)
+
+### Development Environment
+- Use `./gow` wrapper for all Go commands (2x faster than task runners)
+- Maintain **>85% function coverage** (enforced)
+- Performance-first development approach
+- Built-in benchmarking and optimization tools
+
+### Background Agent Context (Dr B)
+This project is optimized for Cursor background agents:
+- Complete environment setup in `.cursor/install.sh`
+- Performance monitoring terminals configured
+- Mission-specific workspace navigation aliases
+- Firecracker integration as primary focus
+
+### Key Performance Targets
+- **Boot time**: <100ms from API call to VM ready
+- **Command execution**: <10ms overhead vs bare metal
+- **Memory footprint**: <50MB for basic workloads
+- **Test coverage**: >85% function coverage required
+
+### Secret Weapon
+Our init injection system eliminates SSH overhead - every other microVM solution uses SSH for command execution. We execute directly through embedded gRPC init. This is our competitive advantage for Apple-level performance.
+
+Refer to [docs/dr-b-onboarding.md](mdc:root/docs/dr-b-onboarding.md) for complete project context.

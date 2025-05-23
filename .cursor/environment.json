@@ -1,7 +1,22 @@
 {
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
-  },
-  "terminals": []
+	"user": "ubuntu",
+	"install": "./.cursor/install.sh",
+	"start": "./.cursor/start.sh",
+	"terminals": [
+		{
+			"name": "gow-dev",
+			"command": "cd /workspace && ./gow test -v ./pkg/testing/tstream/ && echo '🚀 Stream performance tools ready!'",
+			"description": "Validates our stream performance testing framework is working"
+		},
+		{
+			"name": "firecracker-workspace",
+			"command": "cd /workspace/pkg/firecracker && echo '🔥 MAIN Firecracker API workspace ready for Dr B!'",
+			"description": "Sets up the MAIN Firecracker API workspace for Dr B (not sandbox!)"
+		},
+		{
+			"name": "performance-monitor",
+			"command": "cd /workspace && watch -n 5 './gow test -run BenchmarkInject ./pkg/initramfs/ 2>/dev/null | tail -5'",
+			"description": "Continuous performance monitoring of our init injection system"
+		}
+	]
 }
