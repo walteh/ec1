@@ -419,6 +419,60 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 }
 
+// func bufferedFileIO(filePath string) (io.Reader, error) {
+// 	pr, pw := io.Pipe()
+// 	file, err := os.Open(filePath)
+// 	if err != nil {
+// 		return nil, errors.Errorf("opening file: %w", err)
+// 	}
+// 	go func() {
+
+// 		defer file.Close()
+
+// 		reader := bufio.NewReader(file)
+// 		writer := bufio.NewWriter(pw)
+// 		defer writer.Flush()
+// 		defer pw.Close()
+
+// 		buffer := make([]byte, 4096) // Adjust buffer size as needed
+// 		for {
+// 			n, err := reader.Read(buffer)
+// 			if err != nil {
+// 				break // Break on EOF or error
+// 			}
+// 			_, err = writer.Write(buffer[:n])
+// 			if err != nil {
+// 				pw.CloseWithError(err)
+// 				return
+// 			}
+// 		}
+
+// 	}()
+
+// 	return pr, nil
+
+// }
+
+// func mmapFileRead(filePath string) (io.Reader, error) {
+// 	file, err := os.Open(filePath)
+// 	if err != nil {
+// 		return nil, errors.Errorf("opening file: %w", err)
+// 	}
+// 	defer file.Close()
+
+// 	fileInfo, err := file.Stat()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	fileSize := fileInfo.Size()
+
+// 	data, err := syscall.Mmap(int(file.Fd()), 0, int(fileSize), syscall.PROT_READ, syscall.MAP_SHARED)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return bufio.NewReader(bytes.NewReader(data)), nil
+// }
+
 var cacheGz archives.Compression = nil
 
 // var cacheGz = archives.Gz{
@@ -452,7 +506,7 @@ func loadReadersFromCache(ctx context.Context, extractionCacheDir string) (map[s
 		if err != nil {
 			return nil, errors.Errorf("opening file: %w", err)
 		}
-		var gzr io.ReadCloser
+		var gzr io.Reader
 		if cacheGz != nil {
 			gzr, err = cacheGz.OpenReader(fr)
 			if err != nil {

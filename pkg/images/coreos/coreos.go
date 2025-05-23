@@ -1,11 +1,9 @@
 package coreos
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
@@ -22,6 +20,15 @@ import (
 
 const coreosVersion = "42.20250427.3.0"
 const coreosReleaseStream = fedoracoreos.StreamStable
+
+const (
+	coreosKernelExtractPath     = "kernel.coreos-extract"
+	coreosInitramfsExtractPath  = "initramfs.coreos-extract.cpio"
+	coreosRootfsExtractPath     = "rootfs.coreos-extract.img"
+	coreosKernelDownloadPath    = "kernel"
+	coreosInitramfsDownloadPath = "initramfs.img"
+	coreosRootfsDownloadPath    = "rootfs.img"
+)
 
 // stream, err := fedoracoreos.FetchStream(fedoraReleaseStream)
 // if err != nil {
@@ -68,47 +75,44 @@ func (prov *CoreOSProvider) Downloads() map[string]string {
 	arch := host.CurrentKernelArch()
 
 	return map[string]string{
-		"kernel":            fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ""),
-		"initramfs.img":     fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img"),
-		"rootfs.img":        fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img"),
-		"kernel.sig":        fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ".sig"),
-		"initramfs.img.sig": fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img.sig"),
-		"rootfs.img.sig":    fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img.sig"),
-		"fedora.gpg":        "https://fedoraproject.org/fedora.gpg",
+		coreosKernelDownloadPath:             fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ""),
+		coreosInitramfsDownloadPath:          fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img"),
+		coreosRootfsDownloadPath:             fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img"),
+		coreosKernelDownloadPath + ".sig":    fmt.Sprintf(coreos, coreosVersion, arch, "kernel", ".sig"),
+		coreosInitramfsDownloadPath + ".sig": fmt.Sprintf(coreos, coreosVersion, arch, "initramfs", ".img.sig"),
+		coreosRootfsDownloadPath + ".sig":    fmt.Sprintf(coreos, coreosVersion, arch, "rootfs", ".img.sig"),
+		"fedora.gpg":                         "https://fedoraproject.org/fedora.gpg",
 	}
 }
 
-func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, mem map[string]io.Reader) (map[string]io.Reader, error) {
 
 	wrk := map[string]io.Reader{}
 
-	var err error
-	if kernel, cached := cacheDir["kernel.coreos-extract"]; !cached {
-		wrk["kernel.coreos-extract"], err = prov.Kernel(ctx, cacheDir)
+	if kernel, cached := mem[coreosKernelExtractPath]; cached {
+		wrk[coreosKernelExtractPath] = kernel
+	} else {
+		kernelReader, err := unzbootgo.ProcessKernel(ctx, mem[coreosKernelDownloadPath])
 		if err != nil {
 			return nil, errors.Errorf("processing kernel: %w", err)
 		}
-	} else {
-		wrk["kernel.coreos-extract"] = io.NopCloser(kernel)
+		wrk[coreosKernelExtractPath] = kernelReader
 	}
 
-	if initramfs, cached := cacheDir["initramfs.coreos-extract.cpio"]; !cached {
-		wrk["initramfs.coreos-extract.cpio"], err = prov.Initramfs(ctx, cacheDir)
-		if err != nil {
-			return nil, errors.Errorf("processing initramfs: %w", err)
-		}
+	if initramfs, cached := mem[coreosInitramfsExtractPath]; cached {
+		wrk[coreosInitramfsExtractPath] = initramfs
 	} else {
-		wrk["initramfs.coreos-extract.cpio"] = io.NopCloser(initramfs)
+		read, err := (archives.Zstd{}).OpenReader(mem[coreosInitramfsDownloadPath])
+		if err != nil {
+			return nil, errors.Errorf("decompressing initramfs: %w", err)
+		}
+		wrk[coreosInitramfsExtractPath] = read
 	}
 
-	if rootfs, cached := cacheDir["rootfs.coreos-extract.img"]; !cached {
-
-		wrk["rootfs.coreos-extract.img"], err = prov.Rootfs(ctx, cacheDir)
-		if err != nil {
-			return nil, errors.Errorf("processing rootfs: %w", err)
-		}
+	if rootfs, cached := mem[coreosRootfsExtractPath]; cached {
+		wrk[coreosRootfsExtractPath] = rootfs
 	} else {
-		wrk["rootfs.coreos-extract.img"] = io.NopCloser(rootfs)
+		wrk[coreosRootfsExtractPath] = mem[coreosRootfsDownloadPath]
 	}
 
 	return wrk, nil
@@ -133,34 +137,6 @@ func (prov *CoreOSProvider) InitScript(ctx context.Context) (string, error) {
 echo "Hello, world!"
 `
 	return script, nil
-}
-
-func (prov *CoreOSProvider) Rootfs(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
-	bufferedReader := bufio.NewReaderSize(mem["rootfs.img"], 1024*1024*1024)
-	return bufferedReader, nil
-}
-
-func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
-
-	kernelReader, err := unzbootgo.ProcessKernel(ctx, mem["kernel"])
-	if err != nil {
-		return nil, errors.Errorf("processing kernel: %w", err)
-	}
-
-	return kernelReader, nil
-}
-
-func (prov *CoreOSProvider) Initramfs(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
-
-	// just decompress the initramfs, it is either gz or xz
-	read, err := (archives.Zstd{}).OpenReader(mem["initramfs.img"])
-	if err != nil {
-		return nil, errors.Errorf("decompressing initramfs: %w", err)
-	}
-
-	slog.InfoContext(ctx, "decompressed initramfs")
-
-	return read, nil
 }
 
 func (prov *CoreOSProvider) KernelArgs() (args string) {
