@@ -22,7 +22,7 @@ type GowConfig struct {
 
 // NewGowConfig creates a new configuration with defaults
 func NewGowConfig() *GowConfig {
-	workspaceRoot, _ := os.Getwd()
+	workspaceRoot := findWorkspaceRoot()
 
 	return &GowConfig{
 		Verbose:       false,
@@ -37,6 +37,36 @@ func NewGowConfig() *GowConfig {
 		StdoutsToSuppress: []string{
 			"invalid string just to have something here",
 		},
+	}
+}
+
+// findWorkspaceRoot finds the workspace root by looking for go.work or go.mod files
+func findWorkspaceRoot() string {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+
+	// Start from current directory and walk up
+	dir := currentDir
+	for {
+		// Check for go.work (workspace root)
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+			return dir
+		}
+		
+		// Check for go.mod as fallback
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			// Continue looking for go.work, but remember this as potential root
+		}
+
+		// Move up one directory
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root, fallback to current directory
+			return currentDir
+		}
+		dir = parent
 	}
 }
 
@@ -152,6 +182,7 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	var targetDir string
 	var ide bool
 	var codesign bool
+	var isCompileOnly bool
 
 	// Parse only gow-specific flags, pass everything else through
 	var goArgs []string
@@ -171,6 +202,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			ide = true
 		case "-codesign":
 			codesign = true
+		case "-c":
+			// Compile test binary only (used by DAP debugging)
+			isCompileOnly = true
+			goArgs = append(goArgs, arg)
 		case "-target":
 			// Handle -target with next argument
 			if i+1 < len(args) {
@@ -184,7 +219,43 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		i++
 	}
 
-	// Add gow-specific functionality
+	// For compile-only mode (debugging), skip gow enhancements and pass through directly
+	if isCompileOnly {
+		if cfg.Verbose {
+			fmt.Printf("🔧 Debug mode: compiling test binary with go test -c\n")
+		}
+		
+		ctx := context.Background()
+		
+		// Add codesign support for debug builds
+		if codesign {
+			// Run the compile first
+			if err := cfg.execSafeGo(ctx, goArgs...); err != nil {
+				return err
+			}
+			
+			// Find the output binary and sign it
+			for i, arg := range goArgs {
+				if arg == "-o" && i+1 < len(goArgs) {
+					outputFile := goArgs[i+1]
+					if cfg.Verbose {
+						fmt.Printf("🔐 Code signing debug binary: %s\n", outputFile)
+					}
+					
+					signCmd := exec.CommandContext(ctx, "go", "tool", "github.com/walteh/ec1/tools/cmd/codesign", "just-sign", outputFile)
+					signCmd.Dir = cfg.WorkspaceRoot
+					signCmd.Stdout = os.Stdout
+					signCmd.Stderr = os.Stderr
+					
+					return signCmd.Run()
+				}
+			}
+		}
+		
+		return cfg.execSafeGo(ctx, goArgs...)
+	}
+
+	// Add gow-specific functionality for regular test runs
 	if functionCoverage {
 		coverDir, err := os.MkdirTemp("", "gow-coverage-*")
 		if err != nil {

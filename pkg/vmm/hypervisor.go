@@ -50,7 +50,7 @@ func NewRunningVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP ui
 		conn, err := transporz.Dial(ctx)
 		if err != nil {
 			slog.Error("failed to dial vm transport", "error", err)
-			return nil, err
+			return nil, errors.Errorf("dialing vm transport: %w", err)
 		}
 		slog.Info("dialed vm transport")
 		return conn, nil

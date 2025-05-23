@@ -28,46 +28,36 @@ func BenchmarkInitramfsProcessingPipeline(b *testing.B) {
 
 	// Define implementations to compare
 	implementations := map[string]tstream.BenchmarkFunc{
-		"stream_original": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
-			timedInput := tstream.NewTimingReader(ctx, input, "stream-original-input")
-			defer timedInput.Close()
-
-			result := initramfs.StreamInject(ctx, timedInput, initramfs.NewExecHeader("init"), mockInitBinary)
-			return tstream.NewTimingReader(ctx, result, "stream-original-output"), nil
+		"stream_inject_original": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectOriginal(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
 		},
 
-		"stream_optimized": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
-			timedInput := tstream.NewTimingReader(ctx, input, "stream-optimized-input")
-			defer timedInput.Close()
-
-			result := initramfs.StreamInjectOptimized(ctx, timedInput, initramfs.NewExecHeader("init"), mockInitBinary)
-			return tstream.NewTimingReader(ctx, result, "stream-optimized-output"), nil
+		"stream_inject_pooled": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectPooled(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
 		},
 
-		"stream_hyper": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
-			timedInput := tstream.NewTimingReader(ctx, input, "stream-hyper-input")
-			defer timedInput.Close()
-
-			result := initramfs.StreamInjectHyper(ctx, timedInput, initramfs.NewExecHeader("init"), mockInitBinary)
-			return tstream.NewTimingReader(ctx, result, "stream-hyper-output"), nil
+		"stream_inject_hyper": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectHyper(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
 		},
 
-		"fast_blazing": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
-			timedInput := tstream.NewTimingReader(ctx, input, "fast-blazing-input")
-			defer timedInput.Close()
+		"stream_inject_library": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectLibrary(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
+		},
 
-			result, err := initramfs.FastInjectFileToCpioBlazingFast(ctx, timedInput, initramfs.NewExecHeader("init"), mockInitBinary)
-			if err != nil {
-				return nil, err
-			}
-			return tstream.NewTimingReader(ctx, result, "fast-blazing-output"), nil
+		"stream_inject_read_all": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectReadAll(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
+		},
+
+		"stream_inject_simple": func(ctx context.Context, input io.Reader, size int) (io.ReadCloser, error) {
+			return initramfs.StreamInjectSimple(ctx, input, initramfs.NewExecHeader("init"), mockInitBinary), nil
 		},
 	}
 
 	// Run comparative benchmark with humanizer analysis
 	benchmark := tstream.NewStreamBenchmark("initramfs-processing").
+		// WithTiming().
 		WithSizes(1024*1024, 10*1024*1024). // 1MB, 10MB (reduced for faster testing)
-		WithWarmup(1) // Reduced warmup for faster testing
+		WithWarmup(1)                       // Reduced warmup for faster testing
 
 	benchmark.RunComparative(b, implementations, dataGenerator)
 }
@@ -86,12 +76,11 @@ func BenchmarkInitramfsMemoryUsage(b *testing.B) {
 
 		profiler.Checkpoint("before-processing")
 
-		result, err := initramfs.FastInjectFileToCpioBlazingFast(ctx, cpioPath, initramfs.NewExecHeader("init"), mockInitBinary)
-		require.NoError(b, err, "FastInjectFileToCpioBlazingFast should succeed")
+		result := initramfs.StreamInjectHyper(ctx, cpioPath, initramfs.NewExecHeader("init"), mockInitBinary)
 
 		profiler.Checkpoint("after-processing")
 
-		_, err = io.Copy(io.Discard, result)
+		_, err := io.Copy(io.Discard, result)
 		require.NoError(b, err, "reading result should succeed")
 		result.Close()
 

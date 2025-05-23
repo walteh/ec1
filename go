@@ -11,17 +11,6 @@ my_absolute_dir="$(dirname -- "$(realpath "${BASH_SOURCE[0]}")")"
 # touch "$my_absolute_dir/.logs/enter_with_call.log"
 # echo "ENTER WITH CALL: (cd $(pwd) && $0 $*)" >> "$my_absolute_dir/.logs/enter_with_call.log"
 
-# Check for -gow flag anywhere in arguments and redirect to gow implementation
-use_gow=0
-filtered_args=()
-for arg in "$@"; do
-	if [ "$arg" == "-gow" ]; then
-		use_gow=1
-	else
-		filtered_args+=("$arg")
-	fi
-done
-
 function safe_go_path() {
 	local reset=0
 	if [[ "$PATH" = *"$my_absolute_dir"* ]]; then
@@ -45,11 +34,6 @@ function safe_go() {
 	# carry the exit code
 	return "$?"
 }
-
-if [ "$use_gow" == "1" ]; then
-	cd "$my_absolute_dir"
-	safe_go tool gow "${filtered_args[@]}"
-fi
 
 function truncate_logs() {
 	# Default to 1000 lines if not specified
@@ -252,7 +236,7 @@ if [ "${1:-}" == "test" ]; then
 
 		raw_args="${real_go_binary} test -o '$output_file' -gcflags='${gcflags_arg}' ${real_args[*]} "
 		if [[ "$codesign" == "1" ]]; then
-			raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign just-sign $output_file "
+			raw_args+=" && ${real_go_binary} run github.com/walteh/ec1/tools/cmd/codesign just-sign $output_file "
 		fi
 
 	elif [[ "$debug" == "1" ]]; then

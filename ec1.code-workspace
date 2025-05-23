@@ -85,10 +85,10 @@
 		"gopls": {
 			"formatting.local": "github.com/walteh/ec1"
 		},
-		"go.formatFlags": ["retab", "gow"],
+		"go.formatFlags": ["retab"],
 		"go.formatTool": "custom",
 		"go.alternateTools": {
-			"go": "${workspaceFolder}/go",
+			"go": "${workspaceFolder}/gow",
 			"dlv": "${workspaceFolder}/go",
 			"customFormatter": "${workspaceFolder}/go"
 		},
@@ -106,10 +106,10 @@
 			// 		"to": "${workspaceFolder}/go"
 			// 	}
 			// ],
-			// "dlvFlags": ["--log", "--log-output=rpc,dap", "--log-dest=${workspaceFolder}/dlv-rpc.log"]
+			"dlvFlags": []
 		},
 
-		"go.testFlags": ["-ide", "-codesign", "-v", "-gow"],
+		"go.testFlags": ["-ide", "-codesign", "-v"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,
 		"files.associations": {
