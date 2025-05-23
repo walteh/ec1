@@ -1,6 +1,7 @@
 package coreos
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -135,7 +136,8 @@ echo "Hello, world!"
 }
 
 func (prov *CoreOSProvider) Rootfs(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
-	return io.NopCloser(mem["rootfs.img"]), nil
+	bufferedReader := bufio.NewReaderSize(mem["rootfs.img"], 1024*1024*1024)
+	return bufferedReader, nil
 }
 
 func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {

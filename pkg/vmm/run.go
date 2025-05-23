@@ -13,7 +13,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -38,8 +37,9 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.Reader) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.Reader) (bootloader.Bootloader, []virtio.VirtioDevice, *errgroup.Group, error) {
 
+	wg := &errgroup.Group{}
 	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
@@ -49,17 +49,17 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			entries := []slog.Attr{}
 
 			if linuxVMIProvider.InitramfsPath() == "" {
-				return nil, nil, errors.New("initramfs path is empty - ec1 does not yet support this yet")
+				return nil, nil, wg, errors.New("initramfs path is empty - ec1 does not yet support this yet")
 			}
 
 			fastReader, ok := mem[linuxVMIProvider.InitramfsPath()]
 			if !ok {
-				return nil, nil, errors.Errorf("initramfs file not found: %s", linuxVMIProvider.InitramfsPath())
+				return nil, nil, wg, errors.Errorf("initramfs file not found: %s", linuxVMIProvider.InitramfsPath())
 			}
 
 			decompressedInitBinData, err := LoadInitBinToMemory(ctx)
 			if err != nil {
-				return nil, nil, errors.Errorf("uncompressing init binary: %w", err)
+				return nil, nil, wg, errors.Errorf("uncompressing init binary: %w", err)
 			}
 
 			// Optional: Add timing wrapper for performance monitoring
@@ -75,7 +75,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			fastReader, err = hpv.EncodeLinuxInitramfs(ctx, slowReader)
 			if err != nil {
-				return nil, nil, errors.Errorf("encoding linux initramfs: %w", err)
+				return nil, nil, wg, errors.Errorf("encoding linux initramfs: %w", err)
 			}
 
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
@@ -84,39 +84,36 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			slog.InfoContext(ctx, "writing initramfs")
 
-			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, fastReader, 0644)
+			err = osx.WriteFileFromReaderAsync(ctx, initramfsPath, fastReader, 0644, wg)
 			if err != nil {
-				return nil, nil, errors.Errorf("creating initramfs file: %w", err)
+				return nil, nil, wg, errors.Errorf("creating initramfs file: %w", err)
 			}
 
-			slowReader.Close()
-
-			slog.InfoContext(ctx, "initramfs size", "size", initrdSize)
-
-			entries = append(entries, slog.Group("initramfs", "path", initramfsPath, "size", initrdSize))
+			entries = append(entries, slog.Group("initramfs", "path", initramfsPath))
 
 			if linuxVMIProvider.RootfsPath() != "" {
 				rootfsReader, ok := mem[linuxVMIProvider.RootfsPath()]
 				if !ok {
-					return nil, nil, errors.Errorf("rootfs file not found: %s", linuxVMIProvider.RootfsPath())
+					return nil, nil, wg, errors.Errorf("rootfs file not found: %s", linuxVMIProvider.RootfsPath())
 				}
 
 				rootfsReader, err = hpv.EncodeLinuxRootfs(ctx, rootfsReader)
 				if err != nil {
-					return nil, nil, errors.Errorf("encoding linux rootfs: %w", err)
+					return nil, nil, wg, errors.Errorf("encoding linux rootfs: %w", err)
 				}
 
 				rootfsPath := filepath.Join(wrkdir, "rootfs")
-				rootfsSize, err := osx.WriteFileFromReader(ctx, rootfsPath, rootfsReader, 0644)
+
+				err = osx.WriteFileFromReaderAsync(ctx, rootfsPath, rootfsReader, 0644, wg)
 				if err != nil {
-					return nil, nil, errors.Errorf("creating rootfs file: %w", err)
+					return nil, nil, wg, errors.Errorf("creating rootfs file: %w", err)
 				}
 
-				entries = append(entries, slog.Group("rootfs", "path", rootfsPath, "size", rootfsSize))
+				entries = append(entries, slog.Group("rootfs", "path", rootfsPath))
 
 				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
 				if err != nil {
-					return nil, nil, errors.Errorf("creating rootfs file: %w", err)
+					return nil, nil, wg, errors.Errorf("creating rootfs file: %w", err)
 				}
 
 				devices = append(devices, blkDev)
@@ -125,27 +122,27 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			}
 
 			if linuxVMIProvider.KernelPath() == "" {
-				return nil, nil, errors.New("kernel path is empty - ec1 does not yet support this yet")
+				return nil, nil, wg, errors.New("kernel path is empty - ec1 does not yet support this yet")
 			}
 
 			kernelReader, ok := mem[linuxVMIProvider.KernelPath()]
 			if !ok {
-				return nil, nil, errors.Errorf("kernel file not found: %s", linuxVMIProvider.KernelPath())
+				return nil, nil, wg, errors.Errorf("kernel file not found: %s", linuxVMIProvider.KernelPath())
 			}
 
 			kernelReader, err = hpv.EncodeLinuxKernel(ctx, kernelReader)
 			if err != nil {
-				return nil, nil, errors.Errorf("encoding linux kernel: %w", err)
+				return nil, nil, wg, errors.Errorf("encoding linux kernel: %w", err)
 			}
 
 			kernelPath := filepath.Join(wrkdir, "vmlinuz")
 
-			kernelSize, err := osx.WriteFileFromReader(ctx, kernelPath, kernelReader, 0644)
+			err = osx.WriteFileFromReaderAsync(ctx, kernelPath, kernelReader, 0644, wg)
 			if err != nil {
-				return nil, nil, errors.Errorf("creating kernel file: %w", err)
+				return nil, nil, wg, errors.Errorf("creating kernel file: %w", err)
 			}
 
-			entries = append(entries, slog.Group("kernel", "path", kernelPath, "size", kernelSize))
+			entries = append(entries, slog.Group("kernel", "path", kernelPath))
 
 			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
 			cmdLine := strings.TrimSpace(linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs)
@@ -158,19 +155,19 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				InitrdPath:    initramfsPath,
 				VmlinuzPath:   kernelPath,
 				KernelCmdLine: cmdLine,
-			}, devices, nil
+			}, devices, wg, nil
 		}
 		// return bootloader.NewEFIBootloader(filepath.Join(bootCacheDir, "efivars.fd"), true), nil
-		return nil, nil, errors.New("unsupported guest kernel type: linux")
+		return nil, nil, wg, errors.New("unsupported guest kernel type: linux")
 
 	case guest.GuestKernelTypeDarwin:
 		if mos, ok := provider.(MacOSVMIProvider); ok {
-			return mos.BootLoaderConfig(), nil, nil
+			return mos.BootLoaderConfig(), nil, wg, nil
 		} else {
-			return nil, nil, errors.New("guest kernel type is darwin but provider does not support macOS")
+			return nil, nil, wg, errors.New("guest kernel type is darwin but provider does not support macOS")
 		}
 	default:
-		return nil, nil, errors.Errorf("unsupported guest kernel type: %s", kt)
+		return nil, nil, wg, errors.Errorf("unsupported guest kernel type: %s", kt)
 	}
 }
 
@@ -281,28 +278,11 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("extracting readers to cache: %w", err)
 	}
 
-	bl, bldev, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
+	bl, bldev, wg, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
 	if err != nil {
 		return nil, errors.Errorf("getting boot loader config: %w", err)
 	}
 	devices = append(devices, bldev...)
-
-	// cmd.Exec a checksum.txt of the working directory, save it to the extraction cache dir
-	// find . -type f -not -name "checksums.txt" -print0 | xargs -0 shasum -a 256 > checksums.txt
-	cmd := exec.Command("sh", "-c", "find . -type f -not -name 'checksums.txt' -print0 | xargs -0 shasum -a 256 > checksums.txt")
-	cmd.Dir = workingDir
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, errors.Errorf("getting sha256 checksum of working directory: %w: %s", err, string(output))
-	}
-
-	// we don't want to save the files if they were not valid
-	go func() {
-		err = osx.RenameDirFast(ctx, tmpExtractDir, extractionCacheDir)
-		if err != nil {
-			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
-		}
-	}()
 
 	// // copy extracted files to the extraction cache dir
 	// for name := range extractedFiles {
@@ -361,6 +341,35 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 	}
 
 	slog.InfoContext(ctx, "creating virtual machine")
+
+	/// WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
+
+	startWait := time.Now()
+	err = wg.Wait()
+	if err != nil {
+		return nil, errors.Errorf("waiting for boot loader config: %w", err)
+	}
+
+	slog.InfoContext(ctx, "boot loader config ready", slog.Duration("duration", time.Since(startWait)))
+
+	// // cmd.Exec a checksum.txt of the working directory, save it to the extraction cache dir
+	// // find . -type f -not -name "checksums.txt" -print0 | xargs -0 shasum -a 256 > checksums.txt
+	// cmd := exec.Command("sh", "-c", "find . -type f -not -name 'checksums.txt' -print0 | xargs -0 shasum -a 256 > checksums.txt")
+	// cmd.Dir = workingDir
+	// output, err := cmd.Output()
+	// if err != nil {
+	// 	return nil, errors.Errorf("getting sha256 checksum of working directory: %w: %s", err, string(output))
+	// }
+
+	// we don't want to save the files if they were not valid
+	go func() {
+		err = osx.RenameDirFast(ctx, tmpExtractDir, extractionCacheDir)
+		if err != nil {
+			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
+		}
+	}()
+
+	/// END WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
 
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
 	if err != nil {

@@ -8,10 +8,22 @@ import (
 	"path"
 	"path/filepath"
 
+	"golang.org/x/sync/errgroup"
+
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/ext/iox"
 )
+
+func WriteFileFromReaderAsync(ctx context.Context, path string, reader io.Reader, perm os.FileMode, wg *errgroup.Group) error {
+
+	wg.Go(func() error {
+		_, err := WriteFileFromReader(ctx, path, reader, perm)
+		return err
+	})
+
+	return nil
+}
 
 func WriteFileFromReader(ctx context.Context, path string, reader io.Reader, perm os.FileMode) (int64, error) {
 
