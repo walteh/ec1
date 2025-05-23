@@ -18,5 +18,9 @@
 			"command": "cd /workspace && watch -n 5 './gow test -run BenchmarkInject ./pkg/initramfs/ 2>/dev/null | tail -5'",
 			"description": "Continuous performance monitoring of our init injection system"
 		}
-	]
+	],
+	"build": {
+		"context": ".",
+		"dockerfile": "Dockerfile"
+	}
 }
