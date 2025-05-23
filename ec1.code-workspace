@@ -109,7 +109,7 @@
 			// "dlvFlags": ["--log", "--log-output=rpc,dap", "--log-dest=${workspaceFolder}/dlv-rpc.log"]
 		},
 
-		"go.testFlags": ["-ide", "-codesign", "-v"],
+		"go.testFlags": ["-ide", "-codesign", "-v", "-gow"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,
 		"files.associations": {

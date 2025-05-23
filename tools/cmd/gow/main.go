@@ -150,6 +150,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	var functionCoverage bool
 	var force bool
 	var targetDir string
+	var ide bool
+	var codesign bool
 
 	// Parse only gow-specific flags, pass everything else through
 	var goArgs []string
@@ -165,6 +167,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			functionCoverage = true
 		case "-force":
 			force = true
+		case "-ide":
+			ide = true
+		case "-codesign":
+			codesign = true
 		case "-target":
 			// Handle -target with next argument
 			if i+1 < len(args) {
@@ -213,6 +219,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		goArgs = append(goArgs, "-count=1")
 	}
 
+	if codesign {
+		goArgs = append(goArgs, "-exec=go tool github.com/walteh/ec1/tools/cmd/codesign run-after-signing")
+	}
+
 	// Add standard flags if not already present
 	hasVet := false
 	hasCover := false
@@ -238,6 +248,14 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	}
 
 	ctx := context.Background()
+
+	// For IDE mode, run raw go test directly (VS Code needs this format)
+	if ide {
+		if cfg.Verbose {
+			fmt.Printf("🔧 Using raw go test for IDE compatibility\n")
+		}
+		return cfg.execSafeGo(ctx, goArgs...)
+	}
 
 	// Use gotestsum if available, otherwise fall back to raw go test
 	if cfg.hasGotestsum() {
@@ -422,6 +440,8 @@ func printUsage() {
 	fmt.Println("Test-specific flags:")
 	fmt.Println("  -function-coverage           Enable function coverage reporting")
 	fmt.Println("  -force                       Force re-running of tests")
+	fmt.Println("  -ide                         IDE mode: raw test output (VS Code compatible)")
+	fmt.Println("  -codesign                    Enable macOS code signing for virtualization")
 	fmt.Println("  -v                           Verbose output")
 	fmt.Println("  -run pattern                 Run only tests matching pattern")
 	fmt.Println("  -target dir                  Target directory (default: .)")
