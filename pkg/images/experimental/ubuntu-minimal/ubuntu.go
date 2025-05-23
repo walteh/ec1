@@ -74,7 +74,7 @@ func (prov *UbuntuMinimalProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *UbuntuMinimalProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
+func (prov *UbuntuMinimalProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["vmlinuz"])
@@ -82,7 +82,7 @@ func (prov *UbuntuMinimalProvider) ExtractDownloads(ctx context.Context, cacheDi
 		return nil, errors.Errorf("processing kernel: %w", err)
 	}
 
-	out := make(map[string]io.ReadCloser)
+	out := make(map[string]io.Reader)
 	out["vmlinuz"] = kernelReader
 
 	return out, nil

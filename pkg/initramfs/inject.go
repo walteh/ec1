@@ -19,6 +19,12 @@ import (
 	"go.pdmccormick.com/initramfs"
 )
 
+type InitramfsFileInjectorFunc func(ctx context.Context, pipe io.Reader, header initramfs.Header, data []byte) io.ReadCloser
+
+const (
+	Z = 'z'
+)
+
 func NewExecHeader(filename string) initramfs.Header {
 	return initramfs.Header{
 		Filename:     filename,
@@ -205,7 +211,7 @@ func StreamInjectReadAll(ctx context.Context, pipe io.Reader, header initramfs.H
 				// This should be the correct position for the standalone "init" filename
 				// Modify the last character to convert "init" to "iniz"
 				// oldByte := cpioData[initPos+int(header.FilenameSize)-2]
-				cpioData[initPos+int(header.FilenameSize)-2] = 'z'
+				cpioData[initPos+int(header.FilenameSize)-2] = Z
 				// slog.InfoContext(ctx, "renamed original init to iniz", "position", initPos, "old", fmt.Sprintf("%s", string([]byte{oldByte})))
 			} else {
 				pw.CloseWithError(errors.Errorf("found init but context appears incorrect"))
@@ -315,7 +321,7 @@ func FindFileNameByteIndex(ctx context.Context, cpioData []byte, filename string
 		// pad2: align data up to 4 bytes
 		filePad := pad(int(filesize), align)
 
-		slog.InfoContext(ctx, "data", "pos", pos, "name", name, "namesize", namesize, "namePad", namePad, "filesize", filesize, "filePad", filePad)
+		// slog.InfoContext(ctx, "data", "pos", pos, "name", name, "namesize", namesize, "namePad", namePad, "filesize", filesize, "filePad", filePad)
 		if name == filename {
 			return pos + headerSize
 		}
@@ -355,7 +361,7 @@ func StreamInjectSimple(ctx context.Context, src io.Reader, hdr initramfs.Header
 			// rename init → iniz
 			trimmed := string(name[:len(name)-1])
 			if trimmed == hdr.Filename {
-				name[len(name)-2] = 'z' // mutate 't'→'z'
+				name[len(name)-2] = Z
 			}
 
 			// if trailer, inject our new record just before we forward it
@@ -435,7 +441,7 @@ func StreamInjectOriginal(ctx context.Context, src io.Reader, hdr initramfs.Head
 			io.ReadFull(br, name)
 
 			if bytes.Equal(name, want) {
-				name[len(name)-2] = 'z'
+				name[len(name)-2] = Z
 			}
 
 			if bytes.Equal(name[:len(name)-1], []byte("TRAILER!!!")) {
@@ -463,8 +469,8 @@ func StreamInjectOriginal(ctx context.Context, src io.Reader, hdr initramfs.Head
 // writeNewRecord serialises hdr (newc format) plus data and both paddings.
 // It never allocates large buffers; everything is written directly to w.
 func writeNewRecord(w io.Writer, hdr initramfs.Header, data []byte) error {
-	const headerSize = 110 // fixed for "070701" newc archives   [oai_citation:0‡Carbs Linux Repositories](https://git.carbslinux.org/forks/toybox/tree/toys/posix/cpio.c?id=a6336b942302b92f0b65ec35299e7667b9fcbe19&utm_source=chatgpt.com)
-	const align = 4        // newc entries are 4‑byte aligned      [oai_citation:1‡Apache Commons](https://commons.apache.org/proper/commons-compress/apidocs/org/apache/commons/compress/archivers/cpio/CpioArchiveEntry.html?utm_source=chatgpt.com)
+	const headerSize = 110 // fixed for "070701" newc archives
+	const align = 4        // newc entries are 4‑byte aligned
 
 	// 1. Fix‑up the header to reflect this file's payload length.
 	hdr.DataSize = uint32(len(data))
@@ -593,7 +599,7 @@ func StreamInjectPooled(ctx context.Context, src io.Reader, hdr initramfs.Header
 
 			// Optimized filename comparison
 			if len(name) == len(want) && bytes.Equal(name, want) {
-				name[len(name)-2] = 'z'
+				name[len(name)-2] = Z
 			}
 
 			// Check for trailer using pre-computed constant
@@ -774,7 +780,7 @@ func StreamInjectHyper(ctx context.Context, src io.Reader, hdr initramfs.Header,
 					}
 				}
 				if match && name[namesize-1] == 0 {
-					name[namesize-2] = 'z' // Change 't' to 'z'
+					name[namesize-2] = Z
 				}
 			}
 

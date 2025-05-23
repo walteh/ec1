@@ -56,14 +56,14 @@ func (prov *FedoraEverythingProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *FedoraEverythingProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
+func (prov *FedoraEverythingProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 	// Extract the kernel if it's an EFI application
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, cacheDir["vmlinuz"])
 	if err != nil {
 		return nil, errors.Errorf("processing kernel: %w", err)
 	}
 
-	out := make(map[string]io.ReadCloser)
+	out := make(map[string]io.Reader)
 
 	out["vmlinuz"] = kernelReader
 

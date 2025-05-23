@@ -106,8 +106,8 @@ func (prov *PuiPuiProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
-	out := make(map[string]io.ReadCloser)
+func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
+	out := make(map[string]io.Reader)
 
 	_, cpioExists := cacheDir[extractedCpioName]
 	_, kernelExists := cacheDir[extractedKernelName]

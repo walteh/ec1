@@ -77,9 +77,9 @@ func (prov *CoreOSProvider) Downloads() map[string]string {
 	}
 }
 
-func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error) {
+func (prov *CoreOSProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 
-	wrk := map[string]io.ReadCloser{}
+	wrk := map[string]io.Reader{}
 
 	var err error
 	if kernel, cached := cacheDir["kernel.coreos-extract"]; !cached {
@@ -134,22 +134,21 @@ echo "Hello, world!"
 	return script, nil
 }
 
-func (prov *CoreOSProvider) Rootfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+func (prov *CoreOSProvider) Rootfs(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
 	return io.NopCloser(mem["rootfs.img"]), nil
 }
 
-func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+func (prov *CoreOSProvider) Kernel(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
 
 	kernelReader, err := unzbootgo.ProcessKernel(ctx, mem["kernel"])
 	if err != nil {
-		slog.Error("failed to process kernel", "error", err)
-		return nil, err
+		return nil, errors.Errorf("processing kernel: %w", err)
 	}
 
 	return kernelReader, nil
 }
 
-func (prov *CoreOSProvider) Initramfs(ctx context.Context, mem map[string]io.Reader) (io.ReadCloser, error) {
+func (prov *CoreOSProvider) Initramfs(ctx context.Context, mem map[string]io.Reader) (io.Reader, error) {
 
 	// just decompress the initramfs, it is either gz or xz
 	read, err := (archives.Zstd{}).OpenReader(mem["initramfs.img"])

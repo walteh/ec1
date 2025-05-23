@@ -23,7 +23,186 @@ import (
 	"github.com/walteh/ec1/pkg/testing/tlog"
 )
 
-// mockInitBinary is a simple mock binary for testing
+var injectors = map[string]initramfs.InitramfsFileInjectorFunc{
+	"stream_inject_original": initramfs.StreamInjectOriginal,
+	// "stream_inject_pooled":   initramfs.StreamInjectPooled,
+	"stream_inject_hyper":    initramfs.StreamInjectHyper,
+	"stream_inject_library":  initramfs.StreamInjectLibrary,
+	"stream_inject_read_all": initramfs.StreamInjectReadAll,
+	"stream_inject_simple":   initramfs.StreamInjectSimple,
+}
+
+func logicalInjectorTest(t *testing.T, newFileName string, mockInitBinary string, cpioPath io.ReadSeekCloser, truthReaderName string, readers map[string]initramfs.InitramfsFileInjectorFunc) {
+	ctx := tlog.SetupSlogForTestWithContext(t, t.Context())
+
+	var err error
+
+	init := newFileName
+	iniz := replaceLastLetterWithZ(newFileName)
+	initHeader := initramfs.NewExecHeader(init)
+
+	fileHeadersBefore, fileDataBefore, err := initramfs.ExtractFilesFromCpio(ctx, cpioPath)
+	require.NoError(t, err)
+
+	require.NotNil(t, fileHeadersBefore[init], "the input cpio headers should have an init file")
+	require.NotNil(t, fileDataBefore[init], "the input cpio data should have an init file")
+	require.Equal(t, init, fileHeadersBefore[init].Filename, "the input cpio init file should be named init")
+	require.NotEqual(t, mockInitBinary, string(fileDataBefore[init]), "the input cpio init file should not be the mock init binary")
+
+	cpioPath.Seek(0, io.SeekStart)
+
+	type resultd struct {
+		name    string
+		reader  initramfs.InitramfsFileInjectorFunc
+		headers map[string]*oinitramfs.Header
+		data    map[string][]byte
+		rawData []byte
+	}
+
+	var truth *resultd
+
+	args := make([]*resultd, 0, len(readers))
+
+	for name, reader := range readers {
+		argd := resultd{
+			name:   name,
+			reader: reader,
+		}
+
+		if name == truthReaderName {
+			truth = &argd
+		}
+
+		args = append(args, &argd)
+	}
+
+	runner := func(t *testing.T, arg *resultd) {
+
+		cpioPath.Seek(0, io.SeekStart)
+
+		fastReader := arg.reader(ctx, cpioPath, initHeader, []byte(mockInitBinary))
+		require.NoError(t, err)
+
+		arg.rawData, err = io.ReadAll(fastReader)
+		require.NoError(t, err)
+
+		arg.headers, arg.data, err = initramfs.ExtractFilesFromCpio(ctx, bytes.NewReader(arg.rawData))
+		require.NoError(t, err)
+
+		cpioPath.Seek(0, io.SeekStart)
+
+		require.NotNil(t, arg.headers[init], "the output should have an init file")
+		assert.Equal(t, init, arg.headers[init].Filename, "the output should have an init file")
+		assert.Equal(t, string(mockInitBinary), string(arg.data[init]), "the output should have the mock init binary")
+
+		require.NotNil(t, arg.headers[iniz], "the output should have an iniz file")
+		assert.Equal(t, iniz, arg.headers[iniz].Filename, "the output should have an iniz file")
+		assert.NotEqual(t, mockInitBinary, string(arg.data[iniz]), "the output should not have the mock init binary")
+
+		if arg.name == truthReaderName {
+			return
+		}
+
+		require.NotNil(t, truth.rawData, "the truth reader should be in the results", truthReaderName)
+
+		assert.Equal(t, truth.headers[init], arg.headers[init], "the output should have the same headers", arg.name)
+		assert.Equal(t, truth.data[init], arg.data[init], "the output should have the same data", arg.name)
+		assert.Equal(t, truth.rawData, arg.rawData, "the output should have the same raw data", arg.name)
+		assert.Equal(t, truth.headers[iniz], arg.headers[iniz], "the output should have the same headers", arg.name)
+		assert.Equal(t, truth.data[iniz], arg.data[iniz], "the output should have the same data", arg.name)
+		assert.Equal(t, truth.rawData, arg.rawData, "the output should have the same raw data", arg.name)
+	}
+
+	runner(t, truth)
+
+	for _, arg := range args {
+		t.Run(arg.name, func(t *testing.T) {
+			runner(t, arg)
+		})
+	}
+
+}
+
+func TestInjectorLogicMockFileDifferentPadding(t *testing.T) {
+
+	thirtyTwoCharacterString := "#!/bin/sh\n\necho 'mock_init' %s\n"
+	fourCharacterName := "init"
+
+	for i := 0; i < 4; i++ {
+		t.Run(fmt.Sprintf("binary_padding_%d", i), func(t *testing.T) {
+			mockInitBinary := fmt.Sprintf(thirtyTwoCharacterString, strings.Repeat("a", i))
+			mockInitName := fourCharacterName
+			cpioPath := generateTestCpio(t, map[string][]byte{mockInitName: []byte("#!/bin/sh\necho 'original_init'\n")})
+			defer cpioPath.Close()
+			cpioPath.Seek(0, io.SeekStart)
+			logicalInjectorTest(t, mockInitName, mockInitBinary, cpioPath, "stream_inject_library", injectors)
+		})
+		t.Run(fmt.Sprintf("name_padding_%d", i), func(t *testing.T) {
+			mockInitBinary := thirtyTwoCharacterString
+			mockInitName := fmt.Sprintf("%s_%s", fourCharacterName, strings.Repeat("a", i))
+			cpioPath := generateTestCpio(t, map[string][]byte{mockInitName: []byte("#!/bin/sh\necho 'original_init'\n")})
+			defer cpioPath.Close()
+			cpioPath.Seek(0, io.SeekStart)
+			logicalInjectorTest(t, mockInitName, mockInitBinary, cpioPath, "stream_inject_library", injectors)
+		})
+		t.Run(fmt.Sprintf("both_padding_%d", i), func(t *testing.T) {
+			mockInitBinary := fmt.Sprintf(thirtyTwoCharacterString, strings.Repeat("a", i))
+			mockInitName := fmt.Sprintf("%s_%s", fourCharacterName, strings.Repeat("a", i))
+			cpioPath := generateTestCpio(t, map[string][]byte{mockInitName: []byte("#!/bin/sh\necho 'original_init'\n")})
+			defer cpioPath.Close()
+			cpioPath.Seek(0, io.SeekStart)
+			logicalInjectorTest(t, mockInitName, mockInitBinary, cpioPath, "stream_inject_library", injectors)
+		})
+	}
+}
+
+func TestInjectorLogicSmallFile(t *testing.T) {
+	cpioPath := testdataembed.MustCreateTmpFileFor(t, testdata.Testdata(), "start.cpio")
+	defer cpioPath.Close()
+
+	cpioPath.Seek(0, io.SeekStart)
+
+	mockInitBinary := "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
+
+	logicalInjectorTest(t, "init", mockInitBinary, cpioPath, "stream_inject_library", injectors)
+}
+
+func TestInjectorLogicLargeFile(t *testing.T) {
+	cpioPath := openLargeCpio(t)
+	defer cpioPath.Close()
+
+	mockInitBinary := "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
+
+	logicalInjectorTest(t, "init", mockInitBinary, cpioPath, "stream_inject_library", injectors)
+}
+
+// BenchmarkInjectors benchmarks the injectors
+func BenchmarkInjectors(b *testing.B) {
+	ctx := context.Background()
+
+	slog.SetDefault(slog.New(slog.DiscardHandler))
+
+	// Create a large mock init binary for benchmarking
+	mockInitBinary := make([]byte, 1024*1024) // 1MB
+	for i := range mockInitBinary {
+		mockInitBinary[i] = byte(i % 256)
+	}
+
+	f := openLargeCpio(b)
+	defer f.Close()
+
+	for name, reader := range injectors {
+		b.Run(name, func(b *testing.B) {
+			for b.Loop() {
+				f.Seek(0, io.SeekStart)
+				reader := reader(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
+				_, err := io.Copy(io.Discard, reader)
+				require.NoError(b, err)
+			}
+		})
+	}
+
+}
 
 // generateTestCpio creates a simple CPIO file for testing
 func generateTestCpio(t testing.TB, files map[string][]byte) io.ReadSeekCloser {
@@ -64,34 +243,6 @@ func generateTestCpio(t testing.TB, files map[string][]byte) io.ReadSeekCloser {
 	return f
 }
 
-func TestFastInjectFromMock(t *testing.T) {
-	cpioPath := generateTestCpio(t, map[string][]byte{
-		"init": []byte("#!/bin/sh\necho 'original_init'\n"),
-	})
-	defer cpioPath.Close()
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	for i := 0; i < 4; i++ {
-		t.Run(fmt.Sprintf("padding_%d", i), func(t *testing.T) {
-			thirtyTwoCharacterString := "#!/bin/sh\n\necho 'mock_init' %s\n"
-			mockInitBinary := fmt.Sprintf(thirtyTwoCharacterString, strings.Repeat("a", i))
-			testFastInjectFileToCpio(t, mockInitBinary, cpioPath)
-		})
-	}
-}
-
-func TestFastInjectFileToCpioFromEmbed(t *testing.T) {
-	cpioPath := testdataembed.MustCreateTmpFileFor(t, testdata.Testdata(), "start.cpio")
-	defer cpioPath.Close()
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	mockInitBinary := "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
-
-	testFastInjectFileToCpio(t, mockInitBinary, cpioPath)
-}
-
 func openLargeCpio(t testing.TB) io.ReadSeekCloser {
 	cpioPath := testdataembed.MustCreateTmpFileFor(t, testdata.Testdata(), "large.cpio.xz")
 	defer cpioPath.Close()
@@ -111,15 +262,6 @@ func openLargeCpio(t testing.TB) io.ReadSeekCloser {
 	return tmpFile
 }
 
-func TestFastInjectFileToCpioFromEmbedLarge(t *testing.T) {
-	cpioPath := openLargeCpio(t)
-	defer cpioPath.Close()
-
-	mockInitBinary := "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
-
-	testFastInjectFileToCpio(t, mockInitBinary, cpioPath)
-}
-
 func countTrailingZeroBytes(data []byte) int {
 	trailingZeros := 0
 	for i := len(data) - 1; i >= 0; i-- {
@@ -131,178 +273,9 @@ func countTrailingZeroBytes(data []byte) int {
 	return trailingZeros
 }
 
-func testFastInjectFileToCpio(t *testing.T, mockInitBinary string, cpioPath io.ReadSeekCloser) {
-	ctx := tlog.SetupSlogForTestWithContext(t, t.Context())
-
-	fileHeadersBefore, fileDataBefore, err := initramfs.ExtractFilesFromCpio(ctx, cpioPath)
-	require.NoError(t, err)
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	dat, err := io.ReadAll(cpioPath)
-	require.NoError(t, err)
-	// fmt.Println("dat", dat)
-	fmt.Println("countTrailingZeroBytes", countTrailingZeroBytes(dat))
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	// pre, closer := tlog.TeeToDownloadsFolder(cpioPath, "BEFORE.initramfs.cpio")
-	// defer closer.Close()
-
-	// var mockInitBinary = "#!/bin/sh\necho 'mock_init' with padding for some extra struff\n"
-
-	fastReader := initramfs.StreamInjectHyper(ctx, cpioPath, initramfs.NewExecHeader("init"), []byte(mockInitBinary))
-	require.NoError(t, err)
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	fastData, err := io.ReadAll(fastReader)
-	require.NoError(t, err)
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	slowReader := initramfs.StreamInjectLibrary(ctx, cpioPath, initramfs.NewExecHeader("init"), []byte(mockInitBinary))
-
-	slowData, err := io.ReadAll(slowReader)
-	require.NoError(t, err)
-
-	fileHeadersAfterFast, fileDataAfterFast, err := initramfs.ExtractFilesFromCpio(ctx, bytes.NewReader(fastData))
-	require.NoError(t, err)
-
-	fileHeadersAfterSLow, fileDataAfterSLow, err := initramfs.ExtractFilesFromCpio(ctx, bytes.NewReader(slowData))
-	require.NoError(t, err)
-
-	cpioPath.Seek(0, io.SeekStart)
-
-	// for _, h := range initramfs.OrderedByInode(fileHeadersAfterFast) {
-	// 	t.Logf("fileHeadersAfterFast: %s (inode: %d)", h.Filename, h.Inode)
-	// }
-
-	// t.Logf("--------------------------------")
-
-	// for _, h := range initramfs.OrderedByInode(fileHeadersAfterSLow) {
-	// 	t.Logf("fileHeadersAfterSLow: %s (inode: %d)", h.Filename, h.Inode)
-	// }
-
-	require.NotNil(t, fileHeadersBefore["init"])
-	require.NotNil(t, fileDataBefore["init"])
-	require.NotNil(t, fileHeadersAfterSLow["init"])
-	require.NotNil(t, fileDataAfterSLow["init"])
-	require.NotNil(t, fileHeadersAfterSLow["iniz"])
-	require.NotNil(t, fileDataAfterSLow["iniz"])
-	require.NotNil(t, fileHeadersAfterFast["init"])
-	require.NotNil(t, fileDataAfterFast["init"])
-	require.NotNil(t, fileHeadersAfterFast["iniz"])
-	require.NotNil(t, fileDataAfterFast["iniz"])
-
-	assert.Equal(t, "init", fileHeadersBefore["init"].Filename)
-	assert.NotEqual(t, mockInitBinary, string(fileDataBefore["init"]))
-
-	assert.Equal(t, "init", fileHeadersAfterSLow["init"].Filename)
-	assert.Equal(t, string(mockInitBinary), string(fileDataAfterSLow["init"]))
-
-	require.NotNil(t, fileHeadersAfterFast["init"])
-	assert.Equal(t, "init", fileHeadersAfterFast["init"].Filename)
-	assert.Equal(t, string(mockInitBinary), string(fileDataAfterFast["init"]))
-
-	assert.Equal(t, "iniz", fileHeadersAfterSLow["iniz"].Filename)
-	assert.NotEqual(t, mockInitBinary, string(fileDataAfterSLow["iniz"]))
-
-	require.NotNil(t, fileHeadersAfterFast["iniz"])
-	assert.Equal(t, "iniz", fileHeadersAfterFast["iniz"].Filename)
-	assert.NotEqual(t, mockInitBinary, string(fileDataAfterFast["iniz"]))
-
-	// make sure the final bytes match
-	assert.Equal(t, fileDataAfterSLow["init"], fileDataAfterFast["init"])
-
-	// make sure the final bytes match
-	assert.Equal(t, fileDataAfterSLow["iniz"], fileDataAfterFast["iniz"])
-
-	assert.Equal(t, slowData, fastData)
-}
-
-func generateLargeMockInitBinary(size int) []byte {
-	mockInitBinary := make([]byte, size)
-	for i := range mockInitBinary {
-		mockInitBinary[i] = byte(i % 256)
+func replaceLastLetterWithZ(data string) string {
+	if len(data) == 0 {
+		return data
 	}
-	return mockInitBinary
-}
-
-// BenchmarkFastInjectFileToCpio benchmarks the fast CPIO injection function
-func BenchmarkFastInjectFileToCpio(b *testing.B) {
-	ctx := context.Background()
-
-	slog.SetDefault(slog.New(slog.DiscardHandler))
-
-	// Create a large mock init binary for benchmarking
-	mockInitBinary := make([]byte, 1024*1024) // 1MB
-	for i := range mockInitBinary {
-		mockInitBinary[i] = byte(i % 256)
-	}
-
-	// dats := map[string][]byte{
-	// 	"init": openLargeCpio(b),
-	// }
-	// for i := 0; i < 1024; i++ {
-	// 	dats[fmt.Sprintf("file-%d", i)] =
-	// }
-
-	f := openLargeCpio(b)
-	defer f.Close()
-
-	b.Run("stream_inject_original", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectOriginal(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
-	b.Run("stream_inject_pooled", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectPooled(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
-	b.Run("stream_inject_hyper", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectHyper(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
-	b.Run("stream_inject_library", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectLibrary(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
-	b.Run("stream_inject_read_all", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectReadAll(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
-	b.Run("stream_inject_simple", func(b *testing.B) {
-		for b.Loop() {
-			f.Seek(0, io.SeekStart)
-			reader := initramfs.StreamInjectSimple(ctx, f, initramfs.NewExecHeader("init"), mockInitBinary)
-			_, err := io.Copy(io.Discard, reader)
-			require.NoError(b, err)
-		}
-	})
-
+	return data[:len(data)-1] + string(initramfs.Z)
 }

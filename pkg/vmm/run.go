@@ -24,11 +24,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/containers/common/pkg/strongunits"
+	"github.com/mholt/archives"
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/bootloader"
-	"github.com/walteh/ec1/pkg/ext/iox"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/gvnet"
@@ -38,7 +38,7 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.ReadCloser) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.Reader) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
 
 	var devices []virtio.VirtioDevice
 	switch kt := provider.GuestKernelType(); kt {
@@ -89,7 +89,6 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				return nil, nil, errors.Errorf("creating initramfs file: %w", err)
 			}
 
-			fastReader.Close()
 			slowReader.Close()
 
 			slog.InfoContext(ctx, "initramfs size", "size", initrdSize)
@@ -114,8 +113,6 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 				}
 
 				entries = append(entries, slog.Group("rootfs", "path", rootfsPath, "size", rootfsSize))
-
-				rootfsReader.Close()
 
 				blkDev, err := virtio.NVMExpressControllerNew(rootfsPath)
 				if err != nil {
@@ -149,8 +146,6 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			}
 
 			entries = append(entries, slog.Group("kernel", "path", kernelPath, "size", kernelSize))
-
-			kernelReader.Close()
 
 			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
 			cmdLine := strings.TrimSpace(linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs)
@@ -261,25 +256,13 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 	extractionCacheDir := filepath.Join(globalCacheDir, "extractions", cacheKey)
 
-	// create cache directory if it doesn't exist
-	err = os.MkdirAll(extractionCacheDir, 0755)
-	if err != nil && !os.IsExist(err) {
-		return nil, errors.Errorf("creating cache directory: %w", err)
-	}
-
-	// load files from cache
-	entries, err := os.ReadDir(extractionCacheDir)
+	extractedFilesCache, err := loadReadersFromCache(ctx, extractionCacheDir)
 	if err != nil {
-		return nil, errors.Errorf("reading cache directory: %w", err)
+		return nil, errors.Errorf("loading readers from cache: %w", err)
 	}
 
-	// open files from cache
-	for _, entry := range entries {
-		filePath := filepath.Join(extractionCacheDir, entry.Name())
-		files[entry.Name()], err = os.Open(filePath)
-		if err != nil {
-			return nil, errors.Errorf("opening file: %w", err)
-		}
+	for name, file := range extractedFilesCache {
+		files[name] = file
 	}
 
 	// extract files
@@ -293,25 +276,9 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("creating temporary extraction directory: %w", err)
 	}
 
-	for name := range extractedFiles {
-		pr, pw := io.Pipe()
-		fr := extractedFiles[name]
-		tr := io.TeeReader(fr, pw)
-		extractedFiles[name] = iox.PreservedNopCloser(tr)
-
-		// we almost are able to do this in the above for loop, but in cases we reuse the cache
-		// we need to make sure we are not reading and writing to the same file
-		// so instead we do the next best thing and do in a background go routine
-		go func() {
-			defer pw.Close()
-			defer fr.Close()
-			defer pr.Close()
-
-			_, err = osx.WriteFileFromReader(ctx, filepath.Join(tmpExtractDir, name), pr, 0644)
-			if err != nil {
-				slog.WarnContext(ctx, "problem writing file to extraction cache, this is ignored", "file", name, "error", err)
-			}
-		}()
+	err = teeReadersToCache(ctx, extractedFiles, tmpExtractDir)
+	if err != nil {
+		return nil, errors.Errorf("extracting readers to cache: %w", err)
 	}
 
 	bl, bldev, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
@@ -329,18 +296,9 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("getting sha256 checksum of working directory: %w: %s", err, string(output))
 	}
 
-	// checksumFile := filepath.Join(workingDir, "checksums.txt")
-	// err = os.WriteFile(checksumFile, output, 0644)
-	// if err != nil {
-	// 	return nil, errors.Errorf("writing checksum file: %w", err)
-	// }
-
-	// slog.InfoContext(ctx, "sha256 checksum of working directory", "checksum", string(output))
-
 	// we don't want to save the files if they were not valid
 	go func() {
-		defer os.RemoveAll(tmpExtractDir)
-		err = osx.Copy(ctx, tmpExtractDir, extractionCacheDir)
+		err = osx.RenameDirFast(ctx, tmpExtractDir, extractionCacheDir)
 		if err != nil {
 			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
 		}
@@ -450,6 +408,92 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
 
+}
+
+var cacheGz archives.Compression = nil
+
+// var cacheGz = archives.Gz{
+// 	CompressionLevel:   1,
+// 	DisableMultistream: false,
+// 	Multithreaded:      true,
+// }
+
+func loadReadersFromCache(ctx context.Context, extractionCacheDir string) (map[string]io.Reader, error) {
+	files := make(map[string]io.Reader)
+
+	// create cache directory if it doesn't exist
+	err := os.MkdirAll(extractionCacheDir, 0755)
+	if err != nil && !os.IsExist(err) {
+		return nil, errors.Errorf("creating cache directory: %w", err)
+	}
+
+	// load files from cache
+	entries, err := os.ReadDir(extractionCacheDir)
+	if err != nil {
+		return nil, errors.Errorf("reading cache directory: %w", err)
+	}
+
+	// open files from cache
+	for _, entry := range entries {
+		if cacheGz != nil && !strings.HasSuffix(entry.Name(), cacheGz.Extension()) {
+			continue
+		}
+		filePath := filepath.Join(extractionCacheDir, entry.Name())
+		fr, err := os.Open(filePath)
+		if err != nil {
+			return nil, errors.Errorf("opening file: %w", err)
+		}
+		var gzr io.ReadCloser
+		if cacheGz != nil {
+			gzr, err = cacheGz.OpenReader(fr)
+			if err != nil {
+				return nil, errors.Errorf("opening file: %w", err)
+			}
+		} else {
+			gzr = fr
+		}
+		files[entry.Name()] = gzr
+	}
+
+	return files, nil
+}
+
+func teeReadersToCache(ctx context.Context, extractedFiles map[string]io.Reader, extractionCacheDir string) error {
+
+	for name := range extractedFiles {
+		pr, pw := io.Pipe()
+
+		var r io.WriteCloser
+		fileName := name
+		if cacheGz != nil {
+			fileName += cacheGz.Extension()
+			gzw, err := cacheGz.OpenWriter(pw)
+			if err != nil {
+				return errors.Errorf("reading gzip: %w", err)
+			}
+			r = gzw
+		} else {
+			r = pw
+		}
+
+		extractedFiles[name] = io.TeeReader(extractedFiles[name], r)
+
+		// we almost are able to do this in the above for loop, but in cases we reuse the cache
+		// we need to make sure we are not reading and writing to the same file
+		// so instead we do the next best thing and do in a background go routine
+		go func() {
+			defer pw.Close()
+			defer pr.Close()
+			defer r.Close()
+
+			_, err := osx.WriteFileFromReader(ctx, filepath.Join(extractionCacheDir, fileName), pr, 0644)
+			if err != nil {
+				slog.WarnContext(ctx, "problem writing file to extraction cache, this is ignored", "file", fileName, "error", err)
+			}
+		}()
+	}
+
+	return nil
 }
 
 func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.VirtioNet, uint16, error) {

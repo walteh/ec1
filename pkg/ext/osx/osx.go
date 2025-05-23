@@ -3,8 +3,10 @@ package osx
 import (
 	"context"
 	"io"
+	"log/slog"
 	"os"
 	"path"
+	"path/filepath"
 
 	"gitlab.com/tozd/go/errors"
 
@@ -103,6 +105,8 @@ func CopyFile(ctx context.Context, src, dst string) error {
 
 	if _, err = io.Copy(dstfd, readWrapper); err != nil {
 		if ctx.Err() != nil {
+			slog.WarnContext(ctx, "copy file operation cancelled, the destination file will be deleted", "destination", dst)
+			go os.Remove(dst)
 			return errors.Errorf("operation cancelled: %w", ctx.Err())
 		}
 		return errors.Errorf("copying from %s to %s: %w", src, dst, err)
@@ -172,6 +176,61 @@ func Copy(ctx context.Context, src string, dst string) error {
 	// Preserve directory modification time
 	if err := os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime()); err != nil {
 		return errors.Errorf("setting directory times for %s: %w", dst, err)
+	}
+
+	return nil
+}
+
+// CopyFile efficiently copies a single file with zero‑copy, buffered fallback,
+// context cancellation cleanup, and metadata preservation.
+
+func RenameDir(ctx context.Context, src, dst string) error {
+	// walk the directory and rename each file
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		srcPath := filepath.Join(src, e.Name())
+		dstPath := filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := RenameDir(ctx, srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.Rename(srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RenameDirFast(ctx context.Context, src string, dest string) error {
+
+	// if dest exists, move it to a temporary location
+	if _, err := os.Stat(dest); err == nil {
+		// move the directory to a temporary location
+		tempDir, err := os.MkdirTemp("", "ec1-tmp-trash-")
+		if err != nil {
+			return err
+		}
+		defer func() {
+			go os.RemoveAll(tempDir)
+		}()
+
+		// move the directory to the temporary location
+		if err := os.Rename(dest, filepath.Join(tempDir, filepath.Base(dest))); err != nil {
+			return err
+		}
+	}
+
+	// rename the directory
+	if err := os.Rename(src, dest); err != nil {
+		return err
 	}
 
 	return nil

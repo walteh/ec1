@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -130,7 +131,14 @@ func main() {
 		for _, file := range files {
 			log.Printf("File: %s", file.Name())
 		}
-		if err := syscall.Exec(realInitPath, os.Args[1:], os.Environ()); err != nil {
+
+		outArgs := os.Args[1:]
+		if strings.TrimSpace(strings.Join(outArgs, " ")) == "" {
+			outArgs = []string{" "}
+		}
+
+		log.Printf("Executing: %s %s", realInitPath, strings.Join(outArgs, " "))
+		if err := syscall.Exec(realInitPath, outArgs, os.Environ()); err != nil {
 			log.Fatalf("Failed to exec original init: %v", err)
 		}
 	} else {

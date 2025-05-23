@@ -24,7 +24,7 @@ type VMIProvider interface {
 
 type DownloadableVMIProvider interface {
 	Downloads() map[string]string
-	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.ReadCloser, error)
+	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error)
 }
 
 type RootFSProvider interface {
