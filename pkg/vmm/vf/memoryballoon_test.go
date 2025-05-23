@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	slogctx "github.com/veqryn/slog-context"
+
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/images/coreos"
 	"github.com/walteh/ec1/pkg/images/puipui"
@@ -29,21 +31,22 @@ import (
 func setupVM(t *testing.T, ctx context.Context, memory strongunits.MiB, provider vmm.VMIProvider) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
 
+	ctx = slogctx.WithGroup(ctx, "test-vm-setup")
+
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 
 	rvm, err := vmm.RunVirtualMachine(ctx, hv, provider, 2, memory.ToBytes())
 	require.NoError(t, err)
 
 	go func() {
-		t.Logf("vm running,waiting for vm to stop")
+		slog.DebugContext(ctx, "vm running, waiting for vm to stop")
 		err := rvm.WaitOnVmStopped()
 		assert.NoError(t, err)
 	}()
 
 	t.Cleanup(func() {
-		t.Logf("vm stopped")
+		slog.DebugContext(ctx, "vm stopped")
 		catConsoleFile(t, ctx, rvm.VM())
-
 		rvm.VM().VZ().Stop()
 	})
 

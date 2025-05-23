@@ -22,11 +22,6 @@ for arg in "$@"; do
 	fi
 done
 
-if [ "$use_gow" == "1" ]; then
-	cd "$my_absolute_dir"
-	exec go run ./cmd/gow "${filtered_args[@]}"
-fi
-
 function safe_go_path() {
 	local reset=0
 	if [[ "$PATH" = *"$my_absolute_dir"* ]]; then
@@ -50,6 +45,11 @@ function safe_go() {
 	# carry the exit code
 	return "$?"
 }
+
+if [ "$use_gow" == "1" ]; then
+	cd "$my_absolute_dir"
+	safe_go tool gow "${filtered_args[@]}"
+fi
 
 function truncate_logs() {
 	# Default to 1000 lines if not specified
@@ -134,6 +134,7 @@ if [ "${1:-}" == "test" ]; then
 	debug=0
 	is_dap=0
 	output_file=""
+	use_gow=0
 	gcflags_arg=""
 
 	# Handle each argument
@@ -155,6 +156,8 @@ if [ "${1:-}" == "test" ]; then
 			next_is_build_arg_key=""
 		elif [ "$arg" = "-function-coverage" ]; then
 			cc=1
+		elif [ "$arg" = "-gow" ]; then
+			use_gow=1
 		elif [ "$arg" = "-force" ]; then
 			ff=1
 		elif [ "$arg" = "-codesign" ]; then
@@ -241,7 +244,7 @@ if [ "${1:-}" == "test" ]; then
 	fmt_icon="hivis"
 
 	if [[ "$codesign" == "1" ]]; then
-		extra_args+="-exec='go run $my_absolute_dir/cmd/codesign run-after-signing' "
+		extra_args+="-exec='go tool github.com/walteh/ec1/tools/cmd/codesign run-after-signing' "
 	fi
 
 	if [[ "$is_dap" == "1" ]]; then
@@ -274,7 +277,7 @@ if [ "${1:-}" == "test" ]; then
 			raw_args+="${real_go_binary} test -c -o $tmpdir -gcflags=\"all=-N -l\" $extra_args ${real_args[*]} $module"
 			raw_args+=" && [ -f \"$tmpdir/$file_name.test\" ] "
 			if [[ "$codesign" == "1" ]]; then
-				raw_args+=" && ${real_go_binary} run $my_absolute_dir/cmd/codesign just-sign $tmpdir/$file_name.test "
+				raw_args+=" && ${real_go_binary} tool github.com/walteh/ec1/tools/cmd/codesign just-sign $tmpdir/$file_name.test "
 			fi
 			raw_args+=" && dlv exec  --listen=:2347 --api-version=2 --continue=false $tmpdir/$file_name.test"
 		done

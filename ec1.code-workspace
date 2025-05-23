@@ -85,7 +85,7 @@
 		"gopls": {
 			"formatting.local": "github.com/walteh/ec1"
 		},
-		"go.formatFlags": ["retab"],
+		"go.formatFlags": ["retab", "gow"],
 		"go.formatTool": "custom",
 		"go.alternateTools": {
 			"go": "${workspaceFolder}/go",

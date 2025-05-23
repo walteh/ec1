@@ -6,12 +6,14 @@ go 1.24.3
 // - google.golang.org/grpc ./stats/opentelemetry
 exclude google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a
 
-replace git.wow.st/gmp/nswrap => ../../../../git.wow.st/gmp/nswrap
+tool (
+	github.com/walteh/ec1/tools/cmd/codesign
+	github.com/walteh/ec1/tools/cmd/gow
+)
 
 tool (
 	cmd/test2json
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
-	git.wow.st/gmp/nswrap
 	github.com/apple/pkl-go/cmd/pkl-gen-go
 	github.com/atombender/go-jsonschema
 	github.com/bufbuild/buf/cmd/buf
@@ -65,7 +67,6 @@ require (
 	connectrpc.com/connect v1.18.1 // indirect
 	connectrpc.com/otelconnect v0.7.2 // indirect
 	dario.cat/mergo v1.0.2 // indirect
-	git.wow.st/gmp/nswrap v0.0.0-20211116231237-c2113215e9a6 // indirect
 	github.com/42wim/httpsig v1.2.2 // indirect
 	github.com/4meepo/tagalign v1.4.2 // indirect
 	github.com/Abirdcfly/dupword v0.1.3 // indirect
@@ -106,7 +107,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
-	github.com/a8m/envsubst v1.2.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alecthomas/chroma/v2 v2.16.0 // indirect
