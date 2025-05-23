@@ -24,7 +24,7 @@ func NewExecHeader(filename string) initramfs.Header {
 		Filename:     filename,
 		FilenameSize: uint32(len(filename) + 1), // add 1 for the null terminator
 		// executable
-		Mode:  initramfs.Mode_FileTypeMask | initramfs.GroupExecute | initramfs.UserExecute | initramfs.OtherExecute,
+		Mode:  initramfs.Mode_File | initramfs.GroupExecute | initramfs.UserExecute | initramfs.OtherExecute,
 		Mtime: time.Now(),
 		// Uid:      uint32(os.Getuid()),
 		// Gid:      uint32(os.Getgid()),
@@ -1234,26 +1234,26 @@ func FastInjectFileToCpioInsane(ctx context.Context, pipe io.Reader, header init
 // StreamInjectBlazingFast - Optimized for 100MB+ files using Go's built-in optimizations
 func StreamInjectBlazingFast(ctx context.Context, src io.Reader, hdr initramfs.Header, data []byte) io.ReadCloser {
 	pr, pw := io.Pipe()
-	
+
 	go func() {
 		defer pw.Close()
-		
+
 		// Read everything for optimal processing of large files
 		allData, err := io.ReadAll(src)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
 		}
-		
+
 		// Process using blazing fast approach
 		result := processBlazingFast(allData, hdr, data)
-		
+
 		_, err = pw.Write(result)
 		if err != nil {
 			pw.CloseWithError(err)
 		}
 	}()
-	
+
 	return pr
 }
 
@@ -1262,51 +1262,51 @@ func processBlazingFast(cpioData []byte, hdr initramfs.Header, injectData []byte
 	if len(cpioData) == 0 {
 		return cpioData
 	}
-	
+
 	// Use Go's highly optimized bytes.Index for pattern matching
 	targetPattern := hdr.Filename + "\x00"
 	trailerPattern := "TRAILER!!!"
-	
+
 	// Find patterns using Go's built-in optimizations (which use SIMD on supported CPUs)
 	targetPos := bytes.Index(cpioData, []byte(targetPattern))
 	trailerPos := bytes.LastIndex(cpioData, []byte(trailerPattern))
-	
+
 	if trailerPos == -1 {
 		return cpioData
 	}
-	
+
 	// Replace target filename efficiently
 	if targetPos != -1 {
 		cpioData[targetPos+len(hdr.Filename)-1] = 'z'
 	}
-	
+
 	// Pre-build injection data once
 	hdr.DataSize = uint32(len(injectData))
 	hdr.Inode = math.MaxUint32
-	
+
 	// Calculate exact sizes to avoid resizing
 	headerNameSize := 110 + int(hdr.FilenameSize)
 	pad1 := (4 - (headerNameSize % 4)) % 4
 	pad2 := (4 - (len(injectData) % 4)) % 4
 	injectionSize := headerNameSize + pad1 + len(injectData) + pad2
-	
+
 	// Single allocation for output
 	trailerHeaderPos := trailerPos - 110
 	totalSize := len(cpioData) + injectionSize
 	output := make([]byte, totalSize)
-	
+
 	// Efficient copying in three chunks
 	pos := copy(output, cpioData[:trailerHeaderPos])
-	
+
 	// Write injection data directly
 	pos += writeHeaderQuick(output[pos:], hdr)
 	pos += writePadding(output[pos:], pad1)
 	pos += copy(output[pos:], injectData)
 	pos += writePadding(output[pos:], pad2)
-	
+
 	// Copy remainder
 	copy(output[pos:], cpioData[trailerHeaderPos:])
-	
+
 	return output
 }
 
@@ -1327,14 +1327,14 @@ func writePadding(buf []byte, count int) int {
 
 // FastInjectFileToCpioBlazingFast - Optimized for 100MB+ files
 func FastInjectFileToCpioBlazingFast(ctx context.Context, pipe io.Reader, header initramfs.Header, data []byte) (io.ReadCloser, error) {
-	// Read all data for optimal large file processing  
+	// Read all data for optimal large file processing
 	cpioData, err := io.ReadAll(pipe)
 	if err != nil {
 		return nil, errors.Errorf("reading CPIO data: %w", err)
 	}
-	
+
 	// Process using blazing fast approach
 	result := processBlazingFast(cpioData, header, data)
-	
+
 	return io.NopCloser(bytes.NewReader(result)), nil
 }

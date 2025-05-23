@@ -80,9 +80,10 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
-			slog.InfoContext(ctx, "fastReader done")
+			extraArgs += " init=/init"
 
 			slog.InfoContext(ctx, "writing initramfs")
+
 			initrdSize, err := osx.WriteFileFromReader(ctx, initramfsPath, fastReader, 0644)
 			if err != nil {
 				return nil, nil, errors.Errorf("creating initramfs file: %w", err)
@@ -152,7 +153,9 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 			kernelReader.Close()
 
 			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-			cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0  init=/init" + extraArgs
+			cmdLine := strings.TrimSpace(linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs)
+
+			entries = append(entries, slog.Group("cmdline", "cmdline", cmdLine))
 
 			slog.LogAttrs(ctx, slog.LevelInfo, "linux boot loader ready", entries...)
 
@@ -210,16 +213,6 @@ func cacheKeyFromMap(m map[string]string, vmi VMIProvider) string {
 	keys = append(keys, reflect.TypeOf(vmi).String())
 	dat := sha256.Sum256([]byte(strings.Join(keys, "-")))
 	return hex.EncodeToString(dat[:])
-}
-
-func osCreationFunc(path string) (io.WriteCloser, error) {
-	return os.Create(path)
-}
-
-func osDirCreationFunc(prefix string) func(path string) (io.WriteCloser, error) {
-	return func(path string) (io.WriteCloser, error) {
-		return os.Create(filepath.Join(prefix, path))
-	}
 }
 
 func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
