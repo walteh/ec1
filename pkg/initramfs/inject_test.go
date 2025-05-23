@@ -279,3 +279,190 @@ func replaceLastLetterWithZ(data string) string {
 	}
 	return data[:len(data)-1] + string(initramfs.Z)
 }
+
+// TestMultipleFileInjection tests that chaining multiple StreamInjectHyper calls works correctly
+func TestMultipleFileInjection(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a simple initial CPIO archive
+	buf := bytes.NewBuffer(nil)
+	w := oinitramfs.NewWriter(buf)
+
+	// Add a simple existing file
+	existingHeader := oinitramfs.Header{
+		Filename:     "existing.txt",
+		FilenameSize: uint32(len("existing.txt") + 1),
+		Mode:         oinitramfs.Mode_File,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+		DataSize:     uint32(len("existing content")),
+	}
+	require.NoError(t, w.WriteHeader(&existingHeader))
+	_, err := w.Write([]byte("existing content"))
+	require.NoError(t, err)
+
+	// Write trailer
+	require.NoError(t, w.WriteTrailer())
+	require.NoError(t, w.Close())
+
+	initialCPIO := buf.Bytes()
+
+	// Test injecting multiple files using chained StreamInjectHyper calls
+	
+	// File 1: blacklist.conf
+	blacklistHeader := oinitramfs.Header{
+		Filename:     "etc/modprobe.d/blacklist.conf",
+		FilenameSize: uint32(len("etc/modprobe.d/blacklist.conf") + 1),
+		Mode:         oinitramfs.Mode_File,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+	}
+	blacklistContent := []byte("blacklist floppy\nblacklist pcspkr\n")
+
+	// File 2: early.conf
+	earlyHeader := oinitramfs.Header{
+		Filename:     "etc/modprobe.d/early.conf",
+		FilenameSize: uint32(len("etc/modprobe.d/early.conf") + 1),
+		Mode:         oinitramfs.Mode_File,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+	}
+	earlyContent := []byte("options scsi_mod scan=manual\n")
+
+	// File 3: vsock script
+	vsockHeader := oinitramfs.Header{
+		Filename:     "usr/bin/vsock-early",
+		FilenameSize: uint32(len("usr/bin/vsock-early") + 1),
+		Mode:         oinitramfs.Mode_File | 0755,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+	}
+	vsockContent := []byte("#!/bin/sh\nmodprobe vsock\n")
+
+	// Chain the injections
+	stage1Reader := initramfs.StreamInjectHyper(ctx, bytes.NewReader(initialCPIO), blacklistHeader, blacklistContent)
+	stage2Reader := initramfs.StreamInjectHyper(ctx, stage1Reader, earlyHeader, earlyContent)
+	stage3Reader := initramfs.StreamInjectHyper(ctx, stage2Reader, vsockHeader, vsockContent)
+
+	// Read the final result
+	finalCPIO, err := io.ReadAll(stage3Reader)
+	require.NoError(t, err)
+
+	// Parse the final CPIO to verify all files are present
+	r := oinitramfs.NewReader(bytes.NewReader(finalCPIO))
+	foundFiles := make(map[string][]byte)
+
+	for {
+		rec, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		if rec.Trailer() {
+			break
+		}
+
+		data := make([]byte, rec.DataSize)
+		if rec.DataSize > 0 {
+			_, err = io.ReadFull(r, data)
+			require.NoError(t, err)
+		}
+
+		foundFiles[rec.Filename] = data
+	}
+
+	// Verify all files are present and correct
+	assert.Contains(t, foundFiles, "existing.txt")
+	assert.Equal(t, []byte("existing content"), foundFiles["existing.txt"])
+
+	assert.Contains(t, foundFiles, "etc/modprobe.d/blacklist.conf")
+	assert.Equal(t, blacklistContent, foundFiles["etc/modprobe.d/blacklist.conf"])
+
+	assert.Contains(t, foundFiles, "etc/modprobe.d/early.conf") 
+	assert.Equal(t, earlyContent, foundFiles["etc/modprobe.d/early.conf"])
+
+	assert.Contains(t, foundFiles, "usr/bin/vsock-early")
+	assert.Equal(t, vsockContent, foundFiles["usr/bin/vsock-early"])
+
+	t.Logf("Successfully injected %d files", len(foundFiles))
+	for filename := range foundFiles {
+		t.Logf("Found file: %s", filename)
+	}
+}
+
+// TestSingleFileInjection tests that single file injection works (baseline)
+func TestSingleFileInjection(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a simple initial CPIO archive
+	buf := bytes.NewBuffer(nil)
+	w := oinitramfs.NewWriter(buf)
+
+	// Add a simple existing file
+	existingHeader := oinitramfs.Header{
+		Filename:     "existing.txt",
+		FilenameSize: uint32(len("existing.txt") + 1),
+		Mode:         oinitramfs.Mode_File,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+		DataSize:     uint32(len("existing content")),
+	}
+	require.NoError(t, w.WriteHeader(&existingHeader))
+	_, err := w.Write([]byte("existing content"))
+	require.NoError(t, err)
+
+	// Write trailer
+	require.NoError(t, w.WriteTrailer())
+	require.NoError(t, w.Close())
+
+	initialCPIO := buf.Bytes()
+
+	// Test injecting a single file
+	header := oinitramfs.Header{
+		Filename:     "test.conf",
+		FilenameSize: uint32(len("test.conf") + 1),
+		Mode:         oinitramfs.Mode_File,
+		NumLinks:     1,
+		Magic:        oinitramfs.Magic_070701,
+	}
+	content := []byte("test content")
+
+	// Inject the file
+	result := initramfs.StreamInjectHyper(ctx, bytes.NewReader(initialCPIO), header, content)
+
+	// Read the result
+	finalCPIO, err := io.ReadAll(result)
+	require.NoError(t, err)
+
+	// Parse the final CPIO to verify files are present
+	r := oinitramfs.NewReader(bytes.NewReader(finalCPIO))
+	foundFiles := make(map[string][]byte)
+
+	for {
+		rec, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		if rec.Trailer() {
+			break
+		}
+
+		data := make([]byte, rec.DataSize)
+		if rec.DataSize > 0 {
+			_, err = io.ReadFull(r, data)
+			require.NoError(t, err)
+		}
+
+		foundFiles[rec.Filename] = data
+	}
+
+	// Verify both files are present
+	assert.Contains(t, foundFiles, "existing.txt")
+	assert.Equal(t, []byte("existing content"), foundFiles["existing.txt"])
+
+	assert.Contains(t, foundFiles, "test.conf")
+	assert.Equal(t, content, foundFiles["test.conf"])
+
+	t.Logf("Successfully injected single file into CPIO with %d total files", len(foundFiles))
+}

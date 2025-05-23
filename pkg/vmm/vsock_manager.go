@@ -13,9 +13,9 @@ type VSockManagerState string
 
 const (
 	// DefaultRetryInterval is the default time to wait between retry attempts
-	DefaultRetryInterval = 100 * time.Millisecond
+	DefaultRetryInterval = 5 * time.Millisecond  // Much more aggressive: 5ms instead of 100ms
 	// DefaultMaxRetries is the default maximum number of retry attempts
-	DefaultMaxRetries = 1000 // 100 seconds with default interval
+	DefaultMaxRetries = 4000 // Keep total time reasonable: 20 seconds max
 
 	StateConnected    VSockManagerState = "connected"
 	StateDisconnected VSockManagerState = "disconnected"

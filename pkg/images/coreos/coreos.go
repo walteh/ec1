@@ -140,7 +140,10 @@ echo "Hello, world!"
 }
 
 func (prov *CoreOSProvider) KernelArgs() (args string) {
-	return "coreos.live.rootfs_url=/dev/nvme0n1p1"
+	// EXPERIMENTAL: For maximum boot speed, we could use initramfs-only mode
+	// return "rdinit=/init rd.driver.blacklist=floppy,pcspkr modules_load=vsock,vmw_vsock_virtio_transport"
+
+	return "coreos.live.rootfs_url=/dev/nvme0n1p1 rd.driver.blacklist=floppy,pcspkr modules_load=vsock,vmw_vsock_virtio_transport"
 }
 
 func (prov *CoreOSProvider) BootProvisioners() []vmm.BootProvisioner {
