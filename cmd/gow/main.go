@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // GowConfig holds configuration for the Go wrapper
@@ -35,7 +35,7 @@ func NewGowConfig() *GowConfig {
 			"ld: warning: ignoring duplicate libraries: '-lobjc'",
 		},
 		StdoutsToSuppress: []string{
-			"invalid string just to have something heree",
+			"invalid string just to have something here",
 		},
 	}
 }
@@ -50,7 +50,7 @@ func (cfg *GowConfig) findSafeGo() (string, error) {
 	path := os.Getenv("PATH")
 	pathDirs := strings.Split(path, ":")
 
-	// Filter out workspace root from PATH
+	// Filter out workspace root from PATH to avoid calling ourselves
 	var filteredDirs []string
 	for _, dir := range pathDirs {
 		if dir != cfg.WorkspaceRoot {
@@ -70,15 +70,15 @@ func (cfg *GowConfig) findSafeGo() (string, error) {
 	return "", fmt.Errorf("could not find go executable")
 }
 
-// runSafeGo executes the real go command with given arguments
-func (cfg *GowConfig) runSafeGo(ctx context.Context, args ...string) error {
+// execSafeGo executes the real go command with given arguments using exec.Command
+func (cfg *GowConfig) execSafeGo(ctx context.Context, args ...string) error {
 	goPath, err := cfg.findSafeGo()
 	if err != nil {
 		return err
 	}
 
 	if cfg.Verbose {
-		fmt.Printf("running go command: %s %v\n", goPath, args)
+		fmt.Printf("executing go command: %s %v\n", goPath, args)
 	}
 
 	cmd := exec.CommandContext(ctx, goPath, args...)
@@ -89,33 +89,58 @@ func (cfg *GowConfig) runSafeGo(ctx context.Context, args ...string) error {
 	return cmd.Run()
 }
 
-// hasGotestsum checks if gotestsum is available
-func (cfg *GowConfig) hasGotestsum() bool {
-	_, err := exec.LookPath("gotestsum")
-	return err == nil
+// replaceProcess replaces the current process with the go command (for true pass-through)
+func (cfg *GowConfig) replaceProcess(args ...string) error {
+	goPath, err := cfg.findSafeGo()
+	if err != nil {
+		return err
+	}
+
+	if cfg.Verbose {
+		fmt.Printf("replacing process with go command: %s %v\n", goPath, args)
+	}
+
+	// Use syscall.Exec to replace the current process completely
+	allArgs := append([]string{goPath}, args...)
+	return syscall.Exec(goPath, allArgs, os.Environ())
 }
 
-// runWithGotestsum runs tests using gotestsum
+// hasGotestsum checks if gotestsum is available
+func (cfg *GowConfig) hasGotestsum() bool {
+	// Check if we can run gotestsum via go tool
+	goPath, err := cfg.findSafeGo()
+	if err != nil {
+		return false
+	}
+
+	cmd := exec.Command(goPath, "tool", "gotest.tools/gotestsum", "--version")
+	cmd.Dir = cfg.WorkspaceRoot
+	return cmd.Run() == nil
+}
+
+// runWithGotestsum runs tests using gotestsum from project tools
 func (cfg *GowConfig) runWithGotestsum(ctx context.Context, goArgs []string) error {
 	goPath, err := cfg.findSafeGo()
 	if err != nil {
 		return err
 	}
 
-	// Build gotestsum command
-	goTestCmd := strings.Join(append([]string{goPath}, goArgs...), " ")
+	// Build gotestsum command - remove "test" from goArgs since gotestsum adds it
+	testArgs := goArgs[1:] // Skip the "test" command
 
 	args := []string{
+		"tool", "gotest.tools/gotestsum",
 		"--format", "pkgname",
 		"--format-icons", "hivis",
-		"--raw-command", "--",
-		"bash", "-c", goTestCmd,
+		"--", // Separator for go test flags
 	}
+	args = append(args, testArgs...)
 
-	cmd := exec.CommandContext(ctx, "gotestsum", args...)
+	cmd := exec.CommandContext(ctx, goPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	cmd.Dir = cfg.WorkspaceRoot
 
 	return cmd.Run()
 }
@@ -124,27 +149,36 @@ func (cfg *GowConfig) runWithGotestsum(ctx context.Context, goArgs []string) err
 func (cfg *GowConfig) handleTest(args []string) error {
 	var functionCoverage bool
 	var force bool
-	var verbose bool
-	var runPattern string
 	var targetDir string
 
-	// Simple flag parsing for test command
-	testFlags := flag.NewFlagSet("test", flag.ExitOnError)
-	testFlags.BoolVar(&functionCoverage, "function-coverage", false, "enable function coverage")
-	testFlags.BoolVar(&force, "force", false, "force re-running tests")
-	testFlags.BoolVar(&verbose, "v", false, "verbose output")
-	testFlags.StringVar(&runPattern, "run", "", "run only tests matching pattern")
-	testFlags.StringVar(&targetDir, "target", ".", "target directory")
-
-	// Parse test-specific flags
-	if len(args) > 1 {
-		testFlags.Parse(args[1:])
-	}
-
-	// Build go test arguments
+	// Parse only gow-specific flags, pass everything else through
 	var goArgs []string
 	goArgs = append(goArgs, "test")
 
+	// Skip "test" and process remaining args
+	i := 1
+	for i < len(args) {
+		arg := args[i]
+		
+		switch arg {
+		case "-function-coverage":
+			functionCoverage = true
+		case "-force":
+			force = true
+		case "-target":
+			// Handle -target with next argument
+			if i+1 < len(args) {
+				targetDir = args[i+1]
+				i++ // Skip the target value
+			}
+		default:
+			// Pass through all other arguments to go test
+			goArgs = append(goArgs, arg)
+		}
+		i++
+	}
+
+	// Add gow-specific functionality
 	if functionCoverage {
 		coverDir, err := os.MkdirTemp("", "gow-coverage-*")
 		if err != nil {
@@ -160,7 +194,13 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			fmt.Println("Function Coverage")
 			fmt.Println("------------------------------------------------")
 
-			coverCmd := exec.Command(cfg.GoExecutable, "tool", "cover", "-func="+coverFile)
+			goPath, err := cfg.findSafeGo()
+			if err != nil {
+				fmt.Printf("Error finding go executable: %v\n", err)
+				return
+			}
+
+			coverCmd := exec.Command(goPath, "tool", "cover", "-func="+coverFile)
 			coverCmd.Stdout = os.Stdout
 			coverCmd.Stderr = os.Stderr
 			coverCmd.Run()
@@ -173,22 +213,27 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		goArgs = append(goArgs, "-count=1")
 	}
 
-	if verbose {
-		goArgs = append(goArgs, "-v")
+	// Add standard flags if not already present
+	hasVet := false
+	hasCover := false
+	for _, arg := range goArgs {
+		if strings.Contains(arg, "-vet") {
+			hasVet = true
+		}
+		if strings.Contains(arg, "-cover") {
+			hasCover = true
+		}
+	}
+	
+	if !hasVet {
+		goArgs = append(goArgs, "-vet=all")
+	}
+	if !hasCover {
+		goArgs = append(goArgs, "-cover")
 	}
 
-	if runPattern != "" {
-		goArgs = append(goArgs, "-run="+runPattern)
-	}
-
-	// Add standard flags
-	goArgs = append(goArgs, "-vet=all", "-cover")
-
-	// Add remaining args as test targets
-	remainingArgs := testFlags.Args()
-	if len(remainingArgs) > 0 {
-		goArgs = append(goArgs, remainingArgs...)
-	} else if targetDir != "" {
+	// Add target directory if specified and no other targets present
+	if targetDir != "" {
 		goArgs = append(goArgs, targetDir)
 	}
 
@@ -205,7 +250,7 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	if cfg.Verbose {
 		fmt.Printf("🔧 Using raw go test (consider installing gotestsum for better output)\n")
 	}
-	return cfg.runSafeGo(ctx, goArgs...)
+	return cfg.execSafeGo(ctx, goArgs...)
 }
 
 // handleMod processes mod commands with embedded task functionality
@@ -229,52 +274,21 @@ func (cfg *GowConfig) runEmbeddedModTidy() error {
 	ctx := context.Background()
 
 	if cfg.Verbose {
-		fmt.Println("🧹 Running embedded mod tidy across workspace modules...")
+		fmt.Println("🧹 Running optimized mod tidy via task system...")
 	}
 
-	// Ensure we have a valid go executable
-	if _, err := cfg.findSafeGo(); err != nil {
+	// Use the project's task tool to run go-mod-tidy
+	goPath, err := cfg.findSafeGo()
+	if err != nil {
 		return fmt.Errorf("could not find go executable: %w", err)
 	}
 
-	// Read go.work to find all modules
-	workspacePath := filepath.Join(cfg.WorkspaceRoot, "go.work")
-	workspaceContent, err := os.ReadFile(workspacePath)
-	if err != nil {
-		if cfg.Verbose {
-			fmt.Printf("📁 No go.work found, running tidy on current directory\n")
-		}
-		// If no workspace, just run in current directory
-		return cfg.runSafeGo(ctx, "mod", "tidy", "-e")
-	}
+	cmd := exec.CommandContext(ctx, goPath, "tool", "github.com/go-task/task/v3/cmd/task", "go-mod-tidy")
+	cmd.Dir = cfg.WorkspaceRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	// Parse modules from go.work
-	modules := parseWorkspaceModules(string(workspaceContent))
-	if cfg.Verbose {
-		fmt.Printf("📦 Found %d modules in workspace\n", len(modules))
-	}
-
-	// Run go mod tidy on each module
-	for _, module := range modules {
-		moduleDir := filepath.Join(cfg.WorkspaceRoot, module)
-		if cfg.Verbose {
-			fmt.Printf("  🔧 Tidying %s\n", module)
-		}
-
-		cmd := exec.CommandContext(ctx, cfg.GoExecutable, "mod", "tidy", "-e")
-		cmd.Dir = moduleDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to tidy module %s: %w", module, err)
-		}
-	}
-
-	if cfg.Verbose {
-		fmt.Println("✅ Mod tidy completed successfully!")
-	}
-	return nil
+	return cmd.Run()
 }
 
 // runEmbeddedModUpgrade runs go-mod-upgrade and then tidy
@@ -282,21 +296,21 @@ func (cfg *GowConfig) runEmbeddedModUpgrade() error {
 	ctx := context.Background()
 
 	if cfg.Verbose {
-		fmt.Println("⬆️  Running embedded mod upgrade...")
+		fmt.Println("⬆️  Running optimized mod upgrade via task system...")
 	}
 
-	// Ensure we have a valid go executable
-	if _, err := cfg.findSafeGo(); err != nil {
+	// Use the project's task tool to run go-mod-upgrade
+	goPath, err := cfg.findSafeGo()
+	if err != nil {
 		return fmt.Errorf("could not find go executable: %w", err)
 	}
 
-	// First run go-mod-upgrade tool
-	if err := cfg.runSafeGo(ctx, "tool", "go-mod-upgrade", "--force"); err != nil {
-		return fmt.Errorf("go-mod-upgrade failed: %w", err)
-	}
+	cmd := exec.CommandContext(ctx, goPath, "tool", "github.com/go-task/task/v3/cmd/task", "go-mod-upgrade")
+	cmd.Dir = cfg.WorkspaceRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	// Then run tidy
-	return cfg.runEmbeddedModTidy()
+	return cmd.Run()
 }
 
 // parseWorkspaceModules extracts module paths from go.work content
@@ -318,8 +332,12 @@ func parseWorkspaceModules(content string) []string {
 		}
 
 		if inUseBlock && line != "" && !strings.HasPrefix(line, "//") {
+			// Handle inline comments by splitting on //
+			parts := strings.Split(line, "//")
+			module := strings.TrimSpace(parts[0])
+
 			// Clean up the module path (remove quotes, whitespace, etc.)
-			module := strings.Trim(line, "\t \"")
+			module = strings.Trim(module, "\t \"")
 			if module != "" {
 				modules = append(modules, module)
 			}
@@ -348,7 +366,7 @@ func (cfg *GowConfig) handleRetab() error {
 		"--formatter=go fmt -",
 	}
 
-	return cfg.runSafeGo(ctx, retabArgs...)
+	return cfg.execSafeGo(ctx, retabArgs...)
 }
 
 // handleTool processes tool commands
@@ -362,7 +380,7 @@ func (cfg *GowConfig) handleTool(args []string) error {
 
 	// Run the tool command
 	toolArgs := append([]string{"tool"}, args[1:]...)
-	return cfg.runSafeGo(ctx, toolArgs...)
+	return cfg.execSafeGo(ctx, toolArgs...)
 }
 
 // handleDap processes dap commands
@@ -388,18 +406,20 @@ func fileExists(filename string) bool {
 
 // printUsage shows usage information
 func printUsage() {
-	fmt.Println("gow - Go wrapper with enhanced functionality")
+	fmt.Println("gow - High-performance drop-in replacement for go command")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  gow test [flags] [target]    Run tests with enhanced features")
-	fmt.Println("  gow mod tidy                 Run mod tidy via task")
-	fmt.Println("  gow mod upgrade              Run mod upgrade via task")
-	fmt.Println("  gow tool [args...]           Run go tool with error suppression")
+	fmt.Println("  gow [any-go-command]         True pass-through to go command")
+	fmt.Println()
+	fmt.Println("Enhanced commands:")
+	fmt.Println("  gow test [flags] [target]    Enhanced test runner with project gotestsum")
+	fmt.Println("  gow mod tidy                 Optimized mod tidy via project task system")
+	fmt.Println("  gow mod upgrade              Optimized mod upgrade via project task system")
+	fmt.Println("  gow tool [args...]           go tool with error suppression")
 	fmt.Println("  gow retab                    Format code with retab tool")
 	fmt.Println("  gow dap [args...]            Run delve in DAP mode")
-	fmt.Println("  gow [go-args...]             Pass through to go command")
 	fmt.Println()
-	fmt.Println("Test flags:")
+	fmt.Println("Test-specific flags:")
 	fmt.Println("  -function-coverage           Enable function coverage reporting")
 	fmt.Println("  -force                       Force re-running of tests")
 	fmt.Println("  -v                           Verbose output")
@@ -407,12 +427,14 @@ func printUsage() {
 	fmt.Println("  -target dir                  Target directory (default: .)")
 	fmt.Println()
 	fmt.Println("Global flags:")
-	fmt.Println("  -verbose                     Verbose output")
+	fmt.Println("  -verbose                     Verbose gow output")
+	fmt.Println()
+	fmt.Println("All other commands are passed through to the real go binary with zero overhead.")
+	fmt.Println("Enhanced commands use project tools (gotestsum, task) for optimal performance.")
 }
 
 func main() {
 	cfg := NewGowConfig()
-	ctx := context.Background()
 
 	args := os.Args[1:]
 
@@ -431,6 +453,7 @@ func main() {
 		return
 	}
 
+	// Handle special commands that need enhanced functionality
 	switch args[0] {
 	case "test":
 		if err := cfg.handleTest(args); err != nil {
@@ -439,9 +462,17 @@ func main() {
 		}
 
 	case "mod":
-		if err := cfg.handleMod(args); err != nil {
-			fmt.Fprintf(os.Stderr, "Error with mod command: %v\n", err)
-			os.Exit(1)
+		if len(args) > 1 && (args[1] == "tidy" || args[1] == "upgrade") {
+			if err := cfg.handleMod(args); err != nil {
+				fmt.Fprintf(os.Stderr, "Error with mod command: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// Regular mod commands - pass through
+			if err := cfg.replaceProcess(args...); err != nil {
+				fmt.Fprintf(os.Stderr, "Error running go: %v\n", err)
+				os.Exit(1)
+			}
 		}
 
 	case "retab":
@@ -462,12 +493,12 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "help", "-h", "--help":
+	case "gow-help", "--gow-help":
 		printUsage()
 
 	default:
-		// Default: pass through to go
-		if err := cfg.runSafeGo(ctx, args...); err != nil {
+		// Default: pass through to go command by replacing the process
+		if err := cfg.replaceProcess(args...); err != nil {
 			fmt.Fprintf(os.Stderr, "Error running go: %v\n", err)
 			os.Exit(1)
 		}

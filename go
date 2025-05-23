@@ -11,6 +11,22 @@ my_absolute_dir="$(dirname -- "$(realpath "${BASH_SOURCE[0]}")")"
 # touch "$my_absolute_dir/.logs/enter_with_call.log"
 # echo "ENTER WITH CALL: (cd $(pwd) && $0 $*)" >> "$my_absolute_dir/.logs/enter_with_call.log"
 
+# Check for -gow flag anywhere in arguments and redirect to gow implementation
+use_gow=0
+filtered_args=()
+for arg in "$@"; do
+	if [ "$arg" == "-gow" ]; then
+		use_gow=1
+	else
+		filtered_args+=("$arg")
+	fi
+done
+
+if [ "$use_gow" == "1" ]; then
+	cd "$my_absolute_dir"
+	exec go run ./cmd/gow "${filtered_args[@]}"
+fi
+
 function safe_go_path() {
 	local reset=0
 	if [[ "$PATH" = *"$my_absolute_dir"* ]]; then

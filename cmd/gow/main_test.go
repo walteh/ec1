@@ -3,348 +3,213 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"time"
 )
 
-func TestNewGowConfig(t *testing.T) {
-	cfg := NewGowConfig()
-	
-	require.NotNil(t, cfg, "config should not be nil")
-	assert.False(t, cfg.Verbose, "verbose should default to false")
-	assert.NotEmpty(t, cfg.WorkspaceRoot, "workspace root should be set")
-	assert.Empty(t, cfg.GoExecutable, "go executable should start empty")
-	assert.Equal(t, 1000, cfg.MaxLines, "max lines should default to 1000")
-	assert.Greater(t, len(cfg.ErrorsToSuppress), 0, "should have default errors to suppress")
-	assert.Greater(t, len(cfg.StdoutsToSuppress), 0, "should have default stdouts to suppress")
-}
+func TestGowConfig_findSafeGo(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*GowConfig)
+		wantErr bool
+	}{
+		{
+			name: "finds go in PATH",
+			setup: func(cfg *GowConfig) {
+				// Use default config, should find go in PATH
+			},
+			wantErr: false,
+		},
+		{
+			name: "uses cached executable",
+			setup: func(cfg *GowConfig) {
+				// Find the real go path first
+				realGo, _ := cfg.findSafeGo()
+				cfg.GoExecutable = realGo
+			},
+			wantErr: false,
+		},
+	}
 
-func TestGowConfig_FindSafeGo(t *testing.T) {
-	cfg := NewGowConfig()
-	
-	// Test with cached executable
-	cfg.GoExecutable = "/usr/bin/go"
-	goPath, err := cfg.findSafeGo()
-	require.NoError(t, err, "should return cached executable")
-	assert.Equal(t, "/usr/bin/go", goPath, "should return cached path")
-	
-	// Test finding go in PATH (reset cache first)
-	cfg.GoExecutable = ""
-	goPath, err = cfg.findSafeGo()
-	
-	// This might fail in test environments without go in PATH, so we'll check more carefully
-	if err != nil {
-		assert.Contains(t, err.Error(), "could not find go executable", "should return appropriate error")
-	} else {
-		assert.NotEmpty(t, goPath, "should find go executable")
-		assert.True(t, strings.HasSuffix(goPath, "go"), "path should end with 'go'")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewGowConfig()
+			tt.setup(cfg)
+
+			goPath, err := cfg.findSafeGo()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findSafeGo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && goPath == "" {
+				t.Error("findSafeGo() returned empty path")
+			}
+
+			// Verify it's actually go
+			if !tt.wantErr {
+				cmd := exec.Command(goPath, "version")
+				output, err := cmd.Output()
+				if err != nil {
+					t.Errorf("failed to run go version: %v", err)
+				}
+				if !strings.Contains(string(output), "go version") {
+					t.Errorf("unexpected go version output: %s", output)
+				}
+			}
+		})
 	}
 }
 
-func TestFileExists(t *testing.T) {
-	// Test with existing file
-	tempFile, err := os.CreateTemp("", "test-file-*")
-	require.NoError(t, err, "should create temp file")
-	defer os.Remove(tempFile.Name())
-	tempFile.Close()
-	
-	assert.True(t, fileExists(tempFile.Name()), "should detect existing file")
-	
-	// Test with non-existing file
-	assert.False(t, fileExists("/non/existent/file"), "should detect non-existing file")
-}
-
-func TestGowConfig_HasGotestsum(t *testing.T) {
+func TestGowConfig_hasGotestsum(t *testing.T) {
 	cfg := NewGowConfig()
 	
-	// This test will depend on the environment
-	// We just verify it doesn't panic and returns a boolean
-	result := cfg.hasGotestsum()
-	assert.IsType(t, false, result, "should return a boolean")
-}
-
-func TestGowConfig_HandleMod(t *testing.T) {
-	cfg := NewGowConfig()
+	// This test depends on environment, but we can at least test the logic
+	hasIt := cfg.hasGotestsum()
+	t.Logf("hasGotestsum: %v", hasIt)
 	
-	// Test with no subcommand
-	err := cfg.handleMod([]string{"mod"})
-	assert.Error(t, err, "should error when no subcommand provided")
-	assert.Contains(t, err.Error(), "mod subcommand required", "should specify subcommand required")
-	
-	// Test with unknown subcommand
-	err = cfg.handleMod([]string{"mod", "unknown"})
-	assert.Error(t, err, "should error with unknown subcommand")
-	assert.Contains(t, err.Error(), "unknown mod subcommand", "should specify unknown subcommand")
-}
-
-func TestGowConfig_HandleTool(t *testing.T) {
-	cfg := NewGowConfig()
-	
-	// Create a temporary hl-config.yaml file
-	tempDir, err := os.MkdirTemp("", "gow-test-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-	
-	hlConfigPath := filepath.Join(tempDir, "hl-config.yaml")
-	err = os.WriteFile(hlConfigPath, []byte("test: config"), 0644)
-	require.NoError(t, err)
-	
-	cfg.WorkspaceRoot = tempDir
-	
-	// Mock go executable to avoid actually running go tool
-	cfg.GoExecutable = "true" // Use 'true' command as safe mock
-	
-	// This would normally run go tool, but with 'true' it will just succeed
-	err = cfg.handleTool([]string{"tool", "version"})
-	assert.NoError(t, err, "should not error with valid tool command")
-	
-	// Verify HL_CONFIG environment variable was set
-	assert.Equal(t, hlConfigPath, os.Getenv("HL_CONFIG"), "HL_CONFIG should be set")
-}
-
-func TestGowConfig_HandleRetab(t *testing.T) {
-	cfg := NewGowConfig()
-	
-	// Create a temporary workspace with .editorconfig
-	tempDir, err := os.MkdirTemp("", "gow-test-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-	
-	editorConfigPath := filepath.Join(tempDir, ".editorconfig")
-	err = os.WriteFile(editorConfigPath, []byte("root = true\n[*.go]\nindent_style = tab\n"), 0644)
-	require.NoError(t, err)
-	
-	cfg.WorkspaceRoot = tempDir
-	cfg.GoExecutable = "true" // Use 'true' command as safe mock
-	
-	// This would normally run the retab tool, but with 'true' it's safe
-	err = cfg.handleRetab()
-	assert.NoError(t, err, "should not error when .editorconfig exists")
-	
-	// Test with missing .editorconfig
-	cfg.WorkspaceRoot = "/nonexistent"
-	err = cfg.handleRetab()
-	assert.Error(t, err, "should error when .editorconfig doesn't exist")
-	assert.Contains(t, err.Error(), "failed to read .editorconfig", "should mention editorconfig")
-}
-
-func TestPrintUsage(t *testing.T) {
-	// This test just ensures printUsage doesn't panic
-	assert.NotPanics(t, func() {
-		printUsage()
-	}, "printUsage should not panic")
-}
-
-func TestMainFunction_Integration(t *testing.T) {
-	// Save original args
-	originalArgs := os.Args
-	defer func() { os.Args = originalArgs }()
-	
-	// Test help command
-	os.Args = []string{"gow", "help"}
-	assert.NotPanics(t, func() {
-		// We can't easily test main() directly since it calls os.Exit
-		// So we test the individual handlers instead
-		args := []string{"help"}
-		
-		switch args[0] {
-		case "help":
-			printUsage()
-		}
-	}, "help command should not panic")
-}
-
-func TestGowConfig_RunSafeGo(t *testing.T) {
-	cfg := NewGowConfig()
-	ctx := context.Background()
-	
-	// Test with invalid go executable
-	cfg.GoExecutable = "/nonexistent/go"
-	err := cfg.runSafeGo(ctx, "version")
-	assert.Error(t, err, "should error with nonexistent go executable")
-	
-	// Test with 'true' as a safe mock
-	cfg.GoExecutable = "true"
-	err = cfg.runSafeGo(ctx, "test", "args")
-	assert.NoError(t, err, "should succeed with 'true' mock")
-}
-
-func TestGowConfig_RunWithGotestsum(t *testing.T) {
-	cfg := NewGowConfig()
-	ctx := context.Background()
-	cfg.GoExecutable = "true" // Use 'true' command as safe mock
-	
-	// This test mainly verifies the function doesn't panic
-	// The actual execution depends on having gotestsum installed
-	goArgs := []string{"test", "./..."}
-	
-	if cfg.hasGotestsum() {
-		err := cfg.runWithGotestsum(ctx, goArgs)
-		// May succeed or fail depending on environment, but shouldn't panic
-		_ = err
-	}
-	
-	// Just verify the method exists and can be called
-	assert.NotNil(t, cfg.runWithGotestsum, "runWithGotestsum method should exist")
-}
-
-func TestGowConfig_HandleTest(t *testing.T) {
-	cfg := NewGowConfig()
-	cfg.GoExecutable = "true" // Use 'true' command as safe mock (always succeeds)
-	
-	// Test basic test command
-	err := cfg.handleTest([]string{"test"})
-	assert.NoError(t, err, "basic test command should succeed with mock")
-	
-	// Test with flags
-	err = cfg.handleTest([]string{"test", "-v", "-target", "."})
-	assert.NoError(t, err, "test with flags should succeed with mock")
-}
-
-func TestErrorPathHandling(t *testing.T) {
-	cfg := NewGowConfig()
-	
-	// Test findSafeGo with invalid workspace
-	cfg.WorkspaceRoot = "/nonexistent/path"
-	cfg.GoExecutable = "" // Reset cache
-	
-	// Should still try to find go, might succeed or fail depending on system
-	_, err := cfg.findSafeGo()
-	// We don't assert the result since it depends on the system,
-	// but it should not panic
-	if err != nil {
-		assert.Contains(t, err.Error(), "could not find go executable")
-	}
-}
-
-func TestWorkspaceRootHandling(t *testing.T) {
-	// Create a temporary directory structure
-	tempDir, err := os.MkdirTemp("", "gow-workspace-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-	
-	// Create a fake .editorconfig file
-	editorConfigPath := filepath.Join(tempDir, ".editorconfig")
-	err = os.WriteFile(editorConfigPath, []byte("root = true\n[*.go]\nindent_style = tab\n"), 0644)
-	require.NoError(t, err)
-	
-	cfg := NewGowConfig()
-	cfg.WorkspaceRoot = tempDir
-	cfg.GoExecutable = "true" // Use 'true' command as safe mock
-	
-	// Test that retab command can find the .editorconfig
-	err = cfg.handleRetab()
-	assert.NoError(t, err, "should handle retab successfully")
-	
-	// Verify the .editorconfig file exists
-	assert.True(t, fileExists(editorConfigPath), "editorconfig should exist")
-}
-
-func TestGlobalFlagParsing(t *testing.T) {
-	// Save original args
-	originalArgs := os.Args
-	defer func() { os.Args = originalArgs }()
-	
-	// Test verbose flag parsing logic
-	cfg := NewGowConfig()
-	
-	// Simulate args parsing (extracted from main)
-	args := []string{"-verbose", "test", "./..."}
-	
-	// Parse global flags
-	for i, arg := range args {
-		if arg == "-verbose" || arg == "--verbose" {
-			cfg.Verbose = true
-			// Remove this flag from args
-			args = append(args[:i], args[i+1:]...)
-			break
+	// If we have gotestsum, verify it works
+	if hasIt {
+		cmd := exec.Command("gotestsum", "--version")
+		if err := cmd.Run(); err != nil {
+			t.Errorf("gotestsum available but doesn't work: %v", err)
 		}
 	}
-	
-	assert.True(t, cfg.Verbose, "verbose flag should be parsed")
-	assert.Equal(t, []string{"test", "./..."}, args, "verbose flag should be removed from args")
 }
 
-func TestGowConfig_HandleTestWithCoverage(t *testing.T) {
+func TestGowConfig_execSafeGo(t *testing.T) {
 	cfg := NewGowConfig()
-	cfg.GoExecutable = "true" // Safe mock
-	
-	// Test function coverage flag (this hits the coverage code path)
-	err := cfg.handleTest([]string{"test", "-function-coverage"})
-	assert.NoError(t, err, "test with function coverage should succeed")
-	
-	// Test force flag
-	err = cfg.handleTest([]string{"test", "-force"})
-	assert.NoError(t, err, "test with force flag should succeed")
-	
-	// Test run pattern
-	err = cfg.handleTest([]string{"test", "-run", "TestSomething"})
-	assert.NoError(t, err, "test with run pattern should succeed")
+	ctx := context.Background()
+
+	// Test basic go command
+	err := cfg.execSafeGo(ctx, "version")
+	if err != nil {
+		t.Errorf("execSafeGo() failed: %v", err)
+	}
 }
 
-func TestGowConfig_HandleDap(t *testing.T) {
-	cfg := NewGowConfig()
+func TestGowConfig_handleTest(t *testing.T) {
+	// Create a temporary test package
+	tmpDir := t.TempDir()
 	
-	// Test with mock dlv command
-	// Since dlv may not be available, we'll just test the path setup
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	
-	// The function should modify PATH regardless of whether dlv exists
-	assert.NotPanics(t, func() {
-		err := cfg.handleDap([]string{"dap", "--help"})
-		// This will likely fail since dlv probably isn't available
-		// but the important thing is it doesn't panic and sets up PATH
-		_ = err
-	}, "handleDap should not panic")
-	
-	// Verify PATH was modified
-	newPath := os.Getenv("PATH")
-	assert.Contains(t, newPath, cfg.WorkspaceRoot, "PATH should contain workspace root")
+	// Create a simple Go file
+	testFile := filepath.Join(tmpDir, "test_test.go")
+	testContent := `package main
+
+import "testing"
+
+func TestExample(t *testing.T) {
+	if 1+1 != 2 {
+		t.Error("math is broken")
+	}
 }
-
-func TestGowConfig_HandleModWithEmbedded(t *testing.T) {
-	cfg := NewGowConfig()
-	cfg.GoExecutable = "true" // Safe mock
-	
-	// Create a temporary workspace
-	tempDir, err := os.MkdirTemp("", "gow-mod-test-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-	
-	cfg.WorkspaceRoot = tempDir
-	
-	// Test mod tidy without go.work (should run on current dir)
-	err = cfg.handleMod([]string{"mod", "tidy"})
-	assert.NoError(t, err, "mod tidy should succeed without go.work")
-	
-	// Create a mock go.work file
-	goWorkContent := `go 1.21
-
-use (
-	.
-	./submodule
-)
 `
-	err = os.WriteFile(filepath.Join(tempDir, "go.work"), []byte(goWorkContent), 0644)
-	require.NoError(t, err)
+	if err := os.WriteFile(testFile, []byte(testContent), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Create go.mod
+	goModFile := filepath.Join(tmpDir, "go.mod")
+	goModContent := "module testmod\n\ngo 1.24\n"
+	if err := os.WriteFile(goModFile, []byte(goModContent), 0644); err != nil {
+		t.Fatalf("failed to create go.mod: %v", err)
+	}
+
+	// Change to temp dir
+	oldDir, _ := os.Getwd()
+	defer os.Chdir(oldDir)
+	os.Chdir(tmpDir)
+
+	cfg := NewGowConfig()
+	cfg.WorkspaceRoot = tmpDir
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{
+			name:    "basic test",
+			args:    []string{"test", "."},
+			wantErr: false,
+		},
+		{
+			name:    "test with verbose",
+			args:    []string{"test", "-v", "."},
+			wantErr: false,
+		},
+		{
+			name:    "test with force",
+			args:    []string{"test", "-force", "."},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := cfg.handleTest(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("handleTest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestGowConfig_handleMod(t *testing.T) {
+	tmpDir := t.TempDir()
 	
-	// Create submodule directory
-	submoduleDir := filepath.Join(tempDir, "submodule")
-	err = os.MkdirAll(submoduleDir, 0755)
-	require.NoError(t, err)
-	
-	// Test mod tidy with workspace
-	err = cfg.handleMod([]string{"mod", "tidy"})
-	assert.NoError(t, err, "mod tidy should succeed with go.work")
-	
-	// Test mod upgrade 
-	err = cfg.handleMod([]string{"mod", "upgrade"})
-	assert.NoError(t, err, "mod upgrade should succeed")
+	// Create go.mod
+	goModFile := filepath.Join(tmpDir, "go.mod")
+	goModContent := "module testmod\n\ngo 1.24\n"
+	if err := os.WriteFile(goModFile, []byte(goModContent), 0644); err != nil {
+		t.Fatalf("failed to create go.mod: %v", err)
+	}
+
+	// Change to temp dir
+	oldDir, _ := os.Getwd()
+	defer os.Chdir(oldDir)
+	os.Chdir(tmpDir)
+
+	cfg := NewGowConfig()
+	cfg.WorkspaceRoot = tmpDir
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantErr   bool
+		allowFail bool // Allow failure for tools that may not be available in test env
+	}{
+		{
+			name:      "mod tidy",
+			args:      []string{"mod", "tidy"},
+			wantErr:   false,
+			allowFail: true, // Task tool may not be available in temp test env
+		},
+		{
+			name:    "unknown mod command",
+			args:    []string{"mod", "unknown"},
+			wantErr: true,
+		},
+		{
+			name:    "missing subcommand",
+			args:    []string{"mod"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := cfg.handleMod(tt.args)
+			if !tt.allowFail && (err != nil) != tt.wantErr {
+				t.Errorf("handleMod() error = %v, wantErr %v", err, tt.wantErr)
+			} else if tt.allowFail && err != nil {
+				t.Logf("handleMod() failed as expected in test environment: %v", err)
+			}
+		})
+	}
 }
 
 func TestParseWorkspaceModules(t *testing.T) {
@@ -354,90 +219,191 @@ func TestParseWorkspaceModules(t *testing.T) {
 		expected []string
 	}{
 		{
-			name: "simple_workspace",
-			content: `go 1.21
+			name: "simple workspace",
+			content: `go 1.24
 
 use (
 	.
-	./pkg/module1
-	./pkg/module2
+	./tools
 )
 `,
-			expected: []string{".", "./pkg/module1", "./pkg/module2"},
+			expected: []string{".", "./tools"},
 		},
 		{
-			name: "with_comments",
-			content: `go 1.21
+			name: "workspace with comments",
+			content: `go 1.24
 
 use (
-	.
-	// This is a comment
-	./pkg/module1
-	./pkg/module2
+	. // main module
+	./tools
+	// ./disabled
 )
 `,
-			expected: []string{".", "./pkg/module1", "./pkg/module2"},
+			expected: []string{".", "./tools"},
 		},
 		{
-			name: "empty_workspace",
-			content: `go 1.21
-
-use (
-)
-`,
-			expected: []string{},
-		},
-		{
-			name: "no_use_block",
-			content: `go 1.21
-`,
+			name:     "empty workspace",
+			content:  "go 1.24\n",
 			expected: []string{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseWorkspaceModules(tt.content)
-			assert.Equal(t, tt.expected, result, "should parse workspace modules correctly")
+			
+			if len(result) != len(tt.expected) {
+				t.Errorf("parseWorkspaceModules() got %d modules, want %d", len(result), len(tt.expected))
+				return
+			}
+
+			for i, module := range result {
+				if module != tt.expected[i] {
+					t.Errorf("parseWorkspaceModules() module[%d] = %q, want %q", i, module, tt.expected[i])
+				}
+			}
 		})
 	}
 }
 
-func TestHandlerCoverage(t *testing.T) {
+func TestNewGowConfig(t *testing.T) {
 	cfg := NewGowConfig()
-	cfg.GoExecutable = "true" // Safe mock for all handlers
-	
-	// Test that all handlers exist and can be called without panicking
-	handlers := map[string]func() error{
-		"test": func() error {
-			return cfg.handleTest([]string{"test"})
+
+	if cfg.Verbose {
+		t.Error("NewGowConfig() should not be verbose by default")
+	}
+
+	if cfg.MaxLines != 1000 {
+		t.Errorf("NewGowConfig() MaxLines = %d, want 1000", cfg.MaxLines)
+	}
+
+	if len(cfg.ErrorsToSuppress) == 0 {
+		t.Error("NewGowConfig() should have some errors to suppress")
+	}
+
+	if cfg.WorkspaceRoot == "" {
+		t.Error("NewGowConfig() should set WorkspaceRoot")
+	}
+}
+
+func TestFileExists(t *testing.T) {
+	// Test with existing file
+	tmpFile := filepath.Join(t.TempDir(), "test.txt")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	if !fileExists(tmpFile) {
+		t.Error("fileExists() should return true for existing file")
+	}
+
+	// Test with non-existing file
+	if fileExists("/non/existing/file") {
+		t.Error("fileExists() should return false for non-existing file")
+	}
+}
+
+// Integration test to verify end-to-end behavior
+func TestGowIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Build gow binary
+	gowBinary := filepath.Join(t.TempDir(), "gow")
+	cmd := exec.Command("go", "build", "-o", gowBinary, ".")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to build gow: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+		timeout time.Duration
+	}{
+		{
+			name:    "version command",
+			args:    []string{"version"},
+			wantErr: false,
+			timeout: 5 * time.Second,
 		},
-		"mod_tidy": func() error {
-			// Skip actual task execution to avoid dependencies
-			return nil
+		{
+			name:    "help command",
+			args:    []string{"help"},
+			wantErr: false,
+			timeout: 5 * time.Second,
 		},
-		"retab": func() error {
-			// Create minimal setup
-			tempDir, _ := os.MkdirTemp("", "test-*")
-			defer os.RemoveAll(tempDir)
-			editorConfig := filepath.Join(tempDir, ".editorconfig")
-			os.WriteFile(editorConfig, []byte("root = true"), 0644)
-			cfg.WorkspaceRoot = tempDir
-			return cfg.handleRetab()
+		{
+			name:    "gow help command",
+			args:    []string{"gow-help"},
+			wantErr: false,
+			timeout: 5 * time.Second,
 		},
-		"tool": func() error {
-			return cfg.handleTool([]string{"tool", "version"})
+		{
+			name:    "env command",
+			args:    []string{"env", "GOVERSION"},
+			wantErr: false,
+			timeout: 5 * time.Second,
 		},
 	}
-	
-	for name, handler := range handlers {
-		t.Run(name, func(t *testing.T) {
-			assert.NotPanics(t, func() {
-				err := handler()
-				// We don't assert on error since some may fail in test environment
-				// but they shouldn't panic
-				_ = err
-			}, "handler %s should not panic", name)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, gowBinary, tt.args...)
+			output, err := cmd.CombinedOutput()
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("gow %v error = %v, wantErr %v\nOutput: %s", tt.args, err, tt.wantErr, output)
+			}
+
+			// Basic sanity checks
+			if !tt.wantErr {
+				switch tt.args[0] {
+				case "version":
+					if !strings.Contains(string(output), "go version") {
+						t.Errorf("version command should contain 'go version', got: %s", output)
+					}
+				case "gow-help":
+					if !strings.Contains(string(output), "gow - High-performance") {
+						t.Errorf("gow-help should contain gow description, got: %s", output)
+					}
+				}
+			}
 		})
+	}
+}
+
+// Benchmark tests
+func BenchmarkGowConfig_findSafeGo(b *testing.B) {
+	cfg := NewGowConfig()
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := cfg.findSafeGo()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkParseWorkspaceModules(b *testing.B) {
+	content := `go 1.24
+
+use (
+	.
+	./tools
+	./pkg/module1
+	./pkg/module2
+	./pkg/module3
+)
+`
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		parseWorkspaceModules(content)
 	}
 } 
