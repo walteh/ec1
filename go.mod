@@ -8,11 +8,8 @@ replace (
 	github.com/containerd/containerd/v2 => ../containerd
 	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 	github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
-// gvisor.dev/gvisor => ../gvisor
-// github.com/walteh/run => ../run
 )
 
-// replace libguestfs.org/guestfs => github.com/libguestfs/libguestfs/golang/src/libguestfs.org/guestfs v1.55.11
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 

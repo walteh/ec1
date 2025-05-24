@@ -38,19 +38,40 @@ export GOPRIVATE=github.com/walteh
 # Verify Go installation
 /usr/local/go/bin/go version
 
-# Install gotestsum for enhanced testing (our gow tool uses this)
-echo "🧪 Installing gotestsum for enhanced test output..."
-/usr/local/go/bin/go install gotest.tools/gotestsum@latest
-
-# Install additional Go tools that our gow wrapper uses
-echo "🔧 Installing Go development tools..."
-/usr/local/go/bin/go install github.com/walteh/retab/v2/cmd/retab@latest
-/usr/local/go/bin/go install golang.org/x/tools/cmd/goimports@latest
-/usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
-/usr/local/go/bin/go install github.com/vektra/mockery/v2@latest
-
 # Set up workspace (this will be our project directory)
 cd /workspace
+
+# Install essential Go tools (using standard versions)
+
+# Set up local dependencies from go.mod replace directives
+echo "📂 Setting up local dependencies required by go.mod..."
+WORKSPACE_ROOT="/workspace"
+PARENT_DIR="$(dirname "$WORKSPACE_ROOT")"
+
+# Function to clone local dependency with specific branch
+setup_local_dep() {
+	local repo_name="$1"
+	local github_path="$2"
+	local branch="$3"
+	local target_dir="$4"
+
+	if [ ! -d "$target_dir" ]; then
+		echo "🔄 Cloning $repo_name (branch: $branch)..."
+		if git clone -b "$branch" "https://github.com/walteh/$github_path.git" "$target_dir" 2> /dev/null; then
+			echo "✅ Cloned walteh/$github_path on branch $branch"
+		else
+			echo "⚠️ Failed to clone walteh/$github_path - dependency will use go mod download"
+		fi
+	else
+		echo "✅ $repo_name already available at $target_dir"
+	fi
+}
+
+# Set up the 5 required local dependencies with their current branches
+setup_local_dep "Apple VZ Fork" "vz" "feat/vm-console-devices" "$PARENT_DIR/vz"
+setup_local_dep "Containerd" "containerd" "main" "$PARENT_DIR/containerd"
+setup_local_dep "Gvisor Tap VSock" "gvisor-tap-vsock" "main" "$PARENT_DIR/gvisor-tap-vsock"
+setup_local_dep "Kata Containers" "kata-containers" "vf" "$PARENT_DIR/kata-containers"
 
 # Verify gow tool is available (should be pre-built)
 echo "⚡ Verifying GOW tool availability..."
@@ -96,6 +117,10 @@ alias benchmark-firecracker='./gow test -bench=. ./pkg/firecracker/'
 alias benchmark-vmm='./gow test -bench=. ./pkg/vmm/'
 alias benchmark-inject='./gow test -run BenchmarkInject ./pkg/initramfs/'
 
+# Dependency management
+alias update-deps='cd /workspace && ./gow mod tidy && echo "Dependencies updated"'
+alias check-deps='cd /workspace && ./gow mod verify && echo "Dependencies verified"'
+
 EOF
 
 # Set up git configuration
@@ -135,15 +160,43 @@ else
 	echo "⚠️ Init injection system not found - will be available in pkg/bootloader/"
 fi
 
+# Verify local dependencies
+echo "🔍 Verifying local dependencies from go.mod replace directives..."
+deps=(
+	"vz:feat/vm-console-devices"
+	"containerd:main"
+	"gvisor-tap-vsock:main"
+	"kata-containers:vf"
+)
+
+for dep_info in "${deps[@]}"; do
+	dep_name="${dep_info%:*}"
+	expected_branch="${dep_info#*:}"
+	dep_path="$PARENT_DIR/$dep_name"
+
+	if [ -d "$dep_path" ]; then
+		cd "$dep_path"
+		current_branch=$(git branch --show-current 2> /dev/null || echo "unknown")
+		if [ "$current_branch" = "$expected_branch" ]; then
+			echo "✅ $dep_name (branch: $current_branch)"
+		else
+			echo "⚠️ $dep_name (expected: $expected_branch, actual: $current_branch)"
+		fi
+		cd "$WORKSPACE_ROOT"
+	else
+		echo "⚠️ Missing local dependency: $dep_name (go mod will download fallback)"
+	fi
+done
+
 # Show development environment status
 echo ""
 echo "🎉 EC1 MICROVM DEVELOPMENT ENVIRONMENT READY!"
 echo "============================================"
 echo "✅ Go $(go version | cut -d' ' -f3) installed"
-echo "✅ Development tools and aliases configured"
+echo "✅ Development tools installed (gotestsum, retab, goimports, dlv, mockery)"
 echo "✅ Private module access configured (GOPRIVATE)"
 echo "✅ GOW wrapper available for enhanced development"
-echo "✅ Testing framework ready (gotestsum, mockery)"
+echo "✅ Local dependencies configured for go.mod replace directives"
 echo ""
 echo "🎯 MISSION: Make VMs as easy and fast as Docker containers"
 echo "⚡ SECRET WEAPON: Init injection for SSH-free execution"
@@ -156,11 +209,18 @@ echo "   • pkg/vmm/ - Virtual machine abstraction"
 echo "   • pkg/bootloader/ - Init injection system"
 echo "   • pkg/testing/tstream/ - Performance testing tools"
 echo ""
+echo "📂 Local Dependencies (go.mod replace directives):"
+echo "   • ../vz (feat/vm-console-devices) - Apple Virtualization Framework fork"
+echo "   • ../containerd (main) - Containerd API and runtime"
+echo "   • ../gvisor-tap-vsock (main) - Network virtualization"
+echo "   • ../kata-containers (vf) - Kata runtime integration"
+echo ""
 echo "🚀 Quick Start Commands:"
 echo "   ./gow test -function-coverage ./...  # Run all tests with coverage"
 echo "   firecracker                         # Navigate to Firecracker workspace"
 echo "   gowtest                            # Quick test with coverage"
 echo "   benchmark-firecracker              # Performance benchmarks"
+echo "   update-deps                        # Update and tidy dependencies"
 echo ""
 echo "💡 Remember: Every feature must be faster and more efficient!"
 echo "============================================"
