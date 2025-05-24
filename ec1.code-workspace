@@ -63,7 +63,6 @@
 			"editor.defaultFormatter": "tamasfe.even-better-toml"
 		},
 		"tooltitude.brokenRefsEnabled": false,
-		"go.buildTags": "cgo,libkrun",
 		"evenBetterToml.formatter.alignEntries": true,
 		"evenBetterToml.formatter.alignComments": true,
 		"evenBetterToml.formatter.indentEntries": true,
@@ -86,8 +85,9 @@
 		},
 		"gopls": {
 			"formatting.local": "github.com/walteh/ec1",
-			"build.buildFlags": ["-tags=cgo,libkrun"]
+			"build.buildFlags": ["-tags=cgo,libkrun,vmnet_helper"]
 		},
+		"go.buildTags": "cgo,libkrun,vmnet_helper",
 		"go.formatFlags": ["retab"],
 		"go.formatTool": "custom",
 		"go.alternateTools": {

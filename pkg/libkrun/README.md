@@ -1,184 +1,347 @@
 # libkrun Go Bindings
 
-This package provides Go bindings for [libkrun](https://github.com/containers/libkrun), a library for creating and managing lightweight virtual machines (microVMs) using Firecracker-compatible APIs.
+This package provides Go bindings for libkrun, a library for running microVMs with minimal overhead. The package supports multiple variants of libkrun with different capabilities and includes optional high-performance vmnet networking on macOS.
 
-## Features
+## Libkrun Variants
 
--   **Context Management**: Create and manage libkrun configuration contexts
--   **VM Configuration**: Set vCPUs, RAM, and other VM parameters
--   **Filesystem Setup**: Configure root filesystem and mount points
--   **Process Execution**: Set executable and environment for VM workloads
--   **Logging Integration**: Full `zerolog` integration for debugging
--   **Build Flexibility**: Automatic fallback to stub implementation when libkrun unavailable
+This package supports three different variants of libkrun:
+
+### 1. Generic (`libkrun`) - Default
+
+-   **Build tag**: `libkrun`
+-   **pkg-config**: `libkrun`
+-   **Description**: Generic variant compatible with all Virtualization-capable systems
+-   **Available functions**: All except SEV-specific and EFI-specific functions
+-   **Use case**: General microVM workloads
+
+### 2. SEV (`libkrun-sev`) - AMD SEV Support
+
+-   **Build tag**: `libkrun_sev`
+-   **pkg-config**: `libkrun-sev`
+-   **Description**: Variant including support for AMD SEV (SEV, SEV-ES and SEV-SNP) memory encryption and remote attestation
+-   **Requirements**: SEV-capable CPU
+-   **Limitations**:
+    -   `SetRoot()` not available
+    -   `SetMappedVolumes()` not available
+-   **Additional functions**: `SetSEVConfig()` for TEE configuration
+
+### 3. EFI (`libkrun-efi`) - OVMF/EDK2 Support
+
+-   **Build tag**: `libkrun_efi`
+-   **pkg-config**: `libkrun-efi`
+-   **Description**: Variant that bundles OVMF/EDK2 for booting a distribution-provided kernel
+-   **Platform**: Only available on macOS
+-   **Additional functions**: `GetShutdownEventFD()` for orderly shutdown
+
+## VMNet Integration (macOS)
+
+For optimal networking performance on macOS, this package includes optional vmnet integration that provides better performance than the default TSI backend.
+
+### Requirements
+
+-   **Build tag**: `vmnet_entitlement`
+-   **Platform**: macOS only
+-   **Entitlements**: Requires `com.apple.vm.networking` entitlement
+-   **Helper**: Requires vmnet-helper installed at `/opt/vmnet-helper/bin/vmnet-helper`
+
+### VMNet Operating Modes
+
+#### Shared Mode (NAT)
+
+-   Allows VMs to reach the Internet through NAT
+-   VMs can communicate with the host
+-   VMs can communicate with other shared mode VMs on the same subnet
+
+#### Bridged Mode
+
+-   Bridges VM network interface with a physical interface
+-   VM appears as a separate device on the physical network
+-   Requires specifying the physical interface name (e.g., "en0")
+
+#### Host-Only Mode
+
+-   VMs can communicate with the host and other host-only VMs
+-   Optional isolation prevents VM-to-VM communication
+-   No external network access
+
+### VMNet Usage
+
+```go
+// Shared mode (NAT) - simplest option
+err := kctx.SetVMNetNetworkShared(ctx, []string{"8080:80"})
+
+// Bridged mode - VM gets its own IP on the physical network
+err := kctx.SetVMNetNetworkBridged(ctx, "en0", []string{"8080:80"})
+
+// Host-only mode with isolation
+err := kctx.SetVMNetNetworkHost(ctx, true, []string{"8080:80"})
+
+// Custom configuration
+config := VMNetConfig{
+    OperationMode:   vmnet.OperationModeShared,
+    StartAddress:    &"192.168.100.1",
+    EndAddress:      &"192.168.100.254",
+    SubnetMask:      &"255.255.255.0",
+    PortMap:         []string{"8080:80", "9090:90"},
+    Verbose:         true,
+}
+err := kctx.SetVMNetNetwork(ctx, config)
+```
 
 ## Installation
 
-### Prerequisites
-
-First, install libkrun on your system:
+### macOS
 
 ```bash
-# macOS
+# Generic variant
 brew install libkrun
 
-# Ubuntu/Debian
-sudo apt-get install libkrun-dev
+# EFI variant (if available)
+brew install libkrun-efi
 
-# Fedora
-sudo dnf install libkrun-devel
+# For vmnet integration, install vmnet-helper
+# (This typically requires additional setup and entitlements)
 ```
 
-### Building with libkrun
+### Linux
 
-To build with actual libkrun support:
-
-```bash
-# Build with libkrun support
-./gow build -tags="cgo,libkrun" ./pkg/libkrun/example/
-
-# Run tests with libkrun support
-./gow test -tags="cgo,libkrun" ./pkg/libkrun/
-```
-
-### Building without libkrun (Development)
-
-For development when libkrun is not available, the package automatically uses stub implementations:
-
-```bash
-# Build with stub implementation (default)
-./gow build ./pkg/libkrun/example/
-
-# Run tests with stub implementation
-./gow test ./pkg/libkrun/
-```
+Check your distribution's package manager for libkrun packages.
 
 ## Usage
 
-### Basic Example
+### Basic Usage (Stub Implementation)
+
+By default, without any build tags, the package uses a stub implementation that returns `ErrLibkrunNotAvailable`. This allows development and testing without libkrun installed.
 
 ```go
-package main
+go run ./pkg/libkrun/example
+```
 
-import (
-    "context"
-    "os"
+### Generic Variant
 
-    "github.com/rs/zerolog"
-    "github.com/walteh/ec1/pkg/libkrun"
-)
+```bash
+go run -tags libkrun ./pkg/libkrun/example
+```
 
-func main() {
-    // Setup context with logger
-    ctx := context.Background()
-    logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-    ctx = logger.WithContext(ctx)
+### SEV Variant
 
-    // Set libkrun log level
-    libkrun.SetLogLevel(ctx, 3) // Info level
+```bash
+go run -tags libkrun_sev ./pkg/libkrun/example
+```
 
-    // Create configuration context
-    kctx, err := libkrun.CreateContext(ctx)
-    if err != nil {
-        logger.Fatal().Err(err).Msg("failed to create context")
-    }
-    defer kctx.Free(ctx)
+### EFI Variant
 
-    // Configure VM
-    err = kctx.SetVMConfig(ctx, 1, 512) // 1 vCPU, 512 MiB RAM
-    if err != nil {
-        logger.Fatal().Err(err).Msg("failed to set VM config")
-    }
+```bash
+go run -tags libkrun_efi ./pkg/libkrun/example
+```
 
-    // Set root filesystem
-    err = kctx.SetRoot(ctx, "/path/to/rootfs")
-    if err != nil {
-        logger.Fatal().Err(err).Msg("failed to set root")
-    }
+### With VMNet (requires entitlement)
 
-    // Set executable to run
-    err = kctx.SetExec(ctx, "/bin/echo",
-        []string{"echo", "Hello World"},
-        []string{"PATH=/bin:/usr/bin"})
-    if err != nil {
-        logger.Fatal().Err(err).Msg("failed to set executable")
-    }
+```bash
+go run -tags "libkrun vmnet_entitlement" ./pkg/libkrun/example
+```
 
-    // Start the VM (this will take control and exit when VM shuts down)
-    err = kctx.StartEnter(ctx)
-    if err != nil {
-        logger.Fatal().Err(err).Msg("failed to start VM")
-    }
+## API Overview
+
+The package provides a struct-based API that replaces long parameter lists with configuration structs:
+
+### Core Configuration Structs
+
+```go
+// Basic VM configuration
+type VMConfig struct {
+    NumVCPUs uint8
+    RAMMiB   uint32
+}
+
+// Disk configuration
+type DiskConfig struct {
+    BlockID  string
+    Path     string
+    Format   DiskFormat
+    ReadOnly bool
+}
+
+// Network configuration
+type NetworkConfig struct {
+    PasstFD     *int      // nil for TSI backend
+    GvproxyPath *string   // nil for TSI backend
+    MAC         *[6]uint8 // nil for auto-generated
+    PortMap     []string  // host:guest port mappings
+}
+
+// Process configuration
+type ProcessConfig struct {
+    ExecPath string
+    Args     []string
+    Env      []string
+    WorkDir  *string // nil for default
 }
 ```
 
-### API Reference
+### Variant-Specific Configuration
 
-#### Context Management
+#### SEV Configuration (SEV variant only)
 
--   `CreateContext(ctx context.Context) (*Context, error)` - Create a new configuration context
--   `(*Context).Free(ctx context.Context) error` - Free the configuration context
+```go
+type SEVConfig struct {
+    TEEConfigFile *string // Path to TEE configuration file
+}
+```
 
-#### Configuration
+#### VMNet Configuration (vmnet_entitlement build tag only)
 
--   `SetLogLevel(ctx context.Context, level uint32) error` - Set libkrun log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
--   `(*Context).SetVMConfig(ctx context.Context, numVCPUs uint8, ramMiB uint32) error` - Set basic VM parameters
--   `(*Context).SetRoot(ctx context.Context, rootPath string) error` - Set root filesystem path
--   `(*Context).SetExec(ctx context.Context, execPath string, argv []string, envp []string) error` - Set executable and environment
+```go
+type VMNetConfig struct {
+    InterfaceID     *string                 // nil for auto-generated
+    OperationMode   vmnet.OperationMode     // shared, bridged, or host
+    StartAddress    *string                 // nil for default
+    EndAddress      *string                 // nil for default
+    SubnetMask      *string                 // nil for default
+    SharedInterface *string                 // required for bridged mode
+    EnableIsolation *bool                   // for host mode
+    Verbose         bool                    // enable verbose logging
+    PortMap         []string                // host:guest port mappings
+}
+```
 
-#### Execution
+### Example Usage
 
--   `(*Context).StartEnter(ctx context.Context) error` - Start and enter the VM (this function takes control)
+```go
+ctx := context.Background()
+
+// Set log level ONCE per process (libkrun limitation)
+if err := libkrun.SetLogLevel(ctx, libkrun.LogLevelInfo); err != nil {
+    // Handle error
+}
+
+// Create context
+kctx, err := libkrun.CreateContext(ctx)
+if err != nil {
+    // Handle error (might be ErrLibkrunNotAvailable)
+    return
+}
+defer kctx.Free(ctx)
+
+// Configure VM
+vmConfig := libkrun.VMConfig{
+    NumVCPUs: 2,
+    RAMMiB:   1024,
+}
+kctx.SetVMConfig(ctx, vmConfig)
+
+// Configure process
+processConfig := libkrun.ProcessConfig{
+    ExecPath: "/bin/echo",
+    Args:     []string{"echo", "Hello World"},
+    Env:      []string{"PATH=/bin"},
+}
+kctx.SetProcess(ctx, processConfig)
+
+// Start VM (would actually start the microVM)
+// kctx.StartEnter(ctx)
+```
+
+## Important Limitations
+
+### Logging Initialization
+
+⚠️ **Critical**: libkrun's internal Rust logger can only be initialized once per process. Always call `SetLogLevel()` only once at application startup:
+
+```go
+// ✅ Good: Call once at startup
+func main() {
+    ctx := context.Background()
+    libkrun.SetLogLevel(ctx, libkrun.LogLevelInfo)
+    // ... rest of application
+}
+
+// ❌ Bad: Multiple calls will cause panic
+libkrun.SetLogLevel(ctx, libkrun.LogLevelDebug)
+libkrun.SetLogLevel(ctx, libkrun.LogLevelInfo) // PANIC!
+```
+
+### File Validation
+
+Many libkrun functions expect real file paths. Test with care:
+
+```go
+// This will fail with EINVAL (-22) if files don't exist
+config := KernelConfig{
+    Path:    "/path/to/kernel",
+    Format:  KernelFormatELF,
+    Cmdline: "console=ttyS0",
+}
+```
+
+## Variant-Specific Function Availability
+
+| Function               | Generic | SEV | EFI | VMNet | Notes                |
+| ---------------------- | ------- | --- | --- | ----- | -------------------- |
+| `SetRoot()`            | ✅      | ❌  | ✅  | ✅    | Not available in SEV |
+| `SetMappedVolumes()`   | ✅      | ❌  | ✅  | ✅    | Not available in SEV |
+| `SetSEVConfig()`       | ❌      | ✅  | ❌  | ❌    | SEV-specific         |
+| `GetShutdownEventFD()` | ❌      | ❌  | ✅  | ❌    | EFI-specific         |
+| `SetVMNetNetwork*()`   | ❌      | ❌  | ❌  | ✅    | VMNet-specific       |
 
 ## Testing
 
-Run the test suite:
+The package includes comprehensive tests that handle all variants:
 
 ```bash
-# Test with stub implementation (safe for development)
-./gow test -v ./pkg/libkrun/
+# Test with stub implementation (default)
+go test ./pkg/libkrun
 
-# Test with actual libkrun (requires libkrun installation)
-./gow test -v -tags="cgo,libkrun" ./pkg/libkrun/
+# Test with generic libkrun
+go test -tags libkrun ./pkg/libkrun
+
+# Test with SEV variant
+go test -tags libkrun_sev ./pkg/libkrun
+
+# Test with EFI variant
+go test -tags libkrun_efi ./pkg/libkrun
+
+# Test with VMNet integration
+go test -tags "libkrun vmnet_entitlement" ./pkg/libkrun
 ```
 
-Run the example:
+Tests automatically skip when libkrun is not available and log appropriate messages for variant-specific functionality.
 
-```bash
-# Run example with stub implementation
-./gow run ./pkg/libkrun/example/
+## Build Configuration
 
-# Run example with actual libkrun
-./gow run -tags="cgo,libkrun" ./pkg/libkrun/example/
-```
+The package uses Go build tags to select the appropriate implementation:
 
-## Build Tags
-
-The package uses Go build tags for conditional compilation:
-
--   **Default**: Uses stub implementation, safe for development without libkrun
--   **`cgo,libkrun`**: Uses actual CGO bindings to libkrun library
+-   **No tags**: Stub implementation (`libkrun_stub.go`)
+-   **`libkrun`**: Generic implementation (`libkrun.go`, `libkrun_generic.go`)
+-   **`libkrun_sev`**: SEV implementation (`libkrun.go`, `libkrun_sev.go`)
+-   **`libkrun_efi`**: EFI implementation (`libkrun.go`, `libkrun_efi.go`)
+-   **`vmnet_entitlement`**: VMNet integration (`vmnet_darwin.go` or `vmnet_stub.go`)
 
 ## Error Handling
 
-All functions return errors using the `gitlab.com/tozd/go/errors` package for proper error wrapping and context. The stub implementation returns `ErrLibkrunNotAvailable` for all operations.
+The package provides consistent error handling across all variants:
 
-## Logging
+-   `ErrLibkrunNotAvailable`: Returned when libkrun is not available (stub implementation)
+-   `ErrVMNetNotAvailable`: Returned when vmnet functionality is not available
+-   Variant-specific errors: When calling functions not available in the current variant
+-   libkrun errors: Wrapped errors from the underlying libkrun library
 
-The package integrates with `zerolog` for structured logging. Pass a context with a logger using `zerolog.Ctx(ctx)` to get detailed debug information about libkrun operations.
+## Performance
 
-## Performance Considerations
+The package is designed for performance-critical microVM applications:
 
--   Context creation/destruction is lightweight
--   VM startup through `StartEnter()` is a blocking operation that takes control of the process
--   Memory management is handled automatically through Go's garbage collector and proper C memory cleanup
+-   Struct-based configuration reduces function call overhead
+-   Direct C bindings with minimal Go overhead
+-   VMNet integration provides better networking performance than TSI on macOS
+-   Comprehensive benchmarks included in test suite
 
 ## Integration with EC1
 
-This package is designed to integrate with the EC1 fast microVM project, providing:
+This package is part of the EC1 fast microVM project, designed to achieve:
 
--   Sub-100ms boot times when properly configured
--   Init injection for SSH-free command execution
+-   Sub-100ms boot times
+-   SSH-free command execution via init injection
 -   Apple VZ backend compatibility
--   Stream performance testing integration
+-   Stream performance testing
 
-For more information about EC1, see the main project documentation.
+For more information, see the main EC1 project documentation.
