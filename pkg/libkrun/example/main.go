@@ -59,8 +59,8 @@ func main() {
 		logger.ErrorContext(ctx, "failed to set VM config", slog.Any("error", err))
 		return
 	}
-	logger.InfoContext(ctx, "VM configuration set", 
-		slog.Int("vcpus", int(vmConfig.NumVCPUs)), 
+	logger.InfoContext(ctx, "VM configuration set",
+		slog.Int("vcpus", int(vmConfig.NumVCPUs)),
 		slog.Uint64("ram_mib", uint64(vmConfig.RAMMiB)))
 
 	// Try to set root filesystem (might not be available in SEV variant)
@@ -118,16 +118,16 @@ func main() {
 	fmt.Println("All configuration functions executed without errors.")
 	fmt.Println("\nNote: StartEnter() was not called as it would actually start the VM.")
 	fmt.Println("In a real application, you would call kctx.StartEnter(ctx) to start the microVM.")
-	
+
 	// Example of other configurations that could be set:
 	fmt.Println("\n📋 Additional configuration examples:")
-	
+
 	// Network configuration example
 	networkConfig := libkrun.NetworkConfig{
 		PortMap: []string{"8080:80", "9090:90"},
 	}
 	fmt.Printf("- Network: Port mapping %v\n", networkConfig.PortMap)
-	
+
 	// Disk configuration example
 	diskConfig := libkrun.DiskConfig{
 		BlockID:  "root",
@@ -135,9 +135,9 @@ func main() {
 		Format:   libkrun.DiskFormatRaw,
 		ReadOnly: true,
 	}
-	fmt.Printf("- Disk: %s at %s (format: %v, readonly: %v)\n", 
+	fmt.Printf("- Disk: %s at %s (format: %v, readonly: %v)\n",
 		diskConfig.BlockID, diskConfig.Path, diskConfig.Format, diskConfig.ReadOnly)
-		
+
 	// VirtioFS configuration example
 	virtiofsConfig := libkrun.VirtioFSConfig{
 		Tag:  "shared",
