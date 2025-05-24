@@ -57,7 +57,8 @@ setup_local_dep() {
 
 	if [ ! -d "$target_dir" ]; then
 		echo "🔄 Cloning $repo_name (branch: $branch)..."
-		if git clone -b "$branch" "https://github.com/walteh/$github_path.git" "$target_dir" 2> /dev/null; then
+		git clone -b "$branch" "https://github.com/walteh/$github_path.git" "$target_dir"
+		if ls "$target_dir" > /dev/null 2>&1; then
 			echo "✅ Cloned walteh/$github_path on branch $branch"
 		else
 			echo "⚠️ Failed to clone walteh/$github_path - dependency will use go mod download"
