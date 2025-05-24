@@ -62,6 +62,8 @@
 		"[toml]": {
 			"editor.defaultFormatter": "tamasfe.even-better-toml"
 		},
+		"tooltitude.brokenRefsEnabled": false,
+		"go.buildTags": "cgo,libkrun",
 		"evenBetterToml.formatter.alignEntries": true,
 		"evenBetterToml.formatter.alignComments": true,
 		"evenBetterToml.formatter.indentEntries": true,
@@ -83,7 +85,8 @@
 			"CGO_ENABLED": "1"
 		},
 		"gopls": {
-			"formatting.local": "github.com/walteh/ec1"
+			"formatting.local": "github.com/walteh/ec1",
+			"build.buildFlags": ["-tags=cgo,libkrun"]
 		},
 		"go.formatFlags": ["retab"],
 		"go.formatTool": "custom",

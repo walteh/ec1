@@ -18,6 +18,7 @@ tool (
 	github.com/atombender/go-jsonschema
 	github.com/bufbuild/buf/cmd/buf
 	github.com/bufbuild/plugins/cmd/download-plugins
+	github.com/cweill/gotests/gotests
 	github.com/go-delve/delve/cmd/dlv
 	github.com/go-swagger/go-swagger/cmd/swagger
 	github.com/go-task/task/v3/cmd/task
@@ -27,14 +28,15 @@ tool (
 	github.com/kazhuravlev/options-gen/cmd/options-gen
 	github.com/ogen-go/ogen/cmd/jschemagen
 	github.com/ogen-go/ogen/cmd/ogen
-	github.com/oligot/go-mod-upgrade
-	github.com/vektra/mockery/v2
-	github.com/wagoodman/dive
+	github.com/oligot/go-mod-upgrade 
+	github.com/vektra/mockery/v2 // generate mocks for interfaces
+	github.com/wagoodman/dive // explore layers in docker images
 	github.com/walteh/protoc-gen-protovalidate
 	github.com/walteh/retab/v2/cmd/retab
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
 	gotest.tools/gotestsum
+	honnef.co/go/tools/cmd/staticcheck
 )
 
 require (
@@ -43,6 +45,8 @@ require (
 )
 
 require github.com/lmittmann/tint v1.1.0
+
+require github.com/cweill/gotests v1.6.0 // indirect
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
