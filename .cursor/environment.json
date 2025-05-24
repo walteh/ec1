@@ -9,18 +9,23 @@
 			"description": "Validates our stream performance testing framework is working"
 		},
 		{
-			"name": "firecracker-workspace",
-			"command": "cd /workspace/pkg/firecracker && echo '🔥 MAIN Firecracker API workspace ready for Dr B!'",
-			"description": "Sets up the MAIN Firecracker API workspace for Dr B (not sandbox!)"
+			"name": "firecracker-main",
+			"command": "cd /workspace/pkg/firecracker && echo '🔥 MAIN Firecracker API workspace ready!' && ./gow test -v ./...",
+			"description": "Sets up the MAIN Firecracker API workspace (pkg/firecracker/)"
 		},
 		{
 			"name": "performance-monitor",
 			"command": "cd /workspace && watch -n 5 './gow test -run BenchmarkInject ./pkg/initramfs/ 2>/dev/null | tail -5'",
 			"description": "Continuous performance monitoring of our init injection system"
+		},
+		{
+			"name": "vmm-testing",
+			"command": "cd /workspace/pkg/vmm && echo '🖥️  VMM abstraction layer ready!' && ./gow test -v ./...",
+			"description": "VMM abstraction layer testing and development"
 		}
 	],
 	"build": {
 		"context": ".",
-		"dockerfile": "Dockerfile"
+		"dockerfile": ".cursor/Dockerfile"
 	}
 }

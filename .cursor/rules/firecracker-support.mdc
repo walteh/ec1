@@ -1,0 +1,78 @@
+---
+description: 
+globs: *firecracker*
+alwaysApply: false
+---
+**⚠️ IMPORTANT: Agents should update this rule when implementation details change**
+
+# Firecracker Integration Guidelines
+
+## 📖 Complete Strategy & Analysis
+
+**See [docs/firecracker-support.md](mdc:docs/firecracker-support.md) for comprehensive analysis, alternatives comparison, and implementation roadmap.**
+
+## 🎯 Quick Reference
+
+
+
+
+### Current Implementation: `pkg/firecracker/`
+- `FirecrackerMicroVM[V]` - Main API implementation with generic VM support
+- Uses VMM abstraction layer (`pkg/vmm/`) - NOT direct VZ access
+- Leverages init injection (`pkg/bootloader/`) for SSH-free execution
+
+### Key Commands
+```bash
+# Development workflow
+./gow test -function-coverage ./pkg/firecracker/   # >85% required
+./gow test -bench=. ./pkg/firecracker/            # Performance validation
+./gow test -tags=integration ./pkg/firecracker/    # Real client testing
+```
+
+## ⚡ Performance Standards
+
+- **Boot time**: <100ms from API call to VM ready
+- **Memory usage**: <50MB baseline  
+- **Command execution**: <10ms via gRPC init (NOT SSH)
+- **API latency**: <5ms for configuration endpoints
+
+## 🏗️ Architecture Principles
+
+### 1. Use VMM Abstraction
+```go
+// DON'T: Direct VZ access
+import "github.com/walteh/ec1/pkg/vmm/vf"
+
+// DO: Use VMM interface
+import "github.com/walteh/ec1/pkg/vmm" 
+vm, err := hypervisor.NewVirtualMachine(ctx, id, options, bootloader)
+```
+
+### 2. Leverage Init Injection
+```go
+// Our secret weapon - direct command execution
+bootloader := &bootloader.LinuxBootloader{
+    VmlinuzPath:   vmi.KernelPath(),
+    InitrdPath:    vmi.InitramfsPath(), // Contains injected gRPC init
+    KernelCmdLine: vmi.KernelArgs(),
+}
+```
+
+### 3. Maintain API Compatibility
+- Use `gen/firecracker-swagger-go/` models exactly
+- Match JSON responses precisely
+- Test with real Firecracker clients (Kata, SDK)
+
+## 🚨 Essential Rules
+
+1. **Never bypass performance testing** - Use `pkg/testing/tstream/`
+2. **Never access VZ directly** - Use VMM abstraction
+3. **Never break API compatibility** - Must work with existing clients  
+4. **Never add SSH dependencies** - We have init injection!
+5. **Never drop below 85% coverage** - Enforced by CI
+
+## 📊 Current Status
+
+See [pkg/firecracker/NOTES.md](mdc:../pkg/firecracker/NOTES.md) for detailed implementation status.
+
+**Goal**: Make Firecracker on macOS faster than Firecracker on Linux! 🚀

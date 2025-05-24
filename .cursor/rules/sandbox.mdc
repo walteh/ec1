@@ -1,0 +1,6 @@
+---
+description: 
+globs: sandbox/**/*.go
+alwaysApply: false
+---
+this is just junk that i didn't want to delete yet 

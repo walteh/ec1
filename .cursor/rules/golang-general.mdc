@@ -3,19 +3,23 @@ description:
 globs: *.go
 alwaysApply: false
 ---
+
+**⚠️ IMPORTANT: Agents should update this rule when coding standards change**
+
 DO NOT HARD CODE STRINGS WHEN BUILDING GENERATORS UNLESS EXPLICIT CONSENT HAS BEEN GIVEN
 
 # testing 
 all code should be written in a way that is testable and verifyable 
-code can be written before tests, but [golang-testing.mdc](mdc:root/root/root/root/root/root/root/root/.cursor/rules/golang-testing.mdc) should be in the back of our minds
+code can be written before tests, but [golang-testing.mdc](mdc:root/root/root/root/root/root/root/root/root/.cursor/rules/golang-testing.mdc) should be in the back of our minds
 
 # imports:
 always assume that broken imports are because the reference need to be adjusted, not because the thing being referenced doesn't exist
-never directly modify go.mod or go.sum files, always use go mod tidy and go mod init to update them (or other commands that are appropriate)
+never directly modify go.mod or go.sum files, always use ./gow mod tidy to update them
+when imports are broken, check if the package moved within the project structure first
 
 # logging:
-always use zerolog for logging
-pass context.Context to zerolog.Ctx(ctx) to get a logger with context
+always use slog for logging (NOT zerolog, we've standardized on slog)
+pass context.Context to slog.InfoContext(ctx, "message", attrs...) to get a logger with context
 all functions that log should have a context.Context as the first argument
 context should be created as early as possible in the program and passed around to all functions that need it
 individual packages should not define their own logging logic (unless required, like a server needing to control standard out), instead they should use the logger passed to them
@@ -27,10 +31,19 @@ the wrapped error naming philosophy should always make the error message say wha
 for new errors the name just needs to be the best name for that error
 
 # running go
-always use the ./go file defined in the root of this project as an alias for 'go'
+always use the ./gow file defined in the root of this project as an alias for 'go'
+NEVER use the old ./go script - we've transitioned to ./gow
+./gow is a lightweight wrapper that uses 'go tool gow' under the hood
 
 # finding type definitions
-use go doc to figure out what types youre working with look like 
+use go doc to figure out what types you're working with look like 
 
 # building for local testing
-if you just want to run it locally for testing purposes, never use 'go build' - always use './go run'
+if you just want to run it locally for testing purposes, never use 'go build' - always use './gow run'
+
+# project structure conventions
+- pkg/ contains all reusable packages
+- cmd/ contains executable commands
+- gen/ contains generated code (don't edit manually)
+- tools/ contains development tools
+- Always respect workspace boundaries defined in go.work

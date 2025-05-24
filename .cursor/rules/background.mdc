@@ -3,8 +3,9 @@ description: Background context for EC1 Fast MicroVM project - always applied
 globs: 
 alwaysApply: true
 ---
-
 # EC1 Fast MicroVM Project Context
+
+**⚠️ IMPORTANT: Agents should update this rule when project standards or tools change**
 
 ## Mission: Build the world's fastest Firecracker-compatible microVM implementation
 
@@ -15,17 +16,28 @@ alwaysApply: true
 - **Stream performance testing** (catches bottlenecks automatically)
 
 ### Development Environment
-- Use `./gow` wrapper for all Go commands (2x faster than task runners)
+- Use `./gow` wrapper for all Go commands (lightweight go tool wrapper)
+- **NEVER use `./go` script** - we've transitioned to `./gow`
 - Maintain **>85% function coverage** (enforced)
 - Performance-first development approach
 - Built-in benchmarking and optimization tools
 
-### Background Agent Context (Dr B)
-This project is optimized for Cursor background agents:
-- Complete environment setup in `.cursor/install.sh`
-- Performance monitoring terminals configured
-- Mission-specific workspace navigation aliases
-- Firecracker integration as primary focus
+### Key Tools and Commands
+```bash
+./gow test -function-coverage    # Test with coverage analysis
+./gow test -codesign            # Test with code signing (macOS)
+./gow mod tidy                  # Workspace-aware dependency management
+./gow tool [tool] [args...]     # Run go tools
+./gow dap                       # Debug adapter protocol
+```
+
+### Project Structure
+- **pkg/firecracker/** - MAIN Firecracker API implementation (NOT sandbox!)
+- **pkg/vmm/** - Virtual machine management abstraction
+- **pkg/vmm/vf/** - Apple VZ backend implementation
+- **pkg/bootloader/** - Init injection system (our secret weapon)
+- **pkg/testing/tstream/** - Stream performance testing framework
+- **gen/firecracker-swagger-go/** - Generated Firecracker API definitions
 
 ### Key Performance Targets
 - **Boot time**: <100ms from API call to VM ready
@@ -36,4 +48,10 @@ This project is optimized for Cursor background agents:
 ### Secret Weapon
 Our init injection system eliminates SSH overhead - every other microVM solution uses SSH for command execution. We execute directly through embedded gRPC init. This is our competitive advantage for Apple-level performance.
 
-Refer to [docs/dr-b-onboarding.md](mdc:root/docs/dr-b-onboarding.md) for complete project context.
+### Recent Changes
+- Transitioned from `./go` script to lightweight `./gow` wrapper
+- Firecracker API implementation moved to `pkg/firecracker/`
+- VMM abstraction layer created for multiple hypervisor support
+- Stream performance testing framework integrated
+
+Refer to `.cursor/README.md` for complete development guide.
