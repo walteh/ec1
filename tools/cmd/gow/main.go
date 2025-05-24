@@ -10,6 +10,18 @@ import (
 	"syscall"
 )
 
+// arrayFlags implements flag.Value for string slices
+type arrayFlags []string
+
+func (a *arrayFlags) String() string {
+	return strings.Join(*a, ",")
+}
+
+func (a *arrayFlags) Set(value string) error {
+	*a = append(*a, value)
+	return nil
+}
+
 // GowConfig holds configuration for the Go wrapper
 type GowConfig struct {
 	Verbose           bool
@@ -54,7 +66,7 @@ func findWorkspaceRoot() string {
 		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
 			return dir
 		}
-		
+
 		// Check for go.mod as fallback
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			// Continue looking for go.work, but remember this as potential root
@@ -182,6 +194,9 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	var targetDir string
 	var ide bool
 	var codesign bool
+	var codesignEntitlements arrayFlags
+	var codesignIdentity string
+	var codesignForce bool
 	var isCompileOnly bool
 
 	// Parse only gow-specific flags, pass everything else through
@@ -192,7 +207,7 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	i := 1
 	for i < len(args) {
 		arg := args[i]
-		
+
 		switch arg {
 		case "-function-coverage":
 			functionCoverage = true
@@ -202,6 +217,20 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			ide = true
 		case "-codesign":
 			codesign = true
+		case "-codesign-entitlement":
+			// Handle -codesign-entitlement with next argument
+			if i+1 < len(args) {
+				codesignEntitlements = append(codesignEntitlements, args[i+1])
+				i++ // Skip the entitlement value
+			}
+		case "-codesign-identity":
+			// Handle -codesign-identity with next argument
+			if i+1 < len(args) {
+				codesignIdentity = args[i+1]
+				i++ // Skip the identity value
+			}
+		case "-codesign-force":
+			codesignForce = true
 		case "-c":
 			// Compile test binary only (used by DAP debugging)
 			isCompileOnly = true
@@ -224,16 +253,16 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		if cfg.Verbose {
 			fmt.Printf("🔧 Debug mode: compiling test binary with go test -c\n")
 		}
-		
+
 		ctx := context.Background()
-		
+
 		// Add codesign support for debug builds
 		if codesign {
 			// Run the compile first
 			if err := cfg.execSafeGo(ctx, goArgs...); err != nil {
 				return err
 			}
-			
+
 			// Find the output binary and sign it
 			for i, arg := range goArgs {
 				if arg == "-o" && i+1 < len(goArgs) {
@@ -241,17 +270,39 @@ func (cfg *GowConfig) handleTest(args []string) error {
 					if cfg.Verbose {
 						fmt.Printf("🔐 Code signing debug binary: %s\n", outputFile)
 					}
-					
-					signCmd := exec.CommandContext(ctx, "go", "tool", "github.com/walteh/ec1/tools/cmd/codesign", "just-sign", outputFile)
+
+					// Use new codesign syntax
+					signArgs := []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=sign", "-target=" + outputFile}
+
+					// Add entitlements if specified, otherwise use default
+					if len(codesignEntitlements) > 0 {
+						for _, ent := range codesignEntitlements {
+							signArgs = append(signArgs, "-entitlement="+ent)
+						}
+					} else {
+						signArgs = append(signArgs, "-entitlement=virtualization")
+					}
+
+					// Add identity if specified
+					if codesignIdentity != "" {
+						signArgs = append(signArgs, "-identity="+codesignIdentity)
+					}
+
+					// Add force if specified
+					if codesignForce {
+						signArgs = append(signArgs, "-force")
+					}
+
+					signCmd := exec.CommandContext(ctx, "go", signArgs...)
 					signCmd.Dir = cfg.WorkspaceRoot
 					signCmd.Stdout = os.Stdout
 					signCmd.Stderr = os.Stderr
-					
+
 					return signCmd.Run()
 				}
 			}
 		}
-		
+
 		return cfg.execSafeGo(ctx, goArgs...)
 	}
 
@@ -291,7 +342,31 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	}
 
 	if codesign {
-		goArgs = append(goArgs, "-exec=go tool github.com/walteh/ec1/tools/cmd/codesign run-after-signing")
+		// Use new codesign test mode
+		execArgs := []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=test"}
+
+		// Add entitlements if specified, otherwise use default
+		if len(codesignEntitlements) > 0 {
+			for _, ent := range codesignEntitlements {
+				execArgs = append(execArgs, "-entitlement="+ent)
+			}
+		} else {
+			execArgs = append(execArgs, "-entitlement=virtualization")
+		}
+
+		// Add identity if specified
+		if codesignIdentity != "" {
+			execArgs = append(execArgs, "-identity="+codesignIdentity)
+		}
+
+		// Add force if specified
+		if codesignForce {
+			execArgs = append(execArgs, "-force")
+		}
+
+		execArgs = append(execArgs, "--")
+
+		goArgs = append(goArgs, "-exec=go "+strings.Join(execArgs, " "))
 	}
 
 	// Add standard flags if not already present
@@ -305,7 +380,7 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			hasCover = true
 		}
 	}
-	
+
 	if !hasVet {
 		goArgs = append(goArgs, "-vet=all")
 	}
@@ -447,12 +522,14 @@ func (cfg *GowConfig) handleRetab() error {
 		return fmt.Errorf("failed to read .editorconfig: %w", err)
 	}
 
-	// Run retab tool
+	// Run retab tool with fmt subcommand
 	retabArgs := []string{
 		"tool", "github.com/walteh/retab/v2/cmd/retab",
+		"fmt", // Add the fmt subcommand
 		"--stdin", "--stdout",
 		"--editorconfig-content=" + string(editorConfig),
-		"--formatter=go fmt -",
+		"--formatter=go", // Use auto formatter instead of "go fmt"
+		"-",              // Dummy filename for stdin processing
 	}
 
 	return cfg.execSafeGo(ctx, retabArgs...)
@@ -513,12 +590,21 @@ func printUsage() {
 	fmt.Println("  -force                       Force re-running of tests")
 	fmt.Println("  -ide                         IDE mode: raw test output (VS Code compatible)")
 	fmt.Println("  -codesign                    Enable macOS code signing for virtualization")
+	fmt.Println("  -codesign-entitlement <ent>  Add Apple entitlement (can be repeated)")
+	fmt.Println("                               Common: virtualization, hypervisor, network-client")
+	fmt.Println("  -codesign-identity <id>      Code signing identity (default: ad-hoc '-')")
+	fmt.Println("  -codesign-force              Force re-signing even if already signed")
 	fmt.Println("  -v                           Verbose output")
 	fmt.Println("  -run pattern                 Run only tests matching pattern")
 	fmt.Println("  -target dir                  Target directory (default: .)")
 	fmt.Println()
 	fmt.Println("Global flags:")
 	fmt.Println("  -verbose                     Verbose gow output")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  gow test -codesign ./pkg/vmnet                          # Basic signing with virtualization")
+	fmt.Println("  gow test -codesign-entitlement hypervisor ./pkg/host    # Custom entitlement")
+	fmt.Println("  gow test -codesign -function-coverage -v ./...          # Full enhanced testing")
 	fmt.Println()
 	fmt.Println("All other commands are passed through to the real go binary with zero overhead.")
 	fmt.Println("Enhanced commands use project tools (gotestsum, task) for optimal performance.")

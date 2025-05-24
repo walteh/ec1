@@ -38,6 +38,13 @@ tool (
 )
 
 require (
+	github.com/veqryn/slog-context v0.8.0
+	gitlab.com/tozd/go/errors v0.10.0
+)
+
+require github.com/lmittmann/tint v1.1.0
+
+require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect
 	aead.dev/minisign v0.3.0 // indirect
@@ -174,7 +181,7 @@ require (
 	github.com/breml/errchkjson v0.4.0 // indirect
 	github.com/briandowns/spinner v1.16.0 // indirect
 	github.com/bufbuild/buf v1.54.0 // indirect
-	github.com/bufbuild/plugins v0.0.0-20250516115203-c9136f1c021d // indirect
+	github.com/bufbuild/plugins v0.0.0-20250523153656-bab1fd3db101 // indirect
 	github.com/bufbuild/protocompile v0.14.2-0.20250407233408-f0b329b35310 // indirect
 	github.com/bufbuild/protoplugin v0.0.0-20250218205857-750e09ce93e1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -320,7 +327,7 @@ require (
 	github.com/golangci/unconvert v0.0.0-20240309020433-c5143eacb3ed // indirect
 	github.com/google/cel-go v0.25.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-containerregistry v0.20.3 // indirect
+	github.com/google/go-containerregistry v0.20.5 // indirect
 	github.com/google/go-dap v0.12.0 // indirect
 	github.com/google/go-github/v66 v66.0.0 // indirect
 	github.com/google/go-github/v71 v71.0.0 // indirect
@@ -387,7 +394,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/julz/importas v0.2.0 // indirect
 	github.com/karamaru-alpha/copyloopvar v1.2.1 // indirect
-	github.com/kazhuravlev/options-gen v0.51.0 // indirect
+	github.com/kazhuravlev/options-gen v0.52.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
@@ -464,7 +471,7 @@ require (
 	github.com/nishanths/exhaustive v0.12.0 // indirect
 	github.com/nishanths/predeclared v0.2.2 // indirect
 	github.com/nunnatsa/ginkgolinter v0.19.1 // indirect
-	github.com/ogen-go/ogen v1.12.0 // indirect; indirect	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/ogen-go/ogen v1.13.0 // indirect; indirect	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.0 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
@@ -547,7 +554,7 @@ require (
 	github.com/stbenjam/no-sprintf-host-port v0.2.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.10.0
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/tetafro/godot v1.5.0 // indirect
@@ -567,7 +574,7 @@ require (
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.3.1 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
-	github.com/vektra/mockery/v2 v2.53.3 // indirect
+	github.com/vektra/mockery/v2 v2.53.4 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wagoodman/dive v0.13.1 // indirect
@@ -591,7 +598,6 @@ require (
 	gitlab.com/bosi/decorder v0.4.2 // indirect
 	gitlab.com/digitalxero/go-conventional-commit v1.0.7 // indirect
 	gitlab.com/gitlab-org/api/client-go v0.128.0 // indirect
-	gitlab.com/tozd/go/errors v0.10.0 // indirect
 	go-simpler.org/musttag v0.13.0 // indirect
 	go-simpler.org/sloglint v0.9.0 // indirect
 	go.lsp.dev/jsonrpc2 v0.10.0 // indirect

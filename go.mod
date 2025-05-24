@@ -34,12 +34,12 @@ require (
 	github.com/containers/gvisor-tap-vsock v0.8.6
 	github.com/coreos/ignition/v2 v2.21.0
 	github.com/coreos/stream-metadata-go v0.4.7
-	github.com/crc-org/crc/v2 v2.49.0
+	github.com/crc-org/crc/v2 v2.50.0
 	github.com/crc-org/vfkit v0.6.2-0.20250415145558-4b7cae94e86a
-	github.com/creack/pty v1.1.21
+	github.com/creack/pty v1.1.24
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
-	github.com/gin-gonic/gin v1.10.0
+	github.com/gin-gonic/gin v1.10.1
 	github.com/go-openapi/errors v0.22.1
 	github.com/go-openapi/loads v0.22.0
 	github.com/go-openapi/runtime v0.28.0
@@ -52,13 +52,13 @@ require (
 	github.com/kata-containers/kata-containers/src/runtime v0.0.0-00010101000000-000000000000
 	github.com/kdomanski/iso9660 v0.4.0
 	github.com/lima-vm/go-qcow2reader v0.6.0
-	github.com/lmittmann/tint v1.0.7
+	github.com/lmittmann/tint v1.1.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/mholt/archives v0.1.2
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
-	github.com/prometheus/procfs v0.15.1
+	github.com/prometheus/procfs v0.16.1
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/soheilhy/cmux v0.1.5
@@ -71,7 +71,7 @@ require (
 	github.com/walteh/retab/v2 v2.10.2
 	github.com/walteh/run v0.0.0-20250510150917-6f8074766f03
 	gitlab.com/tozd/go/errors v0.10.0
-	go.pdmccormick.com/initramfs v0.1.1
+	go.pdmccormick.com/initramfs v0.1.2
 	golang.org/x/crypto v0.38.0
 	golang.org/x/mod v0.24.0
 	golang.org/x/net v0.40.0

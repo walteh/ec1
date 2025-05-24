@@ -89,8 +89,8 @@
 		"go.formatTool": "custom",
 		"go.alternateTools": {
 			"go": "${workspaceFolder}/gow",
-			"dlv": "${workspaceFolder}/go",
-			"customFormatter": "${workspaceFolder}/go"
+			"dlv": "${workspaceFolder}/gow",
+			"customFormatter": "${workspaceFolder}/gow"
 		},
 		// "[go]": {
 		// 	"editor.formatOnSave": false
