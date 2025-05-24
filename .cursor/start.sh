@@ -44,12 +44,12 @@ update_local_dep() {
 
 # Update the 5 local dependencies from go.mod replace directives
 echo "📂 Updating local dependencies from go.mod..."
-PARENT_DIR="$(dirname "/workspace")"
+DEPS_DIR="/workspace/deps"
 
-update_local_dep "Apple VZ Fork" "feat/vm-console-devices" "$PARENT_DIR/vz"
-update_local_dep "Containerd" "main" "$PARENT_DIR/containerd"
-update_local_dep "Gvisor Tap VSock" "main" "$PARENT_DIR/gvisor-tap-vsock"
-update_local_dep "Kata Containers" "vf" "$PARENT_DIR/kata-containers"
+update_local_dep "Apple VZ Fork" "feat/vm-console-devices" "$DEPS_DIR/vz"
+update_local_dep "Containerd" "main" "$DEPS_DIR/containerd"
+update_local_dep "Gvisor Tap VSock" "main" "$DEPS_DIR/gvisor-tap-vsock"
+update_local_dep "Kata Containers" "vf" "$DEPS_DIR/kata-containers"
 
 # Update Go module dependencies
 echo "📦 Updating Go module dependencies..."
@@ -90,7 +90,7 @@ all_deps_ok=true
 for dep_info in "${deps[@]}"; do
 	dep_name="${dep_info%:*}"
 	expected_branch="${dep_info#*:}"
-	dep_path="$PARENT_DIR/$dep_name"
+	dep_path="$DEPS_DIR/$dep_name"
 
 	if [ -d "$dep_path" ]; then
 		cd "$dep_path"
@@ -148,7 +148,7 @@ echo "📂 Local Dependencies Status (go.mod replace directives):"
 for dep_info in "${deps[@]}"; do
 	dep_name="${dep_info%:*}"
 	expected_branch="${dep_info#*:}"
-	dep_path="$PARENT_DIR/$dep_name"
+	dep_path="$DEPS_DIR/$dep_name"
 
 	if [ -d "$dep_path" ]; then
 		cd "$dep_path" > /dev/null 2>&1

@@ -46,7 +46,10 @@ cd /workspace
 # Set up local dependencies from go.mod replace directives
 echo "📂 Setting up local dependencies required by go.mod..."
 WORKSPACE_ROOT="/workspace"
-PARENT_DIR="$(dirname "$WORKSPACE_ROOT")"
+DEPS_DIR="/workspace/deps"
+
+# Create deps directory if it doesn't exist
+mkdir -p "$DEPS_DIR"
 
 # Function to clone local dependency with specific branch
 setup_local_dep() {
@@ -57,8 +60,7 @@ setup_local_dep() {
 
 	if [ ! -d "$target_dir" ]; then
 		echo "🔄 Cloning $repo_name (branch: $branch)..."
-		git clone -b "$branch" "https://github.com/walteh/$github_path.git" "$target_dir"
-		if ls "$target_dir" > /dev/null 2>&1; then
+		if git clone -b "$branch" "https://github.com/walteh/$github_path.git" "$target_dir" 2> /dev/null; then
 			echo "✅ Cloned walteh/$github_path on branch $branch"
 		else
 			echo "⚠️ Failed to clone walteh/$github_path - dependency will use go mod download"
@@ -69,10 +71,25 @@ setup_local_dep() {
 }
 
 # Set up the 5 required local dependencies with their current branches
-setup_local_dep "Apple VZ Fork" "vz" "feat/vm-console-devices" "$PARENT_DIR/vz"
-setup_local_dep "Containerd" "containerd" "main" "$PARENT_DIR/containerd"
-setup_local_dep "Gvisor Tap VSock" "gvisor-tap-vsock" "main" "$PARENT_DIR/gvisor-tap-vsock"
-setup_local_dep "Kata Containers" "kata-containers" "vf" "$PARENT_DIR/kata-containers"
+setup_local_dep "Apple VZ Fork" "vz" "feat/vm-console-devices" "$DEPS_DIR/vz"
+setup_local_dep "Containerd" "containerd" "main" "$DEPS_DIR/containerd"
+setup_local_dep "Gvisor Tap VSock" "gvisor-tap-vsock" "main" "$DEPS_DIR/gvisor-tap-vsock"
+setup_local_dep "Kata Containers" "kata-containers" "vf" "$DEPS_DIR/kata-containers"
+
+# Update go.mod to use the deps directory instead of ../
+echo "🔧 Updating go.mod replace directives to use /workspace/deps/..."
+if [ -f "go.mod" ]; then
+	# Create backup
+	cp go.mod go.mod.backup
+
+	# Update replace directives to point to /workspace/deps/
+	sed -i 's|=> \.\./vz|=> /workspace/deps/vz|g' go.mod
+	sed -i 's|=> \.\./containerd|=> /workspace/deps/containerd|g' go.mod
+	sed -i 's|=> \.\./gvisor-tap-vsock|=> /workspace/deps/gvisor-tap-vsock|g' go.mod
+	sed -i 's|=> \.\./kata-containers|=> /workspace/deps/kata-containers|g' go.mod
+
+	echo "✅ Updated go.mod replace directives for container environment"
+fi
 
 # Verify gow tool is available (should be pre-built)
 echo "⚡ Verifying GOW tool availability..."
@@ -173,7 +190,7 @@ deps=(
 for dep_info in "${deps[@]}"; do
 	dep_name="${dep_info%:*}"
 	expected_branch="${dep_info#*:}"
-	dep_path="$PARENT_DIR/$dep_name"
+	dep_path="$DEPS_DIR/$dep_name"
 
 	if [ -d "$dep_path" ]; then
 		cd "$dep_path"
@@ -211,10 +228,10 @@ echo "   • pkg/bootloader/ - Init injection system"
 echo "   • pkg/testing/tstream/ - Performance testing tools"
 echo ""
 echo "📂 Local Dependencies (go.mod replace directives):"
-echo "   • ../vz (feat/vm-console-devices) - Apple Virtualization Framework fork"
-echo "   • ../containerd (main) - Containerd API and runtime"
-echo "   • ../gvisor-tap-vsock (main) - Network virtualization"
-echo "   • ../kata-containers (vf) - Kata runtime integration"
+echo "   • /workspace/deps/vz (feat/vm-console-devices) - Apple Virtualization Framework fork"
+echo "   • /workspace/deps/containerd (main) - Containerd API and runtime"
+echo "   • /workspace/deps/gvisor-tap-vsock (main) - Network virtualization"
+echo "   • /workspace/deps/kata-containers (vf) - Kata runtime integration"
 echo ""
 echo "🚀 Quick Start Commands:"
 echo "   ./gow test -function-coverage ./...  # Run all tests with coverage"
