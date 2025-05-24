@@ -3,55 +3,69 @@ description: Background context for EC1 Fast MicroVM project - always applied
 globs: 
 alwaysApply: true
 ---
+---
+description: Core context for the EC1 Fast MicroVM project
+globs:
+alwaysApply: true
+---
 # EC1 Fast MicroVM Project Context
 
-**⚠️ IMPORTANT: Agents should update this rule when project standards or tools change**
+**⚠️ IMPORTANT: Agents MUST keep these rules updated as project standards evolve.**
 
-## Mission: Build the world's fastest Firecracker-compatible microVM implementation
+## 🚀 Mission & Strategic Goal
 
-### Core Advantages
-- **Init injection for SSH-free command execution** (revolutionary!)
-- **Sub-100ms boot times** (industry-leading target)
-- **Apple VZ backend** (high-performance foundation)
-- **Stream performance testing** (catches bottlenecks automatically)
+Our primary mission is to **make running Virtual Machines as easy, fast, and efficient as Docker containers for all use cases.** We will achieve this through:
 
-### Development Environment
-- Use `./gow` wrapper for all Go commands (lightweight go tool wrapper)
-- **NEVER use `./go` script** - we've transitioned to `./gow`
-- Maintain **>85% function coverage** (enforced)
-- Performance-first development approach
-- Built-in benchmarking and optimization tools
+-   **High-Performance MicroVMs:** Targeting sub-100ms boot times.
+-   **macOS First:** Leveraging the Apple Virtualization Framework for optimal performance on Apple Silicon and Intel-based Macs.
+-   **Firecracker API Compatibility:** Utilizing the Firecracker API as a well-understood, ecosystem-friendly interface for VM management. Our implementation aims to be *faster* and *more efficient* than traditional Firecracker.
+    -   For detailed strategy, see [docs/firecracker-support.md](mdc:root/root/docs/firecracker-support.md).
 
-### Key Tools and Commands
-```bash
-./gow test -function-coverage    # Test with coverage analysis
-./gow test -codesign            # Test with code signing (macOS)
-./gow mod tidy                  # Workspace-aware dependency management
-./gow tool [tool] [args...]     # Run go tools
-./gow dap                       # Debug adapter protocol
-```
+## 🔥 Core Advantages & Secret Weapon
 
-### Project Structure
-- **pkg/firecracker/** - MAIN Firecracker API implementation (NOT sandbox!)
-- **pkg/vmm/** - Virtual machine management abstraction
-- **pkg/vmm/vf/** - Apple VZ backend implementation
-- **pkg/bootloader/** - Init injection system (our secret weapon)
-- **pkg/testing/tstream/** - Stream performance testing framework
-- **gen/firecracker-swagger-go/** - Generated Firecracker API definitions
+-   **Init Injection for SSH-Free Command Execution:** This is revolutionary. Instead of slow SSH, we execute commands directly via an embedded gRPC-based init process inside the VM. This is a key performance differentiator.
+-   **Apple VZ Backend:** Native, high-performance foundation on macOS.
+-   **Stream Performance Testing (`pkg/testing/tstream/`):** Catches performance bottlenecks automatically.
 
-### Key Performance Targets
-- **Boot time**: <100ms from API call to VM ready
-- **Command execution**: <10ms overhead vs bare metal
-- **Memory footprint**: <50MB for basic workloads
-- **Test coverage**: >85% function coverage required
+## 🛠️ Development Environment & Tools
 
-### Secret Weapon
-Our init injection system eliminates SSH overhead - every other microVM solution uses SSH for command execution. We execute directly through embedded gRPC init. This is our competitive advantage for Apple-level performance.
+-   **`./gow` Wrapper:**
+    -   **ALWAYS use `./gow`** for all Go commands (e.g., `./gow test`, `./gow mod tidy`).
+    -   **NEVER use the old `./go` script** or `go` directly. `./gow` is a lightweight wrapper around `go tool gow`.
+-   **Key `gow` Commands:**
+    ```bash
+    ./gow test -function-coverage    # Test with >85% function coverage (REQUIRED)
+    ./gow test -codesign            # Test with code signing (macOS virtualization features)
+    ./gow mod tidy                  # Workspace-aware dependency management
+    ./gow tool [tool] [args...]     # Run Go tools (e.g., linters, generators)
+    ./gow dap                       # Debug Adapter Protocol for VS Code
+    ```
+-   **General Go Standards:** See [golang-general.mdc](mdc:root/golang-general.mdc)
+-   **Testing Standards:** See [golang-testing.mdc](mdc:root/golang-testing.mdc)
 
-### Recent Changes
-- Transitioned from `./go` script to lightweight `./gow` wrapper
-- Firecracker API implementation moved to `pkg/firecracker/`
-- VMM abstraction layer created for multiple hypervisor support
-- Stream performance testing framework integrated
+## 🏗️ Key Project Structure
+
+-   **`pkg/firecracker/`**: **MAIN Firecracker API implementation.** This is where Firecracker compatibility is built. (NOT `sandbox/`)
+    -   Guides & Rules: [firecracker-support.mdc](mdc:root/firecracker-support.mdc)
+-   **`pkg/vmm/`**: Virtual Machine Management (VMM) abstraction layer.
+    -   **`pkg/vmm/vf/`**: Apple Virtualization Framework (VZ) backend for the VMM.
+-   **`pkg/bootloader/`**: Init injection system – our "secret weapon."
+-   **`pkg/testing/tstream/`**: Stream performance testing framework.
+-   **`gen/firecracker-swagger-go/`**: Generated Firecracker API client/server definitions.
+-   **`docs/`**: Project documentation, including strategic analyses like [firecracker-support.md](mdc:root/root/docs/firecracker-support.md).
+
+## 📊 Key Performance Targets (Non-Negotiable)
+
+-   **VM Boot Time:** <100ms (API call to VM ready).
+-   **Command Execution Overhead:** <10ms (vs. bare metal, via init injection).
+-   **Memory Footprint:** <50MB for a basic idle VM.
+-   **Test Coverage:** >85% function coverage (strictly enforced).
+
+## 📈 Recent Changes & Evolution
+
+-   Transitioned from `./go` script to the lightweight `./gow` wrapper.
+-   Firecracker API implementation consolidated in `pkg/firecracker/`.
+-   VMM abstraction layer (`pkg/vmm/`) introduced for hypervisor flexibility.
+-   Stream performance testing framework (`pkg/testing/tstream/`) integrated.
 
 Refer to `.cursor/README.md` for complete development guide.

@@ -19,7 +19,7 @@ when imports are broken, check if the package moved within the project structure
 
 # logging:
 always use slog for logging (NOT zerolog, we've standardized on slog)
-pass context.Context to slog.InfoContext(ctx, "message", attrs...) to get a logger with context
+The `slog.Logger` should be embedded into the `context.Context` at the earliest appropriate point (e.g., in `main` or when a request is received) using `slog.NewContext(parentCtx, logger)`. Subsequently, retrieve it using `slog.FromContext(ctx)` or pass `ctx` directly to `slog` functions like `slog.InfoContext(ctx, ...)`.
 all functions that log should have a context.Context as the first argument
 context should be created as early as possible in the program and passed around to all functions that need it
 individual packages should not define their own logging logic (unless required, like a server needing to control standard out), instead they should use the logger passed to them
@@ -47,3 +47,26 @@ if you just want to run it locally for testing purposes, never use 'go build' - 
 - gen/ contains generated code (don't edit manually)
 - tools/ contains development tools
 - Always respect workspace boundaries defined in go.work
+
+# General Coding Patterns
+
+**Struct-based Configuration:**
+- Prefer passing configuration to functions and types using dedicated structs rather than numerous individual parameters. This improves readability and makes future modifications easier.
+  Example: `func NewService(ctx context.Context, cfg ServiceConfig) (*Service, error)`
+
+**Constructor Functions:**
+- For complex types, provide constructor functions (e.g., `NewMyType(...)`) that initialize the type correctly.
+- Ensure these constructors take `context.Context` as their first argument if they perform I/O, logging, or other context-aware operations.
+
+**Generics for Abstraction:**
+- When implementing abstractions that can work with multiple underlying types (e.g., different VMM backends), leverage Go generics to provide type safety and flexibility.
+  Example: `type Manager[T BackendInterface] struct { ... }` (as seen with `FirecrackerMicroVM[V vmm.VirtualMachine]`)
+
+**Handling Optional/Variant-Specific Features:**
+- When implementing features that may not be available in all build variants or configurations:
+  - Attempt to use the feature.
+  - If the feature is non-critical and unavailable, log a clear warning message (e.g., using `slog.WarnContext`) and allow the operation to proceed gracefully if possible, rather than returning a hard error.
+  - Consult existing modules like `pkg/libkrun/` for examples.
+
+**Private Modules:**
+- This project uses private Go modules hosted on `github.com/walteh`. The `./gow mod tidy` command and existing environment setup should handle fetching these. Be aware of `GOPRIVATE` settings if troubleshooting dependency issues outside the standard workflow.

@@ -14,6 +14,8 @@ alwaysApply: false
 
 ## Testing Tools and Commands
 - **Always use `./gow test`** (not `go test` directly)
+- Be aware that some tests or features may require specific **build tags** (e.g., `-tags libkrun_efi`). Consult module-specific documentation or `main.go` examples for required tags. Run tests with appropriate tags to ensure full coverage of features.
+  Example: `./gow test -tags=customfeature ./pkg/custommodule/`
 - `./gow test -function-coverage` - Verify >85% function coverage (required)
 - `./gow test -v` - Verbose output for debugging
 - `./gow test -run TestName` - Run specific test
@@ -77,3 +79,10 @@ alwaysApply: false
 - For debugging specific tests: `./gow dap` with VS Code
 - Profile tests: `./gow test -cpuprofile=cpu.prof`
 - Use `slog` for debug logging in tests (respects test verbosity)
+
+## Project-Specific Testing Utilities
+- Leverage the custom testing utilities provided in `pkg/testing/` where appropriate:
+  - `pkg/testing/tstream`: For performance testing of I/O streams.
+  - `pkg/testing/tlog`: For consistent test logging.
+  - `pkg/testing/tctx`: For creating test-specific contexts.
+- Using these utilities ensures consistency and benefits from specialized testing tools developed for this project.
