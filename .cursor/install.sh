@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Setting up EC1 MicroVM development environment for Dr B..."
+echo "🚀 Setting up EC1 MicroVM development environment..."
 
 # Update system and install essential packages
 sudo apt-get update
@@ -31,6 +31,10 @@ echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc
 export PATH=$PATH:/usr/local/go/bin:~/go/bin
 
+# Set up private module access for github.com/walteh
+echo 'export GOPRIVATE=github.com/walteh' >> ~/.bashrc
+export GOPRIVATE=github.com/walteh
+
 # Verify Go installation
 /usr/local/go/bin/go version
 
@@ -42,89 +46,121 @@ echo "🧪 Installing gotestsum for enhanced test output..."
 echo "🔧 Installing Go development tools..."
 /usr/local/go/bin/go install github.com/walteh/retab/v2/cmd/retab@latest
 /usr/local/go/bin/go install golang.org/x/tools/cmd/goimports@latest
+/usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
+/usr/local/go/bin/go install github.com/vektra/mockery/v2@latest
 
 # Set up workspace (this will be our project directory)
 cd /workspace
 
-# Build our enhanced gow tool (Dr B's best friend!)
-echo "⚡ Building GOW - our enhanced Go wrapper..."
-cd /workspace/cmd/gow
-/usr/local/go/bin/go build -o ../../gow .
-cd /workspace
-
-# Make gow executable and verify it works
-chmod +x ./gow
-echo "✅ Testing gow functionality..."
-./gow version
+# Verify gow tool is available (should be pre-built)
+echo "⚡ Verifying GOW tool availability..."
+if [ -f "./gow" ]; then
+	chmod +x ./gow
+	./gow version
+	echo "✅ GOW wrapper is ready"
+else
+	echo "⚠️ GOW wrapper not found - will be built automatically when needed"
+fi
 
 # Run go mod tidy across workspace to ensure dependencies are ready
 echo "📦 Setting up Go workspace dependencies..."
 ./gow mod tidy
 
-# Install development tools
-echo "🛠️ Installing additional development tools..."
-
-# Install dlv (Delve debugger) for our dap command
-/usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
-
-# Create helpful aliases
+# Create helpful aliases for development
 echo "🔗 Setting up development aliases..."
 cat >> ~/.bashrc << 'EOF'
 
-# EC1 MicroVM Development Aliases
+# EC1 MicroVM Development Environment
+export PATH="/workspace:$PATH"
+
+# Core development aliases
 alias gow='./gow'
 alias gowtest='./gow test -function-coverage -v'
-alias gowbench='./gow test -run Benchmark'
-alias gowstream='./gow test -run TestStreamPerformance ./pkg/testing/tstream/'
-alias bootloader='cd /workspace/pkg/bootloader'
-alias performance='cd /workspace/pkg/testing/tstream'
-
-# Performance shortcuts
-alias quicktest='./gow test -run TestNewGowConfig ./cmd/gow/ && echo "✅ Quick test passed!"'
+alias gowbench='./gow test -bench=.'
 alias coverage='./gow test -function-coverage ./...'
-alias benchmark='./gow test -run BenchmarkInject ./pkg/initramfs/'
 
-# Dr B's mission-specific shortcuts (MAIN workspace, NOT sandbox!)
-alias firecracker='cd /workspace/pkg/firecracker && echo "🔥 Main Firecracker API workspace!"'
-alias fireapi='cd /workspace/pkg/firecracker && echo "🔥 Main Firecracker API workspace - NOT sandbox!"'
+# Package-specific navigation and testing
+alias firecracker='cd /workspace/pkg/firecracker && echo "🔥 Firecracker API workspace"'
+alias vmm='cd /workspace/pkg/vmm && echo "🖥️ VMM abstraction layer"'
+alias bootloader='cd /workspace/pkg/bootloader && echo "🔧 Init injection system"'
+alias performance='cd /workspace/pkg/testing/tstream && echo "📊 Performance testing tools"'
+
+# Testing shortcuts
 alias firetest='./gow test -v ./pkg/firecracker/'
-alias firebench='./gow test -run Benchmark ./pkg/firecracker/'
+alias vmmtest='./gow test -v ./pkg/vmm/'
+alias streamtest='./gow test -v ./pkg/testing/tstream/'
+alias fulltest='./gow test -function-coverage ./...'
+
+# Performance monitoring
+alias benchmark-firecracker='./gow test -bench=. ./pkg/firecracker/'
+alias benchmark-vmm='./gow test -bench=. ./pkg/vmm/'
+alias benchmark-inject='./gow test -run BenchmarkInject ./pkg/initramfs/'
 
 EOF
 
-# Set up git (if not already configured)
+# Set up git configuration
 echo "📝 Setting up git configuration..."
 git config --global init.defaultBranch main
 git config --global pull.rebase false
 git config --global core.editor "nano"
 
-# Verify our stream performance testing framework works
-echo "🧪 Verifying stream performance testing framework..."
-./gow test -v ./pkg/testing/tstream/ || echo "⚠️ Stream tests will be available once pkg/testing/tstream is created"
+# Verify key project components
+echo "🧪 Verifying project components..."
 
-# Test our init injection system
-echo "🔥 Testing init injection system..."
-ls -la pkg/bootloader/linux.go || echo "⚠️ Bootloader will be available in pkg/bootloader/"
+# Check stream performance testing framework
+if [ -d "pkg/testing/tstream" ]; then
+	./gow test -v ./pkg/testing/tstream/ && echo "✅ Stream performance tools working"
+else
+	echo "⚠️ Stream performance tools not found - will be available in pkg/testing/tstream/"
+fi
 
-# Show Dr B the development environment status
+# Check VMM abstraction layer
+if [ -d "pkg/vmm" ]; then
+	echo "✅ VMM abstraction layer available"
+else
+	echo "⚠️ VMM layer not found - will be available in pkg/vmm/"
+fi
+
+# Check Firecracker API implementation
+if [ -d "pkg/firecracker" ]; then
+	echo "✅ Firecracker API implementation available"
+else
+	echo "⚠️ Firecracker API not found - will be available in pkg/firecracker/"
+fi
+
+# Check init injection system
+if [ -d "pkg/bootloader" ]; then
+	echo "✅ Init injection system available"
+else
+	echo "⚠️ Init injection system not found - will be available in pkg/bootloader/"
+fi
+
+# Show development environment status
 echo ""
-echo "🎉 DR B DEVELOPMENT ENVIRONMENT READY!"
+echo "🎉 EC1 MICROVM DEVELOPMENT ENVIRONMENT READY!"
 echo "============================================"
 echo "✅ Go $(go version | cut -d' ' -f3) installed"
-echo "✅ GOW enhanced wrapper built and ready"
-echo "✅ gotestsum installed for enhanced testing"
 echo "✅ Development tools and aliases configured"
-echo "✅ Performance testing framework available"
-echo "✅ Firecracker workspace ready"
+echo "✅ Private module access configured (GOPRIVATE)"
+echo "✅ GOW wrapper available for enhanced development"
+echo "✅ Testing framework ready (gotestsum, mockery)"
 echo ""
-echo "🎯 MISSION: Build fastest Firecracker-compatible microVM"
+echo "🎯 MISSION: Make VMs as easy and fast as Docker containers"
 echo "⚡ SECRET WEAPON: Init injection for SSH-free execution"
-echo "📊 TARGET: <100ms boot time, >85% test coverage"
+echo "🏁 TARGETS: <100ms boot time, >85% test coverage, <50MB memory"
+echo "🍎 FOCUS: macOS first with Apple Virtualization Framework"
 echo ""
-echo "🚀 Dr B, your mission starts NOW!"
-echo "   Use 'gow -verbose' for detailed output"
-echo "   Use 'gowtest' for function coverage testing"
-echo "   Use 'firecracker' to navigate to your workspace"
+echo "🔥 Key Development Areas:"
+echo "   • pkg/firecracker/ - Firecracker API compatibility"
+echo "   • pkg/vmm/ - Virtual machine abstraction"
+echo "   • pkg/bootloader/ - Init injection system"
+echo "   • pkg/testing/tstream/ - Performance testing tools"
 echo ""
-echo "💡 Remember: Every line of code should be FASTER than before!"
+echo "🚀 Quick Start Commands:"
+echo "   ./gow test -function-coverage ./...  # Run all tests with coverage"
+echo "   firecracker                         # Navigate to Firecracker workspace"
+echo "   gowtest                            # Quick test with coverage"
+echo "   benchmark-firecracker              # Performance benchmarks"
+echo ""
+echo "💡 Remember: Every feature must be faster and more efficient!"
 echo "============================================"

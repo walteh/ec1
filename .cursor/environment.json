@@ -4,28 +4,39 @@
 	"start": "./.cursor/start.sh",
 	"terminals": [
 		{
-			"name": "gow-dev",
-			"command": "cd /workspace && ./gow test -v ./pkg/testing/tstream/ && echo '🚀 Stream performance tools ready!'",
-			"description": "Validates our stream performance testing framework is working"
+			"name": "firecracker-dev",
+			"command": "cd /workspace/pkg/firecracker && echo '🔥 Firecracker API development workspace' && ./gow test -v ./...",
+			"description": "Firecracker API implementation and testing workspace"
 		},
 		{
-			"name": "firecracker-main",
-			"command": "cd /workspace/pkg/firecracker && echo '🔥 MAIN Firecracker API workspace ready!' && ./gow test -v ./...",
-			"description": "Sets up the MAIN Firecracker API workspace (pkg/firecracker/)"
+			"name": "vmm-dev",
+			"command": "cd /workspace/pkg/vmm && echo '🖥️ VMM abstraction layer workspace' && ./gow test -v ./...",
+			"description": "Virtual Machine Management abstraction layer development"
 		},
 		{
-			"name": "performance-monitor",
-			"command": "cd /workspace && watch -n 5 './gow test -run BenchmarkInject ./pkg/initramfs/ 2>/dev/null | tail -5'",
-			"description": "Continuous performance monitoring of our init injection system"
+			"name": "performance-tools",
+			"command": "cd /workspace/pkg/testing/tstream && echo '📊 Performance testing tools' && ./gow test -v ./...",
+			"description": "Stream performance testing framework validation"
 		},
 		{
-			"name": "vmm-testing",
-			"command": "cd /workspace/pkg/vmm && echo '🖥️  VMM abstraction layer ready!' && ./gow test -v ./...",
-			"description": "VMM abstraction layer testing and development"
+			"name": "init-injection",
+			"command": "cd /workspace/pkg/bootloader && echo '🔧 Init injection system' && ./gow test -v ./...",
+			"description": "Init injection system for SSH-free command execution"
+		},
+		{
+			"name": "full-coverage",
+			"command": "cd /workspace && echo '🧪 Running full test suite with coverage...' && ./gow test -function-coverage ./...",
+			"description": "Full project test suite with function coverage analysis"
 		}
 	],
 	"build": {
 		"context": ".",
 		"dockerfile": ".cursor/Dockerfile"
+	},
+	"env": {
+		"GOPRIVATE": "github.com/walteh",
+		"GOPROXY": "https://proxy.golang.org",
+		"GOSUMDB": "sum.golang.org",
+		"GOW_WORKSPACE_ROOT": "/workspace"
 	}
 }

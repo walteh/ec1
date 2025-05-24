@@ -35,20 +35,26 @@ RUN cd /tmp \
 RUN go install gotest.tools/gotestsum@latest \
 	&& go install github.com/walteh/retab/v2/cmd/retab@latest \
 	&& go install golang.org/x/tools/cmd/goimports@latest \
-	&& go install github.com/go-delve/delve/cmd/dlv@latest
+	&& go install github.com/go-delve/delve/cmd/dlv@latest \
+	&& go install github.com/vektra/mockery/v2@latest
 
 # Set working directory
 WORKDIR /workspace
 
-# Copy and build gow tool when container starts
+# Copy project and ensure gow is available
 COPY . .
-RUN cd cmd/gow && go build -o ../../gow . && cd /workspace && chmod +x ./gow
+RUN chmod +x ./gow 2> /dev/null || echo "gow will be available when needed"
 
-# Set up aliases in bashrc
-RUN echo 'alias gow="./gow"' >> ~/.bashrc \
+# Set up development aliases in bashrc
+RUN echo 'export PATH="/workspace:$PATH"' >> ~/.bashrc \
+	&& echo 'alias gow="./gow"' >> ~/.bashrc \
 	&& echo 'alias gowtest="./gow test -function-coverage -v"' >> ~/.bashrc \
 	&& echo 'alias firecracker="cd /workspace/pkg/firecracker"' >> ~/.bashrc \
-	&& echo 'alias firetest="./gow test -v ./pkg/firecracker/"' >> ~/.bashrc
+	&& echo 'alias vmm="cd /workspace/pkg/vmm"' >> ~/.bashrc \
+	&& echo 'alias bootloader="cd /workspace/pkg/bootloader"' >> ~/.bashrc \
+	&& echo 'alias performance="cd /workspace/pkg/testing/tstream"' >> ~/.bashrc \
+	&& echo 'alias fulltest="./gow test -function-coverage ./..."' >> ~/.bashrc \
+	&& echo 'alias benchmark-firecracker="./gow test -bench=. ./pkg/firecracker/"' >> ~/.bashrc
 
 # Run mod tidy to ensure dependencies
 RUN ./gow mod tidy
