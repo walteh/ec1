@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.10
 
 # Set up environment
 ENV DEBIAN_FRONTEND=noninteractive

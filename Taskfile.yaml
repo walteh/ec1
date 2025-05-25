@@ -373,3 +373,37 @@ tasks:
                 echo -e "package {{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}\n\nimport _ \"embed\"\n" > ./gen/binembed/{{.ITEM.src | replace "-" "_" | lower}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
                 echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}.xz\n\nvar BinaryXZ []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
                 echo -e "//go:embed {{.ITEM.src | replace "-" "_" | lower}}.xz.sha256\n\nvar BinaryXZChecksum []byte\n" >> ./gen/binembed/{{.ITEM.src}}_{{.ITEM.goos}}_{{.ITEM.goarch}}/embed.go
+
+    kernel:aarch64:
+        desc: builds the kernel'
+        vars:
+            KERNEL_VERSION: 6.15-rc7
+            PACKAGE: vmlinux_aarch64
+            OUT_DIR: ./gen/kernel/{{.PACKAGE}}
+        cmds:
+          - cmd: rm -rf {{.OUT_DIR}}
+          - cmd: mkdir -p {{.OUT_DIR}}
+          - |-
+            docker buildx build \
+                --build-arg KERNEL_VERSION=6.15-rc7 \
+                --build-arg KERNEL_CONFIG=ec1-aarch64.config \
+                --target export \
+                --output type=local,dest={{.OUT_DIR}} \
+                docker/kernel
+          - cmd: xz -k {{.OUT_DIR}}/vmlinux
+          - cmd: sha256sum {{.OUT_DIR}}/vmlinux.xz > {{.OUT_DIR}}/vmlinux.xz.sha256
+          - cmd: sha256sum {{.OUT_DIR}}/config-{{.KERNEL_VERSION}} > {{.OUT_DIR}}/config-{{.KERNEL_VERSION}}.sha256
+          - cmd: rm {{.OUT_DIR}}/vmlinux
+          - cmd: |-
+                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\n" > {{.OUT_DIR}}/embed.gen.go
+                echo -e "//go:embed vmlinux.xz\n\nvar BinaryXZ []byte\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "\nconst BinaryXZChecksum = \"$(cat {{.OUT_DIR}}/vmlinux.xz.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "const Version = \"{{.KERNEL_VERSION}}\"\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "//go:embed config-{{.KERNEL_VERSION}}\n\nvar Config []byte\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "\nconst ConfigChecksum = \"$(cat {{.OUT_DIR}}/config-{{.KERNEL_VERSION}}.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
+
+    kernel:
+        desc: builds the kernel
+        cmds:
+          - task: kernel:aarch64
+

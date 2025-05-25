@@ -10,7 +10,6 @@ replace (
 	github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
 )
 
-
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 
 require (
@@ -57,7 +56,6 @@ require (
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
 	github.com/prometheus/procfs v0.16.1
 	github.com/rs/xid v1.6.0
-	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/pflag v1.0.6
