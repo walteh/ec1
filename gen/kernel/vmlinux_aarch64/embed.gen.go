@@ -7,7 +7,7 @@ import _ "embed"
 var BinaryXZ []byte
 
 
-const BinaryXZChecksum = "dccbce1a50c1afea9eebaacc65af913c9e9fd796af654717954921582b6c9a73"
+const BinaryXZChecksum = "b1765ddb7557dfd30c363ee411002e46697c9764b1143a5797affa60e2f80f54"
 
 const Version = "6.15-rc7"
 

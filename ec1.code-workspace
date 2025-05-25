@@ -7,6 +7,10 @@
 		{
 			"name": "vz",
 			"path": "../vz"
+		},
+		{
+			"name": "pui-pui",
+			"path": "../puipui-linux"
 		}
 		// {
 		// 	"name": "kata-containers",

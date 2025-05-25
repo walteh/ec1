@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/prometheus/procfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/logging"
@@ -256,12 +257,32 @@ func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 
 	t.Logf("ready to exec")
 
-	mi, err := vmm.ProcMemInfo(ctx, rvm)
-	require.NoError(t, err, "Failed to get meminfo")
+	var info *procfs.Meminfo
+	var errres error
+	var errchan = make(chan error, 1)
 
-	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
+	go func() {
+		mi, err := vmm.ProcMemInfo(ctx, rvm)
+		if err != nil {
+			errres = err
+		}
+		if mi != nil {
+			info = mi
+		}
+		errchan <- err
+	}()
 
-	require.NotNil(t, mi)
+	select {
+	case <-errchan:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for meminfo")
+	}
+
+	require.NoError(t, errres, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(info))
+
+	require.NotNil(t, info)
 
 }
 

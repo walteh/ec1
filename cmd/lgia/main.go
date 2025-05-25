@@ -137,9 +137,18 @@ func main() {
 			outArgs = []string{" "}
 		}
 
+		// make sure the real init exists
+		if s, err := os.Stat(realInitPath); os.IsNotExist(err) {
+			log.Fatalf("Real init '%s' does not exist: %v", realInitPath, err)
+		} else {
+			log.Printf("Real init exists at %s, size: %d", realInitPath, s.Size())
+			log.Printf("Real init '%s' is executable: %v", realInitPath, s.Mode()&0111 != 0)
+
+		}
+
 		log.Printf("Executing: %s %s", realInitPath, strings.Join(outArgs, " "))
 		if err := syscall.Exec(realInitPath, outArgs, os.Environ()); err != nil {
-			log.Fatalf("Failed to exec original init: %v", err)
+			log.Fatalf("Failed to exec original init '%s': %v", realInitPath, err)
 		}
 	} else {
 

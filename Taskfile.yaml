@@ -407,3 +407,28 @@ tasks:
         cmds:
           - task: kernel:aarch64
 
+    initramfs:aarch64:
+        desc: builds the initramfs
+        vars:
+            BUSYBOX_VERSION: 1.37.0
+            PACKAGE: initramfs_aarch64
+            OUT_DIR: ./gen/initramfs/{{.PACKAGE}}
+        cmds:
+          - cmd: rm -rf {{.OUT_DIR}}
+          - cmd: mkdir -p {{.OUT_DIR}}
+          - |-
+            docker buildx build \
+                --build-arg BUSYBOX_VERSION={{.BUSYBOX_VERSION}} \
+                --target export \
+                --output type=local,dest={{.OUT_DIR}} \
+                docker/initramfs
+          - cmd: sha256sum {{.OUT_DIR}}/initramfs.cpio.gz > {{.OUT_DIR}}/initramfs.cpio.gz.sha256
+          - cmd: |-
+                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\n" > {{.OUT_DIR}}/embed.gen.go
+                echo -e "//go:embed initramfs.cpio.gz\n\nvar BinaryGZ []byte\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "\nconst BinaryGZChecksum = \"$(cat {{.OUT_DIR}}/initramfs.cpio.gz.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
+
+    initramfs:
+        desc: builds the initramfs
+        cmds:
+          - task: initramfs:aarch64
