@@ -66,11 +66,11 @@ func TestGowConfig_findSafeGo(t *testing.T) {
 
 func TestGowConfig_hasGotestsum(t *testing.T) {
 	cfg := NewGowConfig()
-	
+
 	// This test depends on environment, but we can at least test the logic
 	hasIt := cfg.hasGotestsum()
 	t.Logf("hasGotestsum: %v", hasIt)
-	
+
 	// If we have gotestsum, verify it works
 	if hasIt {
 		cmd := exec.Command("gotestsum", "--version")
@@ -94,7 +94,7 @@ func TestGowConfig_execSafeGo(t *testing.T) {
 func TestGowConfig_handleTest(t *testing.T) {
 	// Create a temporary test package
 	tmpDir := t.TempDir()
-	
+
 	// Create a simple Go file
 	testFile := filepath.Join(tmpDir, "test_test.go")
 	testContent := `package main
@@ -160,7 +160,7 @@ func TestExample(t *testing.T) {
 
 func TestGowConfig_handleMod(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Create go.mod
 	goModFile := filepath.Join(tmpDir, "go.mod")
 	goModContent := "module testmod\n\ngo 1.24\n"
@@ -251,7 +251,7 @@ use (
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseWorkspaceModules(tt.content)
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("parseWorkspaceModules() got %d modules, want %d", len(result), len(tt.expected))
 				return
@@ -380,7 +380,7 @@ func TestGowIntegration(t *testing.T) {
 // Benchmark tests
 func BenchmarkGowConfig_findSafeGo(b *testing.B) {
 	cfg := NewGowConfig()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := cfg.findSafeGo()
@@ -401,9 +401,131 @@ use (
 	./pkg/module3
 )
 `
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		parseWorkspaceModules(content)
 	}
-} 
+}
+
+func TestGowConfig_createStdioLogFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := NewGowConfig()
+	cfg.WorkspaceRoot = tmpDir
+
+	// Test creating log file
+	err := cfg.setupStdioLogging("go", []string{"version"})
+	if err != nil {
+		t.Fatalf("setupStdioLogging() failed: %v", err)
+	}
+
+	// Verify the log directory was created
+	logDir := filepath.Join(tmpDir, ".log", "gow")
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		t.Error("log directory was not created")
+	}
+
+	// Find the log file
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		t.Fatalf("failed to read log directory: %v", err)
+	}
+
+	if len(entries) == 0 {
+		t.Error("no log files were created")
+	}
+
+	var logFile string
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), "stdio-pipe.log") {
+			logFile = filepath.Join(logDir, entry.Name())
+			break
+		}
+	}
+
+	if logFile == "" {
+		t.Error("no stdio-pipe.log file found")
+		return
+	}
+
+	// Verify filename format (should contain timestamp and stdio-pipe.log)
+	filename := filepath.Base(logFile)
+	if !strings.Contains(filename, "stdio-pipe.log") {
+		t.Errorf("log filename should contain 'stdio-pipe.log', got: %s", filename)
+	}
+
+	// Verify timestamp format (YYYY-MM-DD_HH-MM-SS)
+	parts := strings.Split(filename, "_")
+	if len(parts) < 2 {
+		t.Errorf("log filename should contain timestamp, got: %s", filename)
+	}
+
+	// Verify the log file contains command header
+	content, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "=== GOW STDIO LOG ===") {
+		t.Error("log file should contain header")
+	}
+	if !strings.Contains(contentStr, "Command: go version") {
+		t.Error("log file should contain command information")
+	}
+	if !strings.Contains(contentStr, "Working Directory:") {
+		t.Error("log file should contain working directory")
+	}
+}
+
+func TestGowConfig_PipeStdioToFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := NewGowConfig()
+	cfg.WorkspaceRoot = tmpDir
+	cfg.PipeStdioToFile = true
+
+	ctx := context.Background()
+
+	// Set up stdio logging first
+	err := cfg.setupStdioLogging("go", []string{"version"})
+	if err != nil {
+		t.Fatalf("setupStdioLogging() failed: %v", err)
+	}
+
+	// Test with a simple go command that produces output
+	err = cfg.execSafeGo(ctx, "version")
+	if err != nil {
+		t.Fatalf("execSafeGo() with stdio piping failed: %v", err)
+	}
+
+	// Verify log file was created
+	logDir := filepath.Join(tmpDir, ".log", "gow")
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		t.Fatalf("failed to read log directory: %v", err)
+	}
+
+	if len(entries) == 0 {
+		t.Error("no log files were created")
+	}
+
+	// Check that at least one log file contains expected content
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), "stdio-pipe.log") {
+			logPath := filepath.Join(logDir, entry.Name())
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Errorf("failed to read log file %s: %v", entry.Name(), err)
+				continue
+			}
+
+			// Should contain go version output
+			if !strings.Contains(string(content), "go version") {
+				t.Errorf("log file should contain 'go version', got: %s", content)
+			}
+			return
+		}
+	}
+
+	t.Error("no stdio-pipe.log file found")
+}

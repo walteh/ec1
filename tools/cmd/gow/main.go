@@ -3,11 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
+)
+
+// Global stdio writers that can be wrapped for logging
+var (
+	stdout io.Writer = os.Stdout
+	stderr io.Writer = os.Stderr
+	stdin  io.Reader = os.Stdin
 )
 
 // arrayFlags implements flag.Value for string slices
@@ -25,6 +34,7 @@ func (a *arrayFlags) Set(value string) error {
 // GowConfig holds configuration for the Go wrapper
 type GowConfig struct {
 	Verbose           bool
+	PipeStdioToFile   bool
 	WorkspaceRoot     string
 	GoExecutable      string
 	MaxLines          int
@@ -37,10 +47,11 @@ func NewGowConfig() *GowConfig {
 	workspaceRoot := findWorkspaceRoot()
 
 	return &GowConfig{
-		Verbose:       false,
-		WorkspaceRoot: workspaceRoot,
-		GoExecutable:  "",
-		MaxLines:      1000,
+		Verbose:         false,
+		PipeStdioToFile: false,
+		WorkspaceRoot:   workspaceRoot,
+		GoExecutable:    "",
+		MaxLines:        1000,
 		ErrorsToSuppress: []string{
 			"plugin.proto#L122",
 			"# github.com/lima-vm/lima/cmd/limactl",
@@ -80,6 +91,47 @@ func findWorkspaceRoot() string {
 		}
 		dir = parent
 	}
+}
+
+// setupStdioLogging wraps global stdio to pipe to log file
+func (cfg *GowConfig) setupStdioLogging(command string, args []string) error {
+	logDir := filepath.Join(cfg.WorkspaceRoot, ".log", "gow")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Use microseconds and process ID for unique timestamps
+	timestamp := fmt.Sprintf("%s_%d", time.Now().Format("2006-01-02_15-04-05.000000"), os.Getpid())
+	logFile := filepath.Join(logDir, fmt.Sprintf("%s_stdio-pipe.log", timestamp))
+
+	file, err := os.Create(logFile)
+	if err != nil {
+		return fmt.Errorf("failed to create log file: %w", err)
+	}
+
+	// Write command header to log file
+	header := fmt.Sprintf("=== GOW STDIO LOG ===\n")
+	header += fmt.Sprintf("Timestamp: %s\n", time.Now().Format("2006-01-02 15:04:05.000000"))
+	header += fmt.Sprintf("Process ID: %d\n", os.Getpid())
+	header += fmt.Sprintf("Command: %s %s\n", command, strings.Join(args, " "))
+	header += fmt.Sprintf("Working Directory: %s\n", cfg.WorkspaceRoot)
+	header += fmt.Sprintf("=== OUTPUT START ===\n\n")
+
+	if _, err := file.WriteString(header); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to write log header: %w", err)
+	}
+
+	// Wrap global stdio
+	stdout = io.MultiWriter(stdout, file)
+	stderr = io.MultiWriter(stderr, file)
+	stdin = io.TeeReader(stdin, file) // Also capture stdin input to log
+
+	if cfg.Verbose {
+		fmt.Printf("📝 Piping stdio to: %s\n", logFile)
+	}
+
+	return nil
 }
 
 // findSafeGo finds the real go binary, avoiding recursion with our wrapper
@@ -124,15 +176,22 @@ func (cfg *GowConfig) execSafeGo(ctx context.Context, args ...string) error {
 	}
 
 	cmd := exec.CommandContext(ctx, goPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Stdin = stdin
 
 	return cmd.Run()
 }
 
 // replaceProcess replaces the current process with the go command (for true pass-through)
 func (cfg *GowConfig) replaceProcess(args ...string) error {
+	// If stdio piping is enabled, we can't use process replacement
+	// because we need to control stdio, so fall back to execSafeGo
+	if cfg.PipeStdioToFile {
+		ctx := context.Background()
+		return cfg.execSafeGo(ctx, args...)
+	}
+
 	goPath, err := cfg.findSafeGo()
 	if err != nil {
 		return err
@@ -179,9 +238,9 @@ func (cfg *GowConfig) runWithGotestsum(ctx context.Context, goArgs []string) err
 	args = append(args, testArgs...)
 
 	cmd := exec.CommandContext(ctx, goPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Stdin = stdin
 	cmd.Dir = cfg.WorkspaceRoot
 
 	return cmd.Run()
@@ -295,8 +354,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 
 					signCmd := exec.CommandContext(ctx, "go", signArgs...)
 					signCmd.Dir = cfg.WorkspaceRoot
-					signCmd.Stdout = os.Stdout
-					signCmd.Stderr = os.Stderr
+					signCmd.Stdout = stdout
+					signCmd.Stderr = stderr
 
 					return signCmd.Run()
 				}
@@ -329,8 +388,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			}
 
 			coverCmd := exec.Command(goPath, "tool", "cover", "-func="+coverFile)
-			coverCmd.Stdout = os.Stdout
-			coverCmd.Stderr = os.Stderr
+			coverCmd.Stdout = stdout
+			coverCmd.Stderr = stderr
 			coverCmd.Run()
 
 			fmt.Println("================================================")
@@ -449,8 +508,8 @@ func (cfg *GowConfig) runEmbeddedModTidy() error {
 
 	cmd := exec.CommandContext(ctx, goPath, "tool", "github.com/go-task/task/v3/cmd/task", "go-mod-tidy")
 	cmd.Dir = cfg.WorkspaceRoot
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	return cmd.Run()
 }
@@ -471,8 +530,8 @@ func (cfg *GowConfig) runEmbeddedModUpgrade() error {
 
 	cmd := exec.CommandContext(ctx, goPath, "tool", "github.com/go-task/task/v3/cmd/task", "go-mod-upgrade")
 	cmd.Dir = cfg.WorkspaceRoot
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	return cmd.Run()
 }
@@ -557,9 +616,9 @@ func (cfg *GowConfig) handleDap(args []string) error {
 	os.Setenv("PATH", newPath)
 
 	dlvCmd := exec.Command("dlv", append([]string{"dap"}, args[1:]...)...)
-	dlvCmd.Stdout = os.Stdout
-	dlvCmd.Stderr = os.Stderr
-	dlvCmd.Stdin = os.Stdin
+	dlvCmd.Stdout = stdout
+	dlvCmd.Stderr = stderr
+	dlvCmd.Stdin = stdin
 
 	return dlvCmd.Run()
 }
@@ -600,11 +659,13 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Global flags:")
 	fmt.Println("  -verbose                     Verbose gow output")
+	fmt.Println("  -pipe-stdio-to-file          Pipe all stdio to timestamped log file (./.log/gow/)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  gow test -codesign ./pkg/vmnet                          # Basic signing with virtualization")
 	fmt.Println("  gow test -codesign-entitlement hypervisor ./pkg/host    # Custom entitlement")
 	fmt.Println("  gow test -codesign -function-coverage -v ./...          # Full enhanced testing")
+	fmt.Println("  gow -pipe-stdio-to-file build ./cmd/myapp               # Build with stdio logging")
 	fmt.Println()
 	fmt.Println("All other commands are passed through to the real go binary with zero overhead.")
 	fmt.Println("Enhanced commands use project tools (gotestsum, task) for optimal performance.")
@@ -616,12 +677,25 @@ func main() {
 	args := os.Args[1:]
 
 	// Parse global flags
-	for i, arg := range args {
+	var filteredArgs []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "-verbose" || arg == "--verbose" {
 			cfg.Verbose = true
-			// Remove this flag from args
-			args = append(args[:i], args[i+1:]...)
-			break
+		} else if arg == "-pipe-stdio-to-file" || arg == "--pipe-stdio-to-file" {
+			cfg.PipeStdioToFile = true
+		} else {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+
+	args = filteredArgs
+
+	// Setup stdio logging if requested
+	if cfg.PipeStdioToFile && len(args) > 0 {
+		if err := cfg.setupStdioLogging("gow", args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error setting up stdio logging: %v\n", err)
+			os.Exit(1)
 		}
 	}
 

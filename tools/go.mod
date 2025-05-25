@@ -11,6 +11,10 @@ tool (
 	github.com/walteh/ec1/tools/cmd/gow
 )
 
+
+
+
+
 tool (
 	cmd/test2json
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
@@ -28,7 +32,7 @@ tool (
 	github.com/kazhuravlev/options-gen/cmd/options-gen
 	github.com/ogen-go/ogen/cmd/jschemagen
 	github.com/ogen-go/ogen/cmd/ogen
-	github.com/oligot/go-mod-upgrade 
+	github.com/oligot/go-mod-upgrade
 	github.com/vektra/mockery/v2 // generate mocks for interfaces
 	github.com/wagoodman/dive // explore layers in docker images
 	github.com/walteh/protoc-gen-protovalidate
