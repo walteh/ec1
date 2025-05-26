@@ -2,7 +2,6 @@ package vmm
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/containers/common/pkg/strongunits"
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/virtio"
 )
@@ -71,10 +71,10 @@ func WaitForVMState(ctx context.Context, vm VirtualMachine, state VirtualMachine
 				return nil
 			}
 			if newState.StateType == VirtualMachineStateTypeError {
-				return fmt.Errorf("hypervisor virtualization error")
+				return errors.Errorf("hypervisor virtualization error")
 			}
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for VM state")
+			return errors.Errorf("timeout waiting for VM state")
 		}
 	}
 }

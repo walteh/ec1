@@ -17,45 +17,20 @@ COPY busybox.fragment.config .config.fragment
 RUN KCONFIG_ALLCONFIG=.config.fragment yes "" | make oldconfig
 
 ARG TARGET=aarch64
-# 3  compile static + strip
-# Force static + no‑PIE in case your toolchain adds PIE by default
+
 RUN make -j$(nproc) CFLAGS="-static -fno-PIE" LDFLAGS="-static -no-pie"
 
-# --- create rootfs tree right here ---
-
-# RUN cp busybox /rootfs/bin/
-# RUN /build/busybox-${BUSYBOX_VER}/busybox --install -s \
-# 		-busyboxdir=/rootfs/bin
 RUN mkdir -p /rootfs/bin
-RUN cp busybox /rootfs/bin/ && \
-    chroot /rootfs /bin/busybox --install -s
+RUN cp busybox /rootfs/bin/ \
+	&& chroot /rootfs /bin/busybox --install -s
 
-RUN mkdir -p  /rootfs/etc/network
+RUN mkdir -p /rootfs/etc/network
 RUN echo -e 'auto eth0\niface eth0 inet dhcp' > /rootfs/etc/network/interfaces
 
-# RUN mkdir -p /rootfs/lib
-# RUN cp /build/busybox-${BUSYBOX_VER}/usr/lib/ld-musl-aarch64.so.1 /rootfs/lib/
-# RUN ldd busybox | awk '{print $3}' | xargs -I {} cp {} /rootfs/lib/
 
-######## export stage – *no* RUN lines, so no shell required ########
 FROM scratch AS rootfs
+COPY --from=alpine/socat /usr/bin/socat /bin/socat
 COPY --from=busybox-build /rootfs/ /
-
-# ---------- 2. assemble rootfs ----------
-# FROM scratch AS rootfs
-# COPY --from=busybox-build /build/busybox-*/busybox /bin/busybox
-# SHELL ["/bin/busybox", "sh", "-c"]
-# RUN /bin/busybox --install -s
-
-# # --- your extras ---
-# COPY init /init
-# # COPY vsock-agent /usr/bin/agent example
-# COPY udhcpc.default /etc/udhcpc/default.script
-# # minimal NIC config so udhcpc works inside VM
-# RUN mkdir -p /etc/network \
-# 	&& echo "auto eth0\niface eth0 inet dhcp" > /etc/network/interfaces
-
-# CMD ["[]"]
 
 # ---------- 3. pack with Go cpio writer ----------
 FROM alpine:3.21 AS cpio
@@ -76,5 +51,3 @@ RUN mkdir -p /dist \
 # ---------- 4. export stage ----------
 FROM scratch AS export
 COPY --from=cpio /dist/initramfs.cpio.gz /initramfs.cpio.gz
-# (optional) raw rootfs for inspection
-# COPY --from=rootfs / /rootfs

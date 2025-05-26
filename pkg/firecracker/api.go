@@ -10,13 +10,11 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/go-openapi/swag"
 	"github.com/rs/xid"
-	"gitlab.com/tozd/go/errors"
 
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -31,7 +29,11 @@ func ptr[T any](v T) *T { return &v }
 // It provides a translation layer between Firecracker API operations and hypervisor operations
 // for a single Firecracker microVM instance.
 type FirecrackerMicroVM[V vmm.VirtualMachine] struct {
-	vm              V    // The single VM instance managed by this API
+	// vm              *V    // The single VM instance managed by this API
+	rvm             *vmm.RunningVM[V]
+	hpv             vmm.Hypervisor[V]
+	vmi             vmm.VMIProvider
+	vm              V
 	isVMInitialized bool // Tracks if the underlying VM in hypervisor has been created
 	// TODO: Add vmConfig *vmConfigState for pre-boot configurations
 	// TODO: Add a mutex for concurrent access to vm, vmConfig, and isVMInitialized
@@ -54,31 +56,36 @@ type apiConfig struct {
 func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
 	id := "mvm-" + xid.New().String()
 
-	lvmi, ok := vmi.(vmm.LinuxVMIProvider)
-	if !ok {
-		slog.Error("vmi is not a LinuxVMIProvider")
-		return nil, errors.New("vmi is not a LinuxVMIProvider")
-	}
+	// lvmi, ok := vmi.(vmm.LinuxVMIProvider)
+	// if !ok {
+	// 	slog.Error("vmi is not a LinuxVMIProvider")
+	// 	return nil, errors.New("vmi is not a LinuxVMIProvider")
+	// }
 
 	// cdf, err := host.EmphiricalVMCacheDir(ctx, id)
 	// if err != nil {
 	// 	return nil, errors.Errorf("getting empirical VM cache dir: %w", err)
 	// }
 
-	bootloader := &bootloader.LinuxBootloader{
-		VmlinuzPath:   lvmi.KernelPath(),
-		InitrdPath:    lvmi.InitramfsPath(),
-		KernelCmdLine: lvmi.KernelArgs(),
-	}
+	// bootloader := &bootloader.LinuxBootloader{
+	// 	VmlinuzPath:   lvmi.KernelPath(),
+	// 	InitrdPath:    lvmi.InitramfsPath(),
+	// 	KernelCmdLine: lvmi.KernelArgs(),
+	// }
 
-	vm, err := hpv.NewVirtualMachine(ctx, id, vmm.NewVMOptions{}, bootloader)
+	bytes := strongunits.GiB(2)
+
+	vm, err := vmm.RunVirtualMachine(ctx, hpv, vmi, 2, bytes.ToBytes())
 	if err != nil {
 		slog.Error("failed to create new VM", "error", err)
 		return nil, err
 	}
 
 	return &FirecrackerMicroVM[V]{
-		vm:              vm,
+		rvm:             vm,
+		vm:              vm.VM(),
+		hpv:             hpv,
+		vmi:             vmi,
 		isVMInitialized: true,
 		instanceID:      id,
 	}, nil
@@ -173,7 +180,7 @@ func (f *FirecrackerMicroVM[V]) DescribeBalloonConfig(ctx context.Context, param
 // DescribeBalloonStats implements operations.FirecrackerAPI.
 func (f *FirecrackerMicroVM[V]) DescribeBalloonStats(ctx context.Context, params operations.DescribeBalloonStatsParams) operations.DescribeBalloonStatsResponder {
 
-	trg, err := f.vm.GetMemoryBalloonTargetSize(ctx)
+	memoryInfo, err := vmm.ProcMemInfo(ctx, f.rvm)
 	if err != nil {
 		slog.Error("failed to get memory balloon actual size", "error", err)
 		return operations.NewDescribeBalloonStatsDefault(http.StatusInternalServerError).WithPayload(&models.Error{
@@ -182,20 +189,20 @@ func (f *FirecrackerMicroVM[V]) DescribeBalloonStats(ctx context.Context, params
 	}
 
 	payload := &models.BalloonStats{
-		ActualMib:          ptr(int64(strongunits.ToMib(trg))),
-		TargetMib:          ptr(int64(strongunits.ToMib(trg))),
-		ActualPages:        ptr(int64(0)),
-		TargetPages:        ptr(int64(0)),
-		AvailableMemory:    int64(0),
-		DiskCaches:         int64(0),
-		FreeMemory:         int64(0),
-		HugetlbAllocations: int64(0),
-		HugetlbFailures:    int64(0),
-		MajorFaults:        int64(0),
-		MinorFaults:        int64(0),
-		SwapIn:             int64(0),
-		SwapOut:            int64(0),
-		TotalMemory:        int64(0),
+		ActualMib:          ptr(int64(*memoryInfo.MemTotal / 1024 / 1024)),
+		TargetMib:          ptr(int64(*memoryInfo.MemTotal / 1024 / 1024)),
+		ActualPages:        ptr(int64(*memoryInfo.PageTablesBytes / 1024 / 1024)),
+		TargetPages:        ptr(int64(*memoryInfo.PageTablesBytes / 1024 / 1024)),
+		AvailableMemory:    int64(*memoryInfo.MemAvailable / 1024 / 1024),
+		DiskCaches:         int64(*memoryInfo.Dirty / 1024 / 1024),
+		FreeMemory:         int64(*memoryInfo.MemFree / 1024 / 1024),
+		HugetlbAllocations: int64(*memoryInfo.HugePagesRsvd / 1024 / 1024),
+		HugetlbFailures:    int64(*memoryInfo.HugePagesSurp / 1024 / 1024),
+		MajorFaults:        int64(*memoryInfo.HardwareCorruptedBytes / 1024 / 1024),
+		// MinorFaults:        int64(*memoryInfo.F / 1024 / 1024),
+		SwapIn:      int64(*memoryInfo.SwapCachedBytes / 1024 / 1024),
+		SwapOut:     int64(*memoryInfo.SwapFreeBytes / 1024 / 1024),
+		TotalMemory: int64(*memoryInfo.MemTotal / 1024 / 1024),
 	}
 
 	return operations.NewDescribeBalloonStatsOK().WithPayload(payload)

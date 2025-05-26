@@ -3,15 +3,15 @@
 		{
 			"name": "root",
 			"path": "."
-		},
-		{
-			"name": "vz",
-			"path": "../vz"
-		},
-		{
-			"name": "pui-pui",
-			"path": "../puipui-linux"
 		}
+		// {
+		// 	"name": "vz",
+		// 	"path": "../vz"
+		// },
+		// {
+		// 	"name": "pui-pui",
+		// 	"path": "../puipui-linux"
+		// }
 		// {
 		// 	"name": "kata-containers",
 		// 	"path": "../kata-containers/src/runtime"
