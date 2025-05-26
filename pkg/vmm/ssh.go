@@ -51,7 +51,7 @@ func ObtainSSHConnectionWithGuest(ctx context.Context, address string, cfg *ssh.
 	}
 }
 
-func Exec(ctx context.Context, rvm *RunningVM[VirtualMachine], command string) (string, string, string, error) {
+func Exec[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM], command string) (string, string, string, error) {
 	guestListenPort := uint32(2019)
 
 	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)

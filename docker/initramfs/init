@@ -31,4 +31,5 @@ done
 # 4. switch to the real root and launch your agent
 mkdir -p /newroot
 mount -t virtiofs "$ROOT_TAG" /newroot
-exec switch_root /newroot /usr/bin/guest_agent --vsock-port="$VSOCK_PORT"
+# exec switch_root /newroot /usr/bin/guest_agent --vsock-port="$VSOCK_PORT"
+exec /linuxrc

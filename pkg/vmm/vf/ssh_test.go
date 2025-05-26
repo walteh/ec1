@@ -11,10 +11,12 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/containers/image/v5/types"
 	"github.com/prometheus/procfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/logging"
+	"github.com/walteh/ec1/pkg/oci"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -393,5 +395,77 @@ func TestGuestInitWrapperVSockCoreOS(t *testing.T) {
 	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(mi))
 
 	require.NotNil(t, mi)
+
+}
+
+func TestHarpoonOCI(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+	ctx = tctx.WithContext(ctx, t)
+
+	device, err := oci.ContainerToVirtioDevice(ctx, oci.ContainerToVirtioOptions{
+		ImageRef: "docker.io/oven/bun:alpine",
+		Platform: &types.SystemContext{
+			OSChoice:           "linux",
+			ArchitectureChoice: "arm64",
+		},
+		OutputDir:      t.TempDir(),
+		FilesystemType: "fat32",
+		Size:           1024 * 1024 * 1024,
+	})
+	require.NoError(t, err, "Failed to create virtio device")
+
+	// Create a real VM for testing
+	rvm, _ := setupHarpoonVM(t, ctx, 1024, device)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err = vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	select {
+	case <-rvm.WaitOnVMReadyToExec():
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for vm to be ready to exec")
+	}
+
+	t.Logf("ready to exec")
+
+	<-time.After(1 * time.Second)
+
+	var info *procfs.Meminfo
+	var errres error
+	var stdout string
+	var stderr string
+	var exitCode string
+	var errchan = make(chan error, 1)
+
+	go func() {
+		stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "ls -la /newroot")
+		errchan <- errres
+	}()
+
+	select {
+	case <-errchan:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for meminfo")
+	}
+
+	fmt.Println("stdout", stdout)
+	fmt.Println("stderr", stderr)
+	fmt.Println("exitCode", exitCode)
+
+	slog.InfoContext(ctx, "stdout", "stdout", stdout)
+	slog.InfoContext(ctx, "stderr", "stderr", stderr)
+	slog.InfoContext(ctx, "exitCode", "exitCode", exitCode)
+
+	require.NoError(t, errres, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(info))
+
+	require.NotNil(t, info)
 
 }

@@ -37,7 +37,7 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
+func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B, devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
 
 	startTime := time.Now()
@@ -57,7 +57,6 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("creating working directory: %w", err)
 	}
 
-	devices := []virtio.VirtioDevice{}
 	provisioners := []Provisioner{}
 
 	err = addSSHKeyToVM(ctx, workingDir)
