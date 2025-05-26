@@ -37,6 +37,194 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
+func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
+	id := "vm-" + xid.New().String()
+
+	startTime := time.Now()
+
+	workingDir, err := host.EmphiricalVMCacheDir(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	globalCacheDir, err := host.CacheDirPrefix()
+	if err != nil {
+		return nil, errors.Errorf("creating global cache directory: %w", err)
+	}
+
+	err = os.MkdirAll(workingDir, 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating working directory: %w", err)
+	}
+
+	devices := []virtio.VirtioDevice{}
+	provisioners := []Provisioner{}
+
+	err = addSSHKeyToVM(ctx, workingDir)
+	if err != nil {
+		return nil, errors.Errorf("adding ssh key to vm: %w", err)
+	}
+
+	// create an ssh private key for this vm
+
+	diskImageURLVMIProvider, ok := vmi.(DownloadableVMIProvider)
+	if !ok {
+		return nil, errors.New("vmi does not support downloads, ec1 does not yet support this")
+	}
+
+	dls := diskImageURLVMIProvider.Downloads()
+
+	files, err := host.DownloadAndExtractVMI(ctx, dls)
+	if err != nil {
+		return nil, errors.Errorf("downloading and extracting VMI: %w", err)
+	}
+
+	cacheKey := cacheKeyFromMap(dls, vmi)
+
+	extractionCacheDir := filepath.Join(globalCacheDir, "extractions", cacheKey)
+
+	extractedFilesCache, err := loadReadersFromCache(ctx, extractionCacheDir)
+	if err != nil {
+		return nil, errors.Errorf("loading readers from cache: %w", err)
+	}
+
+	for name, file := range extractedFilesCache {
+		files[name] = file
+	}
+
+	// extract files
+	extractedFiles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
+	if err != nil {
+		return nil, errors.Errorf("extracting downloads: %w", err)
+	}
+
+	tmpExtractDir, err := os.MkdirTemp("", "ec1-extract")
+	if err != nil {
+		return nil, errors.Errorf("creating temporary extraction directory: %w", err)
+	}
+
+	err = teeReadersToCache(ctx, extractedFiles, tmpExtractDir)
+	if err != nil {
+		return nil, errors.Errorf("extracting readers to cache: %w", err)
+	}
+
+	bl, bldev, wg, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
+	if err != nil {
+		return nil, errors.Errorf("getting boot loader config: %w", err)
+	}
+	devices = append(devices, bldev...)
+
+	devices = append(devices, &virtio.VirtioSerial{
+		LogFile: filepath.Join(workingDir, "console.log"),
+	})
+
+	// run boot provisioner
+	bootProvisioners := vmi.BootProvisioners()
+	for _, bootProvisioner := range bootProvisioners {
+		if bootProvisionerVirtioDevices, err := bootProvisioner.VirtioDevices(ctx); err != nil {
+			return nil, errors.Errorf("getting boot provisioner virtio devices: %w", err)
+		} else {
+			devices = append(devices, bootProvisionerVirtioDevices...)
+		}
+		provisioners = append(provisioners, bootProvisioner)
+	}
+
+	runtimeProvisioners := vmi.RuntimeProvisioners()
+
+	errgrp, ctx := errgroup.WithContext(ctx)
+
+	netdev, hostIPPort, err := NewNetDevice(ctx, errgrp)
+	if err != nil {
+		return nil, errors.Errorf("creating net device: %w", err)
+	}
+	devices = append(devices, netdev)
+
+	for _, runtimeProvisioner := range runtimeProvisioners {
+		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
+			return nil, errors.Errorf("getting runtime provisioner virtio devices: %w", err)
+		} else {
+			devices = append(devices, runtimeProvisionerVirtioDevices...)
+		}
+		provisioners = append(provisioners, runtimeProvisioner)
+	}
+
+	opts := NewVMOptions{
+		Vcpus:        vcpus,
+		Memory:       memory,
+		Devices:      devices,
+		Provisioners: provisioners,
+	}
+
+	slog.InfoContext(ctx, "creating virtual machine")
+
+	/// WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
+
+	startWait := time.Now()
+	err = wg.Wait()
+	if err != nil {
+		return nil, errors.Errorf("waiting for boot loader config: %w", err)
+	}
+
+	slog.InfoContext(ctx, "boot loader config ready", slog.Duration("duration", time.Since(startWait)))
+
+	// we don't want to save the files if they were not valid
+	go func() {
+		err = osx.RenameDirFast(ctx, tmpExtractDir, extractionCacheDir)
+		if err != nil {
+			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
+		}
+	}()
+
+	/// END WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
+
+	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
+	if err != nil {
+		return nil, errors.Errorf("creating virtual machine: %w", err)
+	}
+
+	slog.WarnContext(ctx, "booting virtual machine")
+
+	err = boot(ctx, vm, vmi)
+	if err != nil {
+		return nil, errors.Errorf("booting virtual machine: %w", err)
+	}
+
+	slog.WarnContext(ctx, "running virtual machine")
+
+	runErrGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
+	if err != nil {
+		return nil, errors.Errorf("running virtual machine: %w", err)
+	}
+
+	defer func() {
+		runCancel()
+		if err := runErrGroup.Wait(); err != nil {
+			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
+		}
+	}()
+
+	slog.InfoContext(ctx, "waiting for VM to stop")
+
+	errCh := make(chan error, 1)
+	go func() {
+		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
+			errCh <- fmt.Errorf("virtualization error: %v", err)
+		} else {
+			slog.InfoContext(ctx, "VM is stopped")
+			errCh <- nil
+		}
+	}()
+
+	go func() {
+		if err := errgrp.Wait(); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
+		}
+	}()
+
+	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
+
+}
+
 func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.Reader) (bootloader.Bootloader, []virtio.VirtioDevice, *errgroup.Group, error) {
 
 	wg := &errgroup.Group{}
@@ -205,218 +393,6 @@ func cacheKeyFromMap(m map[string]string, vmi VMIProvider) string {
 	keys = append(keys, reflect.TypeOf(vmi).String())
 	dat := sha256.Sum256([]byte(strings.Join(keys, "-")))
 	return hex.EncodeToString(dat[:])
-}
-
-func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B) (*RunningVM[VM], error) {
-	id := "vm-" + xid.New().String()
-
-	startTime := time.Now()
-
-	workingDir, err := host.EmphiricalVMCacheDir(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	globalCacheDir, err := host.CacheDirPrefix()
-	if err != nil {
-		return nil, errors.Errorf("creating global cache directory: %w", err)
-	}
-
-	err = os.MkdirAll(workingDir, 0755)
-	if err != nil {
-		return nil, errors.Errorf("creating working directory: %w", err)
-	}
-
-	devices := []virtio.VirtioDevice{}
-	provisioners := []Provisioner{}
-
-	err = addSSHKeyToVM(ctx, workingDir)
-	if err != nil {
-		return nil, errors.Errorf("adding ssh key to vm: %w", err)
-	}
-
-	// create an ssh private key for this vm
-
-	diskImageURLVMIProvider, ok := vmi.(DownloadableVMIProvider)
-	if !ok {
-		return nil, errors.New("vmi does not support downloads, ec1 does not yet support this")
-	}
-
-	dls := diskImageURLVMIProvider.Downloads()
-
-	files, err := host.DownloadAndExtractVMI(ctx, dls)
-	if err != nil {
-		return nil, errors.Errorf("downloading and extracting VMI: %w", err)
-	}
-
-	cacheKey := cacheKeyFromMap(dls, vmi)
-
-	extractionCacheDir := filepath.Join(globalCacheDir, "extractions", cacheKey)
-
-	extractedFilesCache, err := loadReadersFromCache(ctx, extractionCacheDir)
-	if err != nil {
-		return nil, errors.Errorf("loading readers from cache: %w", err)
-	}
-
-	for name, file := range extractedFilesCache {
-		files[name] = file
-	}
-
-	// extract files
-	extractedFiles, err := diskImageURLVMIProvider.ExtractDownloads(ctx, files)
-	if err != nil {
-		return nil, errors.Errorf("extracting downloads: %w", err)
-	}
-
-	tmpExtractDir, err := os.MkdirTemp("", "ec1-extract")
-	if err != nil {
-		return nil, errors.Errorf("creating temporary extraction directory: %w", err)
-	}
-
-	err = teeReadersToCache(ctx, extractedFiles, tmpExtractDir)
-	if err != nil {
-		return nil, errors.Errorf("extracting readers to cache: %w", err)
-	}
-
-	bl, bldev, wg, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
-	if err != nil {
-		return nil, errors.Errorf("getting boot loader config: %w", err)
-	}
-	devices = append(devices, bldev...)
-
-	// // copy extracted files to the extraction cache dir
-	// for name := range extractedFiles {
-	// 	pr, pw := io.Pipe()
-	// 	extractedFiles[name] = iox.PreservedNopCloser(io.TeeReader(extractedFiles[name], pw))
-	// 	// we almost are able to do this in the above for loop, but in cases we reuse the cache
-	// 	// we need to make sure we are not reading and writing to the same file
-	// 	// so instead we do the next best thing and do in a background go routine
-	// 	go func() {
-	// 		_, err = osx.WriteFileFromReader(ctx, filepath.Join(extractionCacheDir, name), pr, 0644)
-	// 		if err != nil {
-	// 			slog.WarnContext(ctx, "problem writing file to extraction cache, this is ignored", "file", name, "error", err)
-	// 		}
-	// 	}()
-	// }
-
-	devices = append(devices, &virtio.VirtioSerial{
-		LogFile: filepath.Join(workingDir, "console.log"),
-	})
-
-	// run boot provisioner
-	bootProvisioners := vmi.BootProvisioners()
-	for _, bootProvisioner := range bootProvisioners {
-		if bootProvisionerVirtioDevices, err := bootProvisioner.VirtioDevices(ctx); err != nil {
-			return nil, errors.Errorf("getting boot provisioner virtio devices: %w", err)
-		} else {
-			devices = append(devices, bootProvisionerVirtioDevices...)
-		}
-		provisioners = append(provisioners, bootProvisioner)
-	}
-
-	runtimeProvisioners := vmi.RuntimeProvisioners()
-
-	errgrp, ctx := errgroup.WithContext(ctx)
-
-	netdev, hostIPPort, err := NewNetDevice(ctx, errgrp)
-	if err != nil {
-		return nil, errors.Errorf("creating net device: %w", err)
-	}
-	devices = append(devices, netdev)
-
-	for _, runtimeProvisioner := range runtimeProvisioners {
-		if runtimeProvisionerVirtioDevices, err := runtimeProvisioner.VirtioDevices(ctx); err != nil {
-			return nil, errors.Errorf("getting runtime provisioner virtio devices: %w", err)
-		} else {
-			devices = append(devices, runtimeProvisionerVirtioDevices...)
-		}
-		provisioners = append(provisioners, runtimeProvisioner)
-	}
-
-	opts := NewVMOptions{
-		Vcpus:        vcpus,
-		Memory:       memory,
-		Devices:      devices,
-		Provisioners: provisioners,
-	}
-
-	slog.InfoContext(ctx, "creating virtual machine")
-
-	/// WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
-
-	startWait := time.Now()
-	err = wg.Wait()
-	if err != nil {
-		return nil, errors.Errorf("waiting for boot loader config: %w", err)
-	}
-
-	slog.InfoContext(ctx, "boot loader config ready", slog.Duration("duration", time.Since(startWait)))
-
-	// // cmd.Exec a checksum.txt of the working directory, save it to the extraction cache dir
-	// // find . -type f -not -name "checksums.txt" -print0 | xargs -0 shasum -a 256 > checksums.txt
-	// cmd := exec.Command("sh", "-c", "find . -type f -not -name 'checksums.txt' -print0 | xargs -0 shasum -a 256 > checksums.txt")
-	// cmd.Dir = workingDir
-	// output, err := cmd.Output()
-	// if err != nil {
-	// 	return nil, errors.Errorf("getting sha256 checksum of working directory: %w: %s", err, string(output))
-	// }
-
-	// we don't want to save the files if they were not valid
-	go func() {
-		err = osx.RenameDirFast(ctx, tmpExtractDir, extractionCacheDir)
-		if err != nil {
-			slog.WarnContext(ctx, "problem copying files to extraction cache, this is ignored", "error", err)
-		}
-	}()
-
-	/// END WE NEED THE FILES TO BE WRITTEN TO THE EXTRACTION CACHE DIR BEFORE WE CAN DO THIS
-
-	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bl)
-	if err != nil {
-		return nil, errors.Errorf("creating virtual machine: %w", err)
-	}
-
-	slog.WarnContext(ctx, "booting virtual machine")
-
-	err = boot(ctx, vm, vmi)
-	if err != nil {
-		return nil, errors.Errorf("booting virtual machine: %w", err)
-	}
-
-	slog.WarnContext(ctx, "running virtual machine")
-
-	runErrGroup, runCancel, err := run(ctx, hpv, vm, runtimeProvisioners)
-	if err != nil {
-		return nil, errors.Errorf("running virtual machine: %w", err)
-	}
-
-	defer func() {
-		runCancel()
-		if err := runErrGroup.Wait(); err != nil {
-			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
-		}
-	}()
-
-	slog.InfoContext(ctx, "waiting for VM to stop")
-
-	errCh := make(chan error, 1)
-	go func() {
-		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
-			errCh <- fmt.Errorf("virtualization error: %v", err)
-		} else {
-			slog.InfoContext(ctx, "VM is stopped")
-			errCh <- nil
-		}
-	}()
-
-	go func() {
-		if err := errgrp.Wait(); err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
-		}
-	}()
-
-	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
-
 }
 
 // func bufferedFileIO(filePath string) (io.Reader, error) {
