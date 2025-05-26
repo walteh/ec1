@@ -19,6 +19,7 @@ import (
 
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/images/coreos"
+	"github.com/walteh/ec1/pkg/images/harpoon"
 	"github.com/walteh/ec1/pkg/images/puipui"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -59,6 +60,10 @@ func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*
 
 func setupCoreOSVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	return setupVM(t, ctx, memory, coreos.NewProvider())
+}
+
+func setupHarpoonVM(t *testing.T, ctx context.Context, memory strongunits.MiB) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	return setupVM(t, ctx, memory, harpoon.NewHarpoonProvider())
 }
 
 func buildDiffReport(t *testing.T, title string, header1 string, header2 string, diffContent string) string {

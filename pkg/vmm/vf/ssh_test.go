@@ -286,6 +286,58 @@ func TestGuestInitWrapperVSockPuipui(t *testing.T) {
 
 }
 
+func TestGuestInitWrapperVSockHarpoon(t *testing.T) {
+	ctx := tlog.SetupSlogForTest(t)
+	ctx = tctx.WithContext(ctx, t)
+	// Create a real VM for testing
+	rvm, _ := setupHarpoonVM(t, ctx, 1024)
+	if rvm == nil {
+		t.Skip("Could not create test VM")
+		return
+	}
+
+	slog.DebugContext(ctx, "waiting for test VM to be running")
+
+	err := vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
+
+	select {
+	case <-rvm.WaitOnVMReadyToExec():
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for vm to be ready to exec")
+	}
+
+	t.Logf("ready to exec")
+
+	var info *procfs.Meminfo
+	var errres error
+	var errchan = make(chan error, 1)
+
+	go func() {
+		mi, err := vmm.ProcMemInfo(ctx, rvm)
+		if err != nil {
+			errres = err
+		}
+		if mi != nil {
+			info = mi
+		}
+		errchan <- err
+	}()
+
+	select {
+	case <-errchan:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for meminfo")
+	}
+
+	require.NoError(t, errres, "Failed to get meminfo")
+
+	slog.InfoContext(ctx, "meminfo", "meminfo", logging.NewSlogRawJSONValue(info))
+
+	require.NotNil(t, info)
+
+}
+
 // func TestGuestInitWrapperVSockFedora(t *testing.T) {
 // 	ctx := tlog.SetupSlogForTest(t)
 

@@ -12,8 +12,6 @@ import (
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/gen/initramfs/initramfs_aarch64"
-	"github.com/walteh/ec1/gen/kernel/vmlinux_aarch64"
 	"github.com/walteh/ec1/pkg/ext/iox"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/host"
@@ -110,22 +108,6 @@ func (prov *PuiPuiProvider) Downloads() map[string]string {
 
 func (prov *PuiPuiProvider) ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error) {
 	out := make(map[string]io.Reader)
-
-	defer func() {
-
-		r, err := (archives.Xz{}).OpenReader(bytes.NewReader(vmlinux_aarch64.BinaryXZ))
-		if err != nil {
-			panic(err)
-		}
-
-		gzr, err := (archives.Gz{}).OpenReader(bytes.NewReader(initramfs_aarch64.BinaryGZ))
-		if err != nil {
-			panic(err)
-		}
-
-		out[extractedKernelName] = r
-		out[extractedCpioName] = gzr
-	}()
 
 	_, cpioExists := cacheDir[extractedCpioName]
 	_, kernelExists := cacheDir[extractedKernelName]
