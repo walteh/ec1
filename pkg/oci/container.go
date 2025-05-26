@@ -1,23 +1,22 @@
 package oci
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	iofs "io/fs"
-
+	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/directory"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
-	"github.com/diskfs/go-diskfs"
-	"github.com/diskfs/go-diskfs/disk"
-	"github.com/diskfs/go-diskfs/filesystem"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/virtio"
@@ -31,46 +30,39 @@ type ContainerToVirtioOptions struct {
 	// Platform specifies the target platform (e.g., "linux/arm64")
 	Platform *types.SystemContext
 
-	// OutputDir is where to create the rootfs image file
+	// OutputDir is where to create the rootfs mount point
 	OutputDir string
-
-	// FilesystemType specifies the filesystem type for the rootfs (default: ext4)
-	FilesystemType string
-
-	// Size specifies the size of the rootfs image (default: 1GB)
-	Size int64
 
 	// ReadOnly specifies if the virtio device should be read-only
 	ReadOnly bool
+
+	// MountPoint is the directory where the filesystem will be mounted
+	MountPoint string
 }
 
-// ContainerToVirtioDevice converts an OCI container image to a virtio block device using pure Go
+// ContainerToVirtioDevice converts an OCI container image to a virtio device using containerd's mount system
 func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions) (virtio.VirtioDevice, error) {
-	slog.InfoContext(ctx, "converting OCI container to virtio device (pure Go)",
+	slog.InfoContext(ctx, "converting OCI container to virtio device (containerd mount)",
 		"image", opts.ImageRef,
 		"output", opts.OutputDir,
-		"fs_type", opts.FilesystemType,
-		"size_mb", opts.Size/(1024*1024))
+		"mount_point", opts.MountPoint)
 
 	// Set defaults
-	if opts.FilesystemType == "" {
-		opts.FilesystemType = "ext4"
-	}
-	if opts.Size == 0 {
-		opts.Size = 1024 * 1024 * 1024 // 1GB default
-	}
 	if opts.Platform == nil {
 		opts.Platform = &types.SystemContext{}
 	}
+	if opts.MountPoint == "" {
+		opts.MountPoint = filepath.Join(opts.OutputDir, "rootfs")
+	}
 
 	os.MkdirAll(opts.OutputDir, 0755)
+	os.MkdirAll(opts.MountPoint, 0755)
 
 	// Create temporary directory for extraction
 	tempDir, err := os.MkdirTemp(opts.OutputDir, "oci-extract-*")
 	if err != nil {
 		return nil, errors.Errorf("creating temp directory: %w", err)
 	}
-	// defer os.RemoveAll(tempDir)
 
 	// Pull and extract the container image
 	err = pullAndExtractImage(ctx, opts.ImageRef, tempDir, opts.Platform)
@@ -78,33 +70,113 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 		return nil, errors.Errorf("pulling and extracting image: %w", err)
 	}
 
-	// // Create filesystem image from extracted content using pure Go
-	// err = createFilesystemImagePureGo(ctx, tempDir, opts.OutputDir, opts.FilesystemType, opts.Size)
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating filesystem image: %w", err)
-	// }
+	// Create containerd mount manager
+	assembledFS := filepath.Join(tempDir, "rootfs")
+	mountMng := NewContainerdMountManager(assembledFS, opts.MountPoint, opts.ReadOnly)
 
-	// Create virtio block device
-	device, err := virtio.VirtioFsNew(tempDir, "rootfs")
+	// Mount the filesystem using containerd's mount system
+	err = mountMng.Mount(ctx)
 	if err != nil {
-		return nil, errors.Errorf("creating virtio block device: %w", err)
+		return nil, errors.Errorf("mounting containerd filesystem: %w", err)
 	}
 
-	if opts.ReadOnly {
-		// Set read-only if supported by the virtio implementation
-		slog.InfoContext(ctx, "virtio device created as read-only", "path", tempDir)
+	// Create virtio device pointing to the mounted filesystem
+	device, err := virtio.VirtioFsNew(opts.MountPoint, "rootfs")
+	if err != nil {
+		// Cleanup on failure
+		mountMng.Unmount(ctx)
+		return nil, errors.Errorf("creating virtio device: %w", err)
 	}
 
-	slog.InfoContext(ctx, "successfully created virtio device from container",
+	slog.InfoContext(ctx, "successfully created containerd-mounted virtio device from container",
 		"image", opts.ImageRef,
-		"device_path", tempDir)
+		"mount_point", opts.MountPoint)
 
 	return device, nil
+}
+
+// ContainerdMountManager manages a containerd mount for OCI container content
+type ContainerdMountManager struct {
+	sourceDir  string
+	mountPoint string
+	readOnly   bool
+	mounted    bool
+}
+
+// NewContainerdMountManager creates a new containerd mount manager for OCI container content
+func NewContainerdMountManager(sourceDir, mountPoint string, readOnly bool) *ContainerdMountManager {
+	return &ContainerdMountManager{
+		sourceDir:  sourceDir,
+		mountPoint: mountPoint,
+		readOnly:   readOnly,
+	}
+}
+
+// Mount mounts the OCI container content using containerd's mount system
+func (m *ContainerdMountManager) Mount(ctx context.Context) error {
+	if m.mounted {
+		return errors.New("filesystem already mounted")
+	}
+
+	// Create mount options
+	var options []string
+	if m.readOnly {
+		options = append(options, "ro")
+	}
+
+	// Create containerd mount
+	mounts := []mount.Mount{
+		{
+			Type:    "bind",
+			Source:  m.sourceDir,
+			Options: options,
+		},
+	}
+
+	slog.InfoContext(ctx, "mounting with containerd mount system",
+		"source", m.sourceDir,
+		"mount", m.mountPoint,
+		"readonly", m.readOnly,
+		"options", options)
+
+	// Use containerd's mount.All to perform the mount
+	err := mount.All(mounts, m.mountPoint)
+	if err != nil {
+		return errors.Errorf("containerd mount failed: %w", err)
+	}
+
+	m.mounted = true
+	slog.InfoContext(ctx, "successfully mounted with containerd", "mount_point", m.mountPoint)
+	return nil
+}
+
+// Unmount unmounts the containerd filesystem
+func (m *ContainerdMountManager) Unmount(ctx context.Context) error {
+	if !m.mounted {
+		return nil
+	}
+
+	// Use containerd's unmount function
+	err := mount.UnmountAll(m.mountPoint, 0)
+	if err != nil {
+		return errors.Errorf("unmounting containerd filesystem: %w", err)
+	}
+
+	m.mounted = false
+	slog.InfoContext(ctx, "successfully unmounted containerd mount", "mount_point", m.mountPoint)
+	return nil
 }
 
 // pullAndExtractImage pulls a container image and extracts it to a directory
 func pullAndExtractImage(ctx context.Context, imageRef, destDir string, sysCtx *types.SystemContext) error {
 	slog.InfoContext(ctx, "pulling container image", "image", imageRef)
+
+	// Create temporary directory for raw image extraction
+	rawDir, err := os.MkdirTemp(destDir, "raw-image-*")
+	if err != nil {
+		return errors.Errorf("creating temp directory: %w", err)
+	}
+	defer os.RemoveAll(rawDir)
 
 	// Create policy context (allow all for now - in production this should be more restrictive)
 	policyContext, err := signature.NewPolicyContext(&signature.Policy{
@@ -121,13 +193,13 @@ func pullAndExtractImage(ctx context.Context, imageRef, destDir string, sysCtx *
 		return errors.Errorf("parsing source reference: %w", err)
 	}
 
-	// Create destination directory reference
-	destRef, err := directory.NewReference(destDir)
+	// Create destination directory reference for raw extraction
+	destRef, err := directory.NewReference(rawDir)
 	if err != nil {
 		return errors.Errorf("creating destination reference: %w", err)
 	}
 
-	// Copy image from source to directory
+	// Copy image from source to directory (this gets the raw layers)
 	_, err = copy.Image(ctx, policyContext, destRef, srcRef, &copy.Options{
 		SourceCtx:      sysCtx,
 		DestinationCtx: sysCtx,
@@ -137,140 +209,13 @@ func pullAndExtractImage(ctx context.Context, imageRef, destDir string, sysCtx *
 		return errors.Errorf("copying image: %w", err)
 	}
 
-	slog.InfoContext(ctx, "successfully extracted container image", "dest", destDir)
-	return nil
-}
-
-// createFilesystemImagePureGo creates a filesystem image using pure Go (diskfs)
-func createFilesystemImagePureGo(ctx context.Context, sourceDir, OutputDir, fsType string, size int64) error {
-	slog.InfoContext(ctx, "creating filesystem image with pure Go",
-		"source", sourceDir,
-		"output", OutputDir,
-		"fs_type", fsType,
-		"size_mb", size/(1024*1024))
-
-	// Ensure output directory exists
-	if err := os.MkdirAll(filepath.Dir(OutputDir), 0755); err != nil {
-		return errors.Errorf("creating output directory: %w", err)
-	}
-
-	// Create disk image
-	dsk, err := diskfs.Create(OutputDir, size, diskfs.SectorSizeDefault)
+	// Now assemble the layers into the final filesystem
+	err = assembleContainerFilesystem(ctx, rawDir, destDir)
 	if err != nil {
-		return errors.Errorf("creating disk image: %w", err)
-	}
-	defer dsk.Close()
-
-	// Create filesystem based on type
-	var fsys filesystem.FileSystem
-	switch strings.ToLower(fsType) {
-	case "ext4":
-		fsys, err = dsk.CreateFilesystem(disk.FilesystemSpec{
-			Partition:   0, // Use entire disk
-			FSType:      filesystem.TypeExt4,
-			VolumeLabel: "container-rootfs-ext4",
-		})
-		if err != nil {
-			return errors.Errorf("creating ext4 filesystem: %w", err)
-		}
-	case "fat32":
-		fsys, err = dsk.CreateFilesystem(disk.FilesystemSpec{
-			Partition:   0, // Use entire disk
-			FSType:      filesystem.TypeFat32,
-			VolumeLabel: "CONTAINERFS", // FAT32 labels are often uppercase and shorter
-		})
-		if err != nil {
-			return errors.Errorf("creating fat32 filesystem: %w", err)
-		}
-	default:
-		return errors.Errorf("unsupported filesystem type: %s (only ext4, fat32 supported in pure Go mode)", fsType)
+		return errors.Errorf("assembling container filesystem: %w", err)
 	}
 
-	// Copy files from source directory to filesystem
-	err = copyDirectoryToFilesystem(ctx, sourceDir, fsys, "/")
-	if err != nil {
-		return errors.Errorf("copying files to filesystem: %w", err)
-	}
-
-	slog.InfoContext(ctx, "successfully created and populated filesystem image")
-	return nil
-}
-
-// copyDirectoryToFilesystem recursively copies files from a directory to a filesystem
-func copyDirectoryToFilesystem(ctx context.Context, sourceDir string, fsys filesystem.FileSystem, destPath string) error {
-	return filepath.WalkDir(sourceDir, func(path string, d iofs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Calculate relative path
-		relPath, err := filepath.Rel(sourceDir, path)
-		if err != nil {
-			return err
-		}
-
-		// Convert to filesystem path
-		fsPath := filepath.Join(destPath, relPath)
-		fsPath = filepath.ToSlash(fsPath) // Ensure forward slashes
-
-		if d.IsDir() {
-			// Create directory
-			if fsPath != "/" { // Don't try to create root directory
-				err = fsys.Mkdir(fsPath)
-				if err != nil {
-					return errors.Errorf("creating directory %s: %w", fsPath, err)
-				}
-				slog.DebugContext(ctx, "created directory", "path", fsPath)
-			}
-		} else {
-			// Copy file
-			err = copyFileToFilesystem(ctx, path, fsys, fsPath)
-			if err != nil {
-				return errors.Errorf("copying file %s to %s: %w", path, fsPath, err)
-			}
-			slog.DebugContext(ctx, "copied file", "src", path, "dest", fsPath)
-		}
-
-		return nil
-	})
-}
-
-// copyFileToFilesystem copies a single file to the filesystem
-func copyFileToFilesystem(ctx context.Context, srcPath string, fsys filesystem.FileSystem, destPath string) error {
-	// Open source file
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return errors.Errorf("opening source file: %w", err)
-	}
-	defer srcFile.Close()
-
-	// Get file info for permissions
-	srcInfo, err := srcFile.Stat()
-	if err != nil {
-		return errors.Errorf("getting source file info: %w", err)
-	}
-
-	// Create destination file
-	destFile, err := fsys.OpenFile(destPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC)
-	if err != nil {
-		return errors.Errorf("creating destination file: %w", err)
-	}
-	defer destFile.Close()
-
-	// Copy content
-	_, err = io.Copy(destFile, srcFile)
-	if err != nil {
-		return errors.Errorf("copying file content: %w", err)
-	}
-
-	// Try to set permissions (may not be supported by all filesystems)
-	if chmodder, ok := destFile.(interface{ Chmod(os.FileMode) error }); ok {
-		err = chmodder.Chmod(srcInfo.Mode())
-		if err != nil {
-			slog.DebugContext(ctx, "failed to set file permissions (continuing)", "file", destPath, "error", err)
-		}
-	}
-
+	slog.InfoContext(ctx, "successfully extracted and assembled container image", "dest", destDir)
 	return nil
 }
 
@@ -298,4 +243,132 @@ func GetImageInfo(ctx context.Context, imageRef string, sysCtx *types.SystemCont
 	}
 
 	return info, nil
+}
+
+// assembleContainerFilesystem reads the OCI image layers and assembles them into a complete filesystem
+func assembleContainerFilesystem(ctx context.Context, rawDir, destDir string) error {
+	slog.InfoContext(ctx, "assembling container filesystem", "raw", rawDir, "dest", destDir)
+
+	// Read the manifest to get layer information
+	manifestPath := filepath.Join(rawDir, "manifest.json")
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return errors.Errorf("reading manifest: %w", err)
+	}
+
+	var manifest struct {
+		Layers []struct {
+			Digest string `json:"digest"`
+		} `json:"layers"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return errors.Errorf("parsing manifest: %w", err)
+	}
+
+	// Create the destination filesystem directory
+	fsDir := filepath.Join(destDir, "filesystem")
+	if err := os.MkdirAll(fsDir, 0755); err != nil {
+		return errors.Errorf("creating filesystem directory: %w", err)
+	}
+
+	// Extract each layer in order
+	for i, layer := range manifest.Layers {
+		// Remove the "sha256:" prefix from digest to get the filename
+		layerFile := strings.TrimPrefix(layer.Digest, "sha256:")
+		layerPath := filepath.Join(rawDir, layerFile)
+
+		slog.InfoContext(ctx, "extracting layer", "layer", i+1, "total", len(manifest.Layers), "file", layerFile)
+
+		if err := extractLayer(ctx, layerPath, fsDir); err != nil {
+			return errors.Errorf("extracting layer %d: %w", i+1, err)
+		}
+	}
+
+	// Move the assembled filesystem to the final destination
+	finalDest := filepath.Join(destDir, "rootfs")
+	if err := os.Rename(fsDir, finalDest); err != nil {
+		return errors.Errorf("moving assembled filesystem: %w", err)
+	}
+
+	slog.InfoContext(ctx, "successfully assembled container filesystem", "dest", finalDest)
+	return nil
+}
+
+// extractLayer extracts a single compressed layer tar file to the destination
+func extractLayer(ctx context.Context, layerPath, destDir string) error {
+	file, err := os.Open(layerPath)
+	if err != nil {
+		return errors.Errorf("opening layer file: %w", err)
+	}
+	defer file.Close()
+
+	// Decompress the gzipped layer
+	gzReader, err := gzip.NewReader(file)
+	if err != nil {
+		return errors.Errorf("creating gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Extract the tar archive
+	tarReader := tar.NewReader(gzReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.Errorf("reading tar header: %w", err)
+		}
+
+		// Skip whiteout files (used for deletions in overlay filesystems)
+		if strings.HasPrefix(filepath.Base(header.Name), ".wh.") {
+			continue
+		}
+
+		targetPath := filepath.Join(destDir, header.Name)
+
+		// Ensure the target directory exists
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return errors.Errorf("creating directory: %w", err)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+				return errors.Errorf("creating directory %s: %w", targetPath, err)
+			}
+		case tar.TypeReg:
+			if err := extractFile(tarReader, targetPath, header); err != nil {
+				return errors.Errorf("extracting file %s: %w", targetPath, err)
+			}
+		case tar.TypeSymlink:
+			if err := os.Symlink(header.Linkname, targetPath); err != nil && !os.IsExist(err) {
+				return errors.Errorf("creating symlink %s: %w", targetPath, err)
+			}
+		case tar.TypeLink:
+			linkTarget := filepath.Join(destDir, header.Linkname)
+			if err := os.Link(linkTarget, targetPath); err != nil && !os.IsExist(err) {
+				return errors.Errorf("creating hard link %s: %w", targetPath, err)
+			}
+		default:
+			slog.WarnContext(ctx, "skipping unsupported file type", "type", header.Typeflag, "file", header.Name)
+		}
+	}
+
+	return nil
+}
+
+// extractFile extracts a single file from the tar reader
+func extractFile(tarReader *tar.Reader, targetPath string, header *tar.Header) error {
+	file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+	if err != nil {
+		return errors.Errorf("creating file: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, tarReader); err != nil {
+		return errors.Errorf("copying file content: %w", err)
+	}
+
+	return nil
 }

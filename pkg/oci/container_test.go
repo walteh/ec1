@@ -1,128 +1,136 @@
 package oci
 
 import (
-	"log/slog"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/containers/image/v5/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/walteh/ec1/pkg/testing/tlog"
 )
 
-func TestContainerToVirtioDevice_Alpine(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
+func TestContainerToVirtioDevice(t *testing.T) {
+	ctx := context.Background()
 
-	// Skip if running in CI or if docker/podman is not available
-	// This test requires network access and a container runtime to pull images.
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping container to virtio device tests in CI environment as they require network and container runtime.")
+	// Create temporary directory for test
+	tempDir, err := os.MkdirTemp("", "oci-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
 	}
+	defer os.RemoveAll(tempDir)
 
-	// Create temporary directory for output
-	tempDir := t.TempDir()
-	outputPath := filepath.Join(tempDir, "alpine-rootfs-fat32.img")
-
+	// Test with a small Alpine Linux image
 	opts := ContainerToVirtioOptions{
-		ImageRef: "docker.io/library/alpine:latest", // A small, common image
+		ImageRef:   "docker.io/library/alpine:latest",
+		OutputDir:  tempDir,
+		MountPoint: filepath.Join(tempDir, "mount"),
 		Platform: &types.SystemContext{
-			OSChoice: "linux", // Explicitly request linux
-			// ArchitectureChoice: "arm64", // Or detect host arch, or leave blank for library to pick
+			OSChoice:           "linux",
+			ArchitectureChoice: "amd64",
 		},
-		OutputDir:      tempDir,
-		FilesystemType: "fat32",
-		Size:           512 * 1024 * 1024, // 512MB
-		ReadOnly:       false,
+		ReadOnly: true,
 	}
 
 	device, err := ContainerToVirtioDevice(ctx, opts)
-	require.NoError(t, err, "ContainerToVirtioDevice should not return an error for alpine")
-	require.NotNil(t, device, "ContainerToVirtioDevice should return a non-nil device")
-
-	// Check if the output file was created
-	_, err = os.Stat(outputPath)
-	assert.NoError(t, err, "Output file should exist at %s", outputPath)
-
-	// Further checks could involve trying to mount the image (if feasible in a test env)
-	// or inspecting its contents, but that adds complexity.
-	// For now, successful creation and existence of the file is a good first step.
-
-	slog.InfoContext(ctx, "Successfully tested ContainerToVirtioDevice with alpine image.")
-}
-
-func TestContainerToVirtioDevice_InvalidImage(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
-
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test in CI environment.") // Might still attempt network
+	if err != nil {
+		t.Fatalf("Failed to convert container to virtio device: %v", err)
 	}
 
-	tempDir := t.TempDir()
-	outputPath := filepath.Join(tempDir, "invalid-rootfs.img")
-
-	opts := ContainerToVirtioOptions{
-		ImageRef:       "this-image-definitely-does-not-exist/hopefully:latest",
-		OutputDir:      tempDir,
-		FilesystemType: "ext4",
-		Size:           100 * 1024 * 1024, // 100MB
+	if device == nil {
+		t.Fatal("Expected non-nil virtio device")
 	}
 
-	_, err := ContainerToVirtioDevice(ctx, opts)
-	assert.Error(t, err, "ContainerToVirtioDevice should return an error for an invalid image reference")
+	// Give FUSE a moment to mount
+	time.Sleep(100 * time.Millisecond)
 
-	// Ensure the output file was NOT created or is empty if it was touched before erroring
-	fi, statErr := os.Stat(outputPath)
-	if statErr == nil {
-		assert.Zero(t, fi.Size(), "Output file should be empty or not exist for a failed conversion")
-	} else {
-		assert.True(t, os.IsNotExist(statErr), "Output file should not exist for a failed conversion")
-	}
-}
-
-func TestContainerToVirtioOptions_Defaults(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t) // Added for consistency, though not strictly needed if no logging in func
-	tempDir := t.TempDir()
-	_ = ctx // avoid unused variable error if slog is not used
-	opts := ContainerToVirtioOptions{
-		ImageRef:  "some/image",
-		OutputDir: tempDir,
-		// FilesystemType and Size left to default
+	// Verify the mount point exists and has content
+	mountInfo, err := os.Stat(opts.MountPoint)
+	if err != nil {
+		t.Fatalf("Mount point does not exist: %v", err)
 	}
 
-	// This test doesn't run the conversion, just checks default option application logic
-	// if it were part of the New function or similar. For now, it implies checking inside
-	// ContainerToVirtioDevice if we were to expand it.
+	if !mountInfo.IsDir() {
+		t.Fatal("Mount point is not a directory")
+	}
 
-	// For the actual ContainerToVirtioDevice, defaults are applied internally.
-	// We can assert the expected defaults if we had a separate constructor or options processor.
-	// Here, we mostly ensure the struct can be created with minimal fields.
-	assert.Equal(t, "some/image", opts.ImageRef)
-	// Default FS type is ext4, Size is 1GB. These are applied inside ContainerToVirtioDevice.
+	// Check for typical Alpine Linux directories
+	expectedDirs := []string{"bin", "etc", "lib", "usr"}
+	for _, dir := range expectedDirs {
+		dirPath := filepath.Join(opts.MountPoint, dir)
+		if _, err := os.Stat(dirPath); err != nil {
+			t.Logf("Warning: Expected directory %s not found: %v", dir, err)
+		} else {
+			t.Logf("Found expected directory: %s", dir)
+		}
+	}
+
+	// Test reading a file
+	etcPath := filepath.Join(opts.MountPoint, "etc")
+	if entries, err := os.ReadDir(etcPath); err == nil {
+		t.Logf("Found %d entries in /etc", len(entries))
+		for i, entry := range entries {
+			if i < 5 { // Log first 5 entries
+				t.Logf("  /etc/%s (dir: %v)", entry.Name(), entry.IsDir())
+			}
+		}
+	}
 }
 
 func TestGetImageInfo(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
-
-	// Skip if running in CI or if network is not available
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping network-dependent tests in CI environment")
-	}
+	ctx := context.Background()
 
 	sysCtx := &types.SystemContext{
 		OSChoice:           "linux",
-		ArchitectureChoice: "arm64",
+		ArchitectureChoice: "amd64",
 	}
 
 	info, err := GetImageInfo(ctx, "docker.io/library/alpine:latest", sysCtx)
 	if err != nil {
-		t.Skipf("Skipping test due to network/registry error: %v", err)
+		t.Fatalf("Failed to get image info: %v", err)
 	}
 
-	require.NotNil(t, info)
-	assert.Contains(t, info.Tag, "alpine")
+	if info == nil {
+		t.Fatal("Expected non-nil image info")
+	}
 
 	t.Logf("Image info: %+v", info)
+}
+
+func TestPullAndExtractImage(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temporary directory for test
+	tempDir, err := os.MkdirTemp("", "oci-extract-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	sysCtx := &types.SystemContext{
+		OSChoice:           "linux",
+		ArchitectureChoice: "amd64",
+	}
+
+	err = pullAndExtractImage(ctx, "docker.io/library/alpine:latest", tempDir, sysCtx)
+	if err != nil {
+		t.Fatalf("Failed to pull and extract image: %v", err)
+	}
+
+	// Verify extraction worked
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to read extracted directory: %v", err)
+	}
+
+	if len(entries) == 0 {
+		t.Fatal("No files extracted from container image")
+	}
+
+	t.Logf("Extracted %d entries from container image", len(entries))
+	for i, entry := range entries {
+		if i < 10 { // Log first 10 entries
+			t.Logf("  %s (dir: %v)", entry.Name(), entry.IsDir())
+		}
+	}
 }

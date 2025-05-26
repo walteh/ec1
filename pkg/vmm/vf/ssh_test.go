@@ -408,9 +408,7 @@ func TestHarpoonOCI(t *testing.T) {
 			OSChoice:           "linux",
 			ArchitectureChoice: "arm64",
 		},
-		OutputDir:      t.TempDir(),
-		FilesystemType: "fat32",
-		Size:           1024 * 1024 * 1024,
+		OutputDir: t.TempDir(),
 	})
 	require.NoError(t, err, "Failed to create virtio device")
 
@@ -444,7 +442,8 @@ func TestHarpoonOCI(t *testing.T) {
 	var errchan = make(chan error, 1)
 
 	go func() {
-		stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "ls -la /newroot")
+		// stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "ls -la /newroot/bin")
+		stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "ls -la /newroot/usr/local/bin/bun && file /newroot/usr/local/bin/bun")
 		errchan <- errres
 	}()
 

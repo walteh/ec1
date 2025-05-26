@@ -11,10 +11,6 @@ tool (
 	github.com/walteh/ec1/tools/cmd/gow
 )
 
-
-
-
-
 tool (
 	cmd/test2json
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
