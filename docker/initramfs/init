@@ -1,35 +1,138 @@
 #!/bin/busybox sh
 set -eux
 
-# 0. directories the kernel doesn't create for us
-mkdir -p /proc /sys /dev
+# # 0. directories the kernel doesn't create for us
+# mkdir -p /proc /sys /dev /bin /sbin /usr/sbin /usr/bin /usr/local/bin
 
-# 1. (optional) only if you want links in /bin at boot
-#/bin/busybox --install -s -busyboxdir=/bin
+# export PATH=/bin:/sbin
 
-export PATH=/bin:/sbin
+# mount -t devtmpfs devtmpfs /dev
+# mount -t proc      proc      /proc
+# mount -t sysfs     sysfs     /sys
 
-# 2. mount pseudo‑filesystems
-mount -t devtmpfs devtmpfs /dev
-mount -t proc      proc      /proc
-mount -t sysfs     sysfs     /sys
 
-mkdir -p /dev/pts /dev/shm
-mount -t devpts    devpts    /dev/pts
-mount -t tmpfs     shm       /dev/shm
+# mkdir -p /dev/pts /dev/shm
+# mount -t devpts    devpts    /dev/pts
+# mount -t tmpfs     shm       /dev/shm
 
-# 3. handle cmdline
-ROOT_TAG=rootfs
-VSOCK_PORT=1024
-for a in $(cat /proc/cmdline); do
-    case $a in
-        root_tag=*)  ROOT_TAG=${a#root_tag=} ;;
-        vsock_port=*) VSOCK_PORT=${a#vsock_port=} ;;
-    esac
-done
 
-# 4. switch to the real root and launch your agent
-mkdir -p /newroot
-mount -t virtiofs "$ROOT_TAG" /newroot
-# exec switch_root /newroot /usr/bin/guest_agent --vsock-port="$VSOCK_PORT"
-exec /linuxrc
+# mkdir -p /newroot
+# mount -t virtiofs "rootfs" /newroot
+# cd /newroot
+# pivot_root . /
+
+# mount -t proc proc /newroot/proc
+# mount -t sysfs sysfs /newroot/sys
+# mount -t devtmpfs devtmpfs /newroot/dev
+
+# mkdir -p /newroot/dev/pts /newroot/dev/shm
+# mount -t devpts devpts /newroot/dev/pts
+# mount -t tmpfs shm /newroot/dev/shm
+
+
+#!/bin/busybox sh
+# set -eux
+# export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# # 1. Early devices so we can talk to the console
+# mount -t devtmpfs none /dev
+# mount -t proc     none /proc
+# mount -t sysfs    none /sys
+
+# # 2. Mount the directory the host exported with tag "rootfs"
+# mkdir -p /newroot
+# mount -t virtiofs rootfs /newroot          # tag must match your VZVirtioFileSystem
+
+# # 3. Hand off – switch_root does everything pivot_root + cleanup would do
+# exec busybox switch_root -c /dev/console /newroot /sbin/init
+
+#!/bin/busybox sh
+# set -eux
+# export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# # ---------- 1. make sure mount‑points exist ----------
+# for d in /proc /sys /dev /newroot ; do
+#     [ -d "$d" ] || mkdir -p "$d"
+# done
+
+# # ---------- 2. early pseudo‑filesystems ----------
+# mount -t devtmpfs devtmpfs /dev
+# mount -t proc     proc     /proc
+# mount -t sysfs    sysfs    /sys
+
+# # optional (serial pts, shm):
+# mkdir -p /dev/pts /dev/shm
+# mount -t devpts devpts /dev/pts
+# mount -t tmpfs  tmpfs /dev/shm
+
+# # ---------- 3. mount the container root ----------
+# mount -t virtiofs rootfs /newroot          # tag must match host cfg
+
+# # ---------- 4. hand off to the real userspace ----------
+# exec busybox switch_root -c /dev/console /newroot /sbin/init
+
+#!/bin/busybox sh
+# set -eux
+# export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# # 0. make sure we have the directories we need
+# for d in /proc /sys /dev /newroot ; do
+#     [ -d "$d" ] || mkdir -p "$d"
+# done
+
+# # 1. early pseudo‑filesystems so BusyBox can talk to the console
+# mount -t devtmpfs devtmpfs /dev        # <-- creates /dev/console, /dev/tty*, …
+# mount -t proc     proc     /proc
+# mount -t sysfs    sysfs    /sys
+
+# # 2. mount the root‑filesystem the host exported with tag “rootfs”
+# mount -t virtiofs rootfs /newroot      # virtio‑fs tag must match host config
+
+# # make sure essential device nodes exist
+# for n in null zero tty console; do
+#     [ -e /newroot/dev/$n ] || mknod -m 666 /newroot/dev/$n c 1 \
+#         $(case $n in
+#             null)     echo 3 ;;
+#             zero)     echo 5 ;;
+#             tty)      echo 6 ;;
+#             console)  echo 11;;
+#         esac)
+# done
+
+# ###############################################################################
+# # 3. move the live pseudo‑fs mounts INTO the new root, so they still exist
+# #    after we switch.  Using “-o move” keeps the kernel super‑block intact.
+# ###############################################################################
+# mount -o move /dev  /newroot/dev
+# mount -o move /proc /newroot/proc
+# mount -o move /sys  /newroot/sys
+
+# ###############################################################################
+# # 4. hand off — choose WHAT you want to run as PID 1 in the container.
+# #    • For debugging, /bin/sh is convenient.
+# #    • For normal images use the container’s ENTRYPOINT/CMD path.
+# ###############################################################################
+# exec switch_root /newroot /bin/sh        # <-- replace /bin/sh with your target
+
+#!/bin/busybox sh
+set -eux
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# 0. mount points
+for d in /proc /sys /dev /newroot ; do mkdir -p "$d"; done
+
+# 1. early pseudo‑filesystems
+mount -t devtmpfs devtmpfs /dev      # <-- /dev/null etc. now exist automatically
+mount -t proc     proc     /proc
+mount -t sysfs    sysfs    /sys
+
+# 2. rootfs exported by the host (virtio‑fs tag "rootfs")
+mount -t virtiofs rootfs /newroot
+
+# 3. move live mounts _into_ the root so containers inherit them
+mount -o move /dev  /newroot/dev
+mount -o move /proc /newroot/proc
+mount -o move /sys  /newroot/sys
+
+# 4. hand off to a tiny supervisor that will start “containers”
+exec switch_root /newroot /bin/sh

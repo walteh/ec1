@@ -20,16 +20,19 @@ ARG TARGET=aarch64
 
 RUN make -j$(nproc) CFLAGS="-static -fno-PIE" LDFLAGS="-static -no-pie"
 
-RUN mkdir -p /rootfs/bin
+
+RUN mkdir -p /rootfs/bin /rootfs/sbin /rootfs/usr/sbin /rootfs/usr/bin /rootfs/usr/local/bin
 RUN cp busybox /rootfs/bin/ \
 	&& chroot /rootfs /bin/busybox --install -s
 
 RUN mkdir -p /rootfs/etc/network
 RUN echo -e 'auto eth0\niface eth0 inet dhcp' > /rootfs/etc/network/interfaces
+RUN apk add --no-cache file
 
 
 FROM scratch AS rootfs
 COPY --from=alpine/socat /usr/bin/socat /bin/socat
+COPY --from=busybox-build /usr/bin/file /bin/file
 COPY --from=busybox-build /rootfs/ /
 
 # ---------- 3. pack with Go cpio writer ----------

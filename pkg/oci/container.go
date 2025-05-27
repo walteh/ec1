@@ -72,7 +72,7 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 
 	// Create containerd mount manager
 	assembledFS := filepath.Join(tempDir, "rootfs")
-	mountMng := NewContainerdMountManager(assembledFS, opts.MountPoint, opts.ReadOnly)
+	mountMng := NewContainerdMountManager(assembledFS, opts.MountPoint, opts.ReadOnly, opts.ImageRef)
 
 	// Mount the filesystem using containerd's mount system
 	err = mountMng.Mount(ctx)
@@ -80,8 +80,30 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 		return nil, errors.Errorf("mounting containerd filesystem: %w", err)
 	}
 
+	// Debug: Check if the mount actually worked
+	entries, err := os.ReadDir(opts.MountPoint)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to read mount point after mounting", "error", err)
+	} else {
+		slog.InfoContext(ctx, "mount point contents after mounting", "count", len(entries))
+		for _, entry := range entries {
+			slog.InfoContext(ctx, "mount point entry", "name", entry.Name(), "is_dir", entry.IsDir())
+		}
+	}
+
+	// Also check the source directory
+	sourceEntries, err := os.ReadDir(assembledFS)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to read source directory", "error", err)
+	} else {
+		slog.InfoContext(ctx, "source directory contents", "count", len(sourceEntries))
+		for _, entry := range sourceEntries {
+			slog.InfoContext(ctx, "source entry", "name", entry.Name(), "is_dir", entry.IsDir())
+		}
+	}
+
 	// Create virtio device pointing to the mounted filesystem
-	device, err := virtio.VirtioFsNew(opts.MountPoint, "rootfs")
+	device, err := virtio.VirtioFsNew(assembledFS, "rootfs")
 	if err != nil {
 		// Cleanup on failure
 		mountMng.Unmount(ctx)
@@ -101,14 +123,16 @@ type ContainerdMountManager struct {
 	mountPoint string
 	readOnly   bool
 	mounted    bool
+	imageRef   string
 }
 
 // NewContainerdMountManager creates a new containerd mount manager for OCI container content
-func NewContainerdMountManager(sourceDir, mountPoint string, readOnly bool) *ContainerdMountManager {
+func NewContainerdMountManager(sourceDir, mountPoint string, readOnly bool, imageRef string) *ContainerdMountManager {
 	return &ContainerdMountManager{
 		sourceDir:  sourceDir,
 		mountPoint: mountPoint,
 		readOnly:   readOnly,
+		imageRef:   imageRef,
 	}
 }
 
@@ -116,6 +140,31 @@ func NewContainerdMountManager(sourceDir, mountPoint string, readOnly bool) *Con
 func (m *ContainerdMountManager) Mount(ctx context.Context) error {
 	if m.mounted {
 		return errors.New("filesystem already mounted")
+	}
+
+	// Verify source directory exists and has content
+	sourceInfo, err := os.Stat(m.sourceDir)
+	if err != nil {
+		return errors.Errorf("source directory does not exist: %w", err)
+	}
+	if !sourceInfo.IsDir() {
+		return errors.Errorf("source is not a directory: %s", m.sourceDir)
+	}
+
+	// Check source directory contents
+	sourceEntries, err := os.ReadDir(m.sourceDir)
+	if err != nil {
+		return errors.Errorf("cannot read source directory: %w", err)
+	}
+	slog.InfoContext(ctx, "source directory before mount", "path", m.sourceDir, "entries", len(sourceEntries))
+
+	// Verify mount point exists
+	mountInfo, err := os.Stat(m.mountPoint)
+	if err != nil {
+		return errors.Errorf("mount point does not exist: %w", err)
+	}
+	if !mountInfo.IsDir() {
+		return errors.Errorf("mount point is not a directory: %s", m.mountPoint)
 	}
 
 	// Create mount options
@@ -139,14 +188,79 @@ func (m *ContainerdMountManager) Mount(ctx context.Context) error {
 		"readonly", m.readOnly,
 		"options", options)
 
-	// Use containerd's mount.All to perform the mount
-	err := mount.All(mounts, m.mountPoint)
+	err = mount.All(mounts, m.mountPoint)
 	if err != nil {
-		return errors.Errorf("containerd mount failed: %w", err)
+		return errors.Errorf("mounting containerd filesystem: %w", err)
 	}
 
-	m.mounted = true
-	slog.InfoContext(ctx, "successfully mounted with containerd", "mount_point", m.mountPoint)
+	// err = Runner(ctx, RunnerOpts{
+	// 	Target: m.mountPoint,
+	// 	Ref:    m.imageRef,
+	// 	Platform: platforms.Platform{
+	// 		Architecture: "arm64",
+	// 		OS:           "linux",
+	// 	}, // TODO: use opts.Platform
+	// 	Rw:          !m.readOnly,
+	// 	Snapshotter: "overlayfs",
+	// })
+	// if err != nil {
+	// 	return errors.Errorf("mounting containerd filesystem: %w", err)
+	// }
+
+	// Retry mount operation to handle intermittent FUSE-T issues
+	// var lastErr error
+	// maxRetries := 3
+	// for attempt := 1; attempt <= maxRetries; attempt++ {
+	// 	slog.InfoContext(ctx, "attempting mount", "attempt", attempt, "max_retries", maxRetries)
+
+	// 	// Use containerd's mount.All to perform the mount
+	// 	err = mount.All(mounts, m.mountPoint)
+	// 	if err != nil {
+	// 		lastErr = err
+	// 		slog.WarnContext(ctx, "mount attempt failed", "attempt", attempt, "error", err)
+	// 		if attempt < maxRetries {
+	// 			// Wait a bit before retrying
+	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+	// 			continue
+	// 		}
+	// 		return errors.Errorf("containerd mount failed after %d attempts: %w", maxRetries, err)
+	// 	}
+
+	// 	// Verify the mount worked by checking the mount point contents
+	// 	mountEntries, err := os.ReadDir(m.mountPoint)
+	// 	if err != nil {
+	// 		lastErr = err
+	// 		slog.WarnContext(ctx, "mount verification failed", "attempt", attempt, "error", err)
+	// 		if attempt < maxRetries {
+	// 			// Unmount and retry
+	// 			mount.UnmountAll(m.mountPoint, 0)
+	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+	// 			continue
+	// 		}
+	// 		return errors.Errorf("mount verification failed after %d attempts: %w", maxRetries, err)
+	// 	}
+
+	// 	slog.InfoContext(ctx, "mount point after mounting", "path", m.mountPoint, "entries", len(mountEntries), "attempt", attempt)
+
+	// 	if len(mountEntries) == 0 {
+	// 		lastErr = errors.New("mount point is empty")
+	// 		slog.WarnContext(ctx, "mount appears empty", "attempt", attempt)
+	// 		if attempt < maxRetries {
+	// 			// Unmount and retry
+	// 			mount.UnmountAll(m.mountPoint, 0)
+	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+	// 			continue
+	// 		}
+	// 		return errors.Errorf("mount appears to have failed - mount point is empty after %d attempts", maxRetries)
+	// 	}
+
+	// 	// Success!
+	// 	m.mounted = true
+	// 	slog.InfoContext(ctx, "successfully mounted with containerd", "mount_point", m.mountPoint, "entry_count", len(mountEntries), "attempt", attempt)
+	// 	return nil
+	// }
+
+	// return errors.Errorf("mount failed after %d attempts, last error: %w", maxRetries, lastErr)
 	return nil
 }
 

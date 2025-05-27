@@ -3,6 +3,10 @@
 		{
 			"name": "root",
 			"path": "."
+		},
+		{
+			"name": "docker-fs",
+			"path": "../docker-fs"
 		}
 		// {
 		// 	"name": "vz",
@@ -84,21 +88,7 @@
 			"editorInfo.border": "#00AAFF"
 			// "editorInfo.foreground": "#00AAFF",
 		},
-		"go.toolsEnvVars": {
-			"CGO_ENABLED": "1"
-		},
-		"gopls": {
-			"formatting.local": "github.com/walteh/ec1",
-			"build.buildFlags": ["-tags=cgo,libkrun,vmnet_helper"]
-		},
-		"go.buildTags": "cgo,libkrun,vmnet_helper",
-		"go.formatFlags": ["retab"],
-		"go.formatTool": "custom",
-		"go.alternateTools": {
-			"go": "${workspaceFolder}/gow",
-			"dlv": "${workspaceFolder}/gow",
-			"customFormatter": "${workspaceFolder}/gow"
-		},
+
 		// "[go]": {
 		// 	"editor.formatOnSave": false
 		// },
@@ -115,7 +105,21 @@
 			// ],
 			"dlvFlags": []
 		},
-
+		"go.toolsEnvVars": {
+			"CGO_ENABLED": "1"
+		},
+		"gopls": {
+			"formatting.local": "github.com/walteh/ec1",
+			"build.buildFlags": ["-tags=cgo,libkrun,vmnet_helper"]
+		},
+		"go.buildTags": "cgo,libkrun,vmnet_helper",
+		"go.formatFlags": ["retab"],
+		"go.formatTool": "custom",
+		"go.alternateTools": {
+			"go": "${workspaceFolder}/gow",
+			"dlv": "${workspaceFolder}/gow",
+			"customFormatter": "${workspaceFolder}/gow"
+		},
 		"go.testFlags": ["-ide", "-codesign", "-v"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,

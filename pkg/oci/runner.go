@@ -1,3 +1,5 @@
+package oci
+
 /*
    Copyright The containerd Authors.
 
@@ -13,8 +15,6 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-
-package images
 
 import (
 	"context"
@@ -41,7 +41,7 @@ type RunnerOpts struct {
 	Snapshotter string
 }
 
-func Runner(ctx context.Context, client *containerd.Client, opts RunnerOpts) (retErr error) {
+func Runner(ctx context.Context, opts RunnerOpts) (retErr error) {
 
 	if opts.Ref == "" {
 		return errors.New("please provide an image reference to mount")
@@ -51,8 +51,9 @@ func Runner(ctx context.Context, client *containerd.Client, opts RunnerOpts) (re
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	client, err := containerd.New("unix:///var/run/docker.sock")
+	client, err := containerd.New("/var/run/docker.sock")
 	if err != nil {
 		return err
 	}

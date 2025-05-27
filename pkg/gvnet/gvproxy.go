@@ -135,7 +135,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 	}
 	dnss, err := searchDomains(ctx)
 	if err != nil {
-		return nil, nil, errors.Errorf("searching domains: %w", err)
+		slog.WarnContext(ctx, "searching domains", "error", err)
 	}
 
 	// m, virtualPortMap, err := buildForwards(ctx, cfg.VMHostPort, groupErrs, map[int]cmux.Matcher{

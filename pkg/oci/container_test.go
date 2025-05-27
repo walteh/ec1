@@ -27,7 +27,7 @@ func TestContainerToVirtioDevice(t *testing.T) {
 		MountPoint: filepath.Join(tempDir, "mount"),
 		Platform: &types.SystemContext{
 			OSChoice:           "linux",
-			ArchitectureChoice: "amd64",
+			ArchitectureChoice: "arm64",
 		},
 		ReadOnly: true,
 	}

@@ -7,5 +7,5 @@ import _ "embed"
 var BinaryGZ []byte
 
 
-const BinaryGZChecksum = "16b803cb272a1f791130690dfccfbbf2c9d7be506a83cf3b218964bab414047f"
+const BinaryGZChecksum = "bc4918d5563884499b1033c64fa018c118d2464bef2c4b25384711ff1ca4743b"
 
