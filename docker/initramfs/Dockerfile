@@ -29,11 +29,62 @@ RUN mkdir -p /rootfs/etc/network
 RUN echo -e 'auto eth0\niface eth0 inet dhcp' > /rootfs/etc/network/interfaces
 RUN apk add --no-cache file
 
+# download jq
+FROM debian:bookworm-slim AS jq-build
+
+ENV DEBIAN_FRONTEND=noninteractive \
+	DEBCONF_NONINTERACTIVE_SEEN=true \
+	LC_ALL=C.UTF-8 \
+	LANG=C.UTF-8
+
+RUN apt-get update \
+	&& apt-get install -y \
+		build-essential \
+		autoconf \
+		libtool \
+		git \
+		bison \
+		flex \
+		wget \
+	&& rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch master https://github.com/jqlang/jq.git /app
+## have to skip building docs but I don't need them for my use case
+RUN cd /app \
+	&& git submodule init \
+	&& git submodule update \
+	&& autoreconf -i \
+	&& ./configure --disable-valgrind --enable-all-static --disable-docs --disable-maintainer-mode --prefix=/usr/local \
+	&& make -j$(nproc) LDFLAGS=-all-static \
+	&& strip jq
+
+# FROM alpine:3.21 AS jq-build
+
+# RUN apk add --no-cache \
+# 	git \
+# 	autoconf \
+# 	automake \
+# 	libtool \
+# 	build-base \
+# 	bison \
+# 	flex \
+# 	wget
+
+# RUN git clone https://github.com/jqlang/jq.git --depth 1 /app
+
+# RUN cd /app && git submodule update --init \
+# 	&& autoreconf -i \
+# 	&& ./configure --disable-valgrind --enable-all-static --disable-docs --disable-maintainer-mode --prefix=/usr/local \
+# 	&& make -j$(nproc) LDFLAGS=-all-static \
+# 	&& strip jq
+# testing onigurama will fail, this line just shows the error
+RUN cd /app && make check || echo "check failed"
 
 FROM scratch AS rootfs
 COPY --from=alpine/socat /usr/bin/socat /bin/socat
 COPY --from=busybox-build /usr/bin/file /bin/file
 COPY --from=busybox-build /rootfs/ /
+COPY --from=jq-build /app/jq /bin/jq
 
 # ---------- 3. pack with Go cpio writer ----------
 FROM alpine:3.21 AS cpio
@@ -44,8 +95,12 @@ WORKDIR /work
 COPY --from=rootfs / /rootfs
 
 COPY init /rootfs/init
+COPY ec1-container-init /rootfs/ec1-container-init
 COPY udhcpc.default /rootfs/etc/udhcpc/default.script
 COPY resolv.conf /rootfs/etc/resolv.conf
+
+# Make ec1-container-init executable
+RUN chmod +x /rootfs/ec1-container-init
 
 RUN mkdir -p /dist \
 	&& (cd /rootfs && find . -print0 | cpio --null -ov --format=newc > /dist/initramfs.cpio) \

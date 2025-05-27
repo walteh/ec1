@@ -81,7 +81,7 @@ func main() {
 		"read_only", *readOnly)
 
 	// Convert container to virtio device
-	device, err := oci.ContainerToVirtioDevice(ctx, opts)
+	device, metadata, err := oci.ContainerToVirtioDevice(ctx, opts)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to convert container to virtio device", "error", err)
 		os.Exit(1)
@@ -90,6 +90,17 @@ func main() {
 	slog.InfoContext(ctx, "Successfully created virtio device",
 		"mount_point", *mountPoint,
 		"device", fmt.Sprintf("%T", device))
+
+	// Log container metadata
+	if metadata != nil {
+		slog.InfoContext(ctx, "Container metadata extracted",
+			"image", metadata.ImageRef,
+			"entrypoint", metadata.Entrypoint,
+			"cmd", metadata.Cmd,
+			"working_dir", metadata.WorkingDir,
+			"user", metadata.User,
+			"env_count", len(metadata.Env))
+	}
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

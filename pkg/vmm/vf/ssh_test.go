@@ -406,7 +406,7 @@ func TestHarpoonOCI(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 	ctx = tctx.WithContext(ctx, t)
 
-	device, err := oci.ContainerToVirtioDevice(ctx, oci.ContainerToVirtioOptions{
+	device, metadata, err := oci.ContainerToVirtioDevice(ctx, oci.ContainerToVirtioOptions{
 		ImageRef: "docker.io/oven/bun:alpine",
 		Platform: &types.SystemContext{
 			OSChoice:           "linux",
@@ -415,6 +415,16 @@ func TestHarpoonOCI(t *testing.T) {
 		OutputDir: t.TempDir(),
 	})
 	require.NoError(t, err, "Failed to create virtio device")
+
+	// Log the extracted metadata
+	if metadata != nil {
+		t.Logf("Container metadata:")
+		t.Logf("  Image: %s", metadata.ImageRef)
+		t.Logf("  Entrypoint: %v", metadata.Entrypoint)
+		t.Logf("  Cmd: %v", metadata.Cmd)
+		t.Logf("  WorkingDir: %s", metadata.WorkingDir)
+		t.Logf("  User: %s", metadata.User)
+	}
 
 	// Debug: Check what's in the mount point on the host side
 	if vfsDevice, ok := device.(*virtio.VirtioFs); ok {

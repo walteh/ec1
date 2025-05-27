@@ -32,7 +32,7 @@ func TestContainerToVirtioDevice(t *testing.T) {
 		ReadOnly: true,
 	}
 
-	device, err := ContainerToVirtioDevice(ctx, opts)
+	device, metadata, err := ContainerToVirtioDevice(ctx, opts)
 	if err != nil {
 		t.Fatalf("Failed to convert container to virtio device: %v", err)
 	}
@@ -40,6 +40,18 @@ func TestContainerToVirtioDevice(t *testing.T) {
 	if device == nil {
 		t.Fatal("Expected non-nil virtio device")
 	}
+
+	if metadata == nil {
+		t.Fatal("Expected non-nil container metadata")
+	}
+
+	// Log the extracted metadata
+	t.Logf("Container metadata:")
+	t.Logf("  Entrypoint: %v", metadata.Config.Entrypoint)
+	t.Logf("  Cmd: %v", metadata.Config.Cmd)
+	t.Logf("  WorkingDir: %s", metadata.Config.WorkingDir)
+	t.Logf("  User: %s", metadata.Config.User)
+	t.Logf("  Env count: %d", len(metadata.Config.Env))
 
 	// Give FUSE a moment to mount
 	time.Sleep(100 * time.Millisecond)
@@ -74,6 +86,14 @@ func TestContainerToVirtioDevice(t *testing.T) {
 				t.Logf("  /etc/%s (dir: %v)", entry.Name(), entry.IsDir())
 			}
 		}
+	}
+
+	// Check if metadata was written to the rootfs
+	metadataPath := filepath.Join(opts.MountPoint, "ec1", "metadata.json")
+	if _, err := os.Stat(metadataPath); err == nil {
+		t.Logf("Found metadata file in rootfs: %s", metadataPath)
+	} else {
+		t.Logf("Warning: Metadata file not found in rootfs: %v", err)
 	}
 }
 
@@ -112,10 +132,19 @@ func TestPullAndExtractImage(t *testing.T) {
 		ArchitectureChoice: "amd64",
 	}
 
-	err = pullAndExtractImage(ctx, "docker.io/library/alpine:latest", tempDir, sysCtx)
+	metadata, err := pullAndExtractImageSkopeo(ctx, "docker.io/library/alpine:latest", tempDir, sysCtx)
 	if err != nil {
 		t.Fatalf("Failed to pull and extract image: %v", err)
 	}
+
+	if metadata == nil {
+		t.Fatal("Expected non-nil metadata")
+	}
+
+	// Log the extracted metadata
+	t.Logf("Extracted metadata:")
+	t.Logf("  Entrypoint: %v", metadata.Config.Entrypoint)
+	t.Logf("  Cmd: %v", metadata.Config.Cmd)
 
 	// Verify extraction worked
 	entries, err := os.ReadDir(tempDir)
@@ -132,5 +161,19 @@ func TestPullAndExtractImage(t *testing.T) {
 		if i < 10 { // Log first 10 entries
 			t.Logf("  %s (dir: %v)", entry.Name(), entry.IsDir())
 		}
+	}
+
+	// Check if rootfs was created
+	rootfsPath := filepath.Join(tempDir, "rootfs")
+	if _, err := os.Stat(rootfsPath); err == nil {
+		t.Logf("Found rootfs directory: %s", rootfsPath)
+
+		// Check rootfs contents
+		rootfsEntries, err := os.ReadDir(rootfsPath)
+		if err == nil {
+			t.Logf("Rootfs contains %d entries", len(rootfsEntries))
+		}
+	} else {
+		t.Logf("Warning: Rootfs directory not found: %v", err)
 	}
 }

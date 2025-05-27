@@ -137,16 +137,46 @@ func main() {
 			outArgs = []string{" "}
 		}
 
-		// make sure the real init exists
+		// Check if this is an OCI container by looking for container metadata
+		ociConfigPaths := []string{
+			"/ec1/config.json",
+			"/config.json", 
+			"/oci/config.json",
+		}
+		
+		var ociConfigPath string
+		for _, path := range ociConfigPaths {
+			if _, err := os.Stat(path); err == nil {
+				ociConfigPath = path
+				log.Printf("Found OCI config at: %s", path)
+				break
+			}
+		}
+
+		if ociConfigPath != "" {
+			// This is an OCI container, hand off to vm-init supervisor
+			vmInitPath := "/sbin/vm-init"
+			if _, err := os.Stat(vmInitPath); err == nil {
+				log.Printf("Handing off to OCI supervisor: %s %s", vmInitPath, ociConfigPath)
+				args := []string{vmInitPath, ociConfigPath}
+				args = append(args, outArgs...)
+				if err := syscall.Exec(vmInitPath, args, os.Environ()); err != nil {
+					log.Fatalf("Failed to exec OCI supervisor '%s': %v", vmInitPath, err)
+				}
+			} else {
+				log.Printf("OCI config found but vm-init supervisor not available, falling back to traditional init")
+			}
+		}
+
+		// Traditional VM path - make sure the real init exists
 		if s, err := os.Stat(realInitPath); os.IsNotExist(err) {
 			log.Fatalf("Real init '%s' does not exist: %v", realInitPath, err)
 		} else {
 			log.Printf("Real init exists at %s, size: %d", realInitPath, s.Size())
 			log.Printf("Real init '%s' is executable: %v", realInitPath, s.Mode()&0111 != 0)
-
 		}
 
-		log.Printf("Executing: %s %s", realInitPath, strings.Join(outArgs, " "))
+		log.Printf("Executing traditional init: %s %s", realInitPath, strings.Join(outArgs, " "))
 		if err := syscall.Exec(realInitPath, outArgs, os.Environ()); err != nil {
 			log.Fatalf("Failed to exec original init '%s': %v", realInitPath, err)
 		}
