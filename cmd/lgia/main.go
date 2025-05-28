@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -86,6 +85,11 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		return errors.Errorf("loading manifest: %w", err)
 	}
 
+	err = bindMountsToChroot(ctx)
+	if err != nil {
+		return errors.Errorf("binding mounts to chroot: %w", err)
+	}
+
 	tranport := transport.NewVSockTransport(0, uint32(port))
 	executor := executor.NewStreamingExecutorWithCommandCreationFunc(1024, func(ctx context.Context, command string) *exec.Cmd {
 		parts := strings.Fields(command)
@@ -97,6 +101,7 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Chroot: ec1init.NewRootAbsPath,
 		}
+		cmd.Dir = "/" // without this, we end up with a stderr sh: 0: getcwd() failed: No such file or directory
 		return cmd
 	})
 	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {
@@ -157,6 +162,26 @@ func mountInitramfs(ctx context.Context) error {
 	}
 
 	// mount dirs
+	for _, mount := range mounts {
+		err := execCmdForwardingStdio(ctx, mount...)
+		if err != nil {
+			return errors.Errorf("running command: %v: %w", mount, err)
+		}
+	}
+
+	return nil
+}
+
+func bindMountsToChroot(ctx context.Context) error {
+
+	mounts := [][]string{
+		{"mount", "--bind", "/dev", ec1init.NewRootAbsPath + "/dev"},
+		{"mount", "--bind", "/proc", ec1init.NewRootAbsPath + "/proc"},
+		{"mount", "--bind", "/sys", ec1init.NewRootAbsPath + "/sys"},
+		{"mount", "--bind", "/run", ec1init.NewRootAbsPath + "/run"},
+		{"mount", "--bind", "/ec1", ec1init.NewRootAbsPath + ec1init.Ec1AbsPath},
+	}
+
 	for _, mount := range mounts {
 		err := execCmdForwardingStdio(ctx, mount...)
 		if err != nil {
@@ -269,8 +294,6 @@ func loadManifest(ctx context.Context) (*v1.Image, error) {
 	if err != nil {
 		return nil, errors.Errorf("unmarshalling manifest: %w", err)
 	}
-
-	log.Printf("Loaded manifest: %+v", image)
 
 	return &image, nil
 }
