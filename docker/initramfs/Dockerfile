@@ -58,26 +58,7 @@ RUN cd /app \
 	&& make -j$(nproc) LDFLAGS=-all-static \
 	&& strip jq
 
-# FROM alpine:3.21 AS jq-build
 
-# RUN apk add --no-cache \
-# 	git \
-# 	autoconf \
-# 	automake \
-# 	libtool \
-# 	build-base \
-# 	bison \
-# 	flex \
-# 	wget
-
-# RUN git clone https://github.com/jqlang/jq.git --depth 1 /app
-
-# RUN cd /app && git submodule update --init \
-# 	&& autoreconf -i \
-# 	&& ./configure --disable-valgrind --enable-all-static --disable-docs --disable-maintainer-mode --prefix=/usr/local \
-# 	&& make -j$(nproc) LDFLAGS=-all-static \
-# 	&& strip jq
-# testing onigurama will fail, this line just shows the error
 RUN cd /app && make check || echo "check failed"
 
 FROM scratch AS rootfs
@@ -94,13 +75,13 @@ WORKDIR /work
 # copy populated rootfs from previous stage
 COPY --from=rootfs / /rootfs
 
-COPY init /rootfs/init
-COPY ec1-container-init /rootfs/ec1-container-init
+# COPY init /rootfs/init
+# COPY ec1-container-init /rootfs/ec1-container-init
 COPY udhcpc.default /rootfs/etc/udhcpc/default.script
 COPY resolv.conf /rootfs/etc/resolv.conf
 
 # Make ec1-container-init executable
-RUN chmod +x /rootfs/ec1-container-init
+# RUN chmod +x /rootfs/ec1-container-init
 
 RUN mkdir -p /dist \
 	&& (cd /rootfs && find . -print0 | cpio --null -ov --format=newc > /dist/initramfs.cpio) \

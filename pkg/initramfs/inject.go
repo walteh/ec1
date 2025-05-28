@@ -40,6 +40,17 @@ func NewExecHeader(filename string) initramfs.Header {
 	}
 }
 
+func NewDirHeader(filename string) initramfs.Header {
+	return initramfs.Header{
+		Filename:     filename,
+		FilenameSize: uint32(len(filename) + 1), // add 1 for the null terminator
+		Mode:         initramfs.Mode_Dir | initramfs.DefaultMkdirPerm | initramfs.GroupRead | initramfs.UserRead | initramfs.OtherRead | initramfs.GroupExecute | initramfs.UserExecute | initramfs.OtherExecute,
+		// NumLinks:     1,
+		Mtime: time.Now(),
+		Magic: initramfs.Magic_070701,
+	}
+}
+
 func OrderedByInode(headers map[string]*initramfs.Header) []*initramfs.Header {
 	names := make([]*initramfs.Header, 0, len(headers))
 	for _, header := range headers {

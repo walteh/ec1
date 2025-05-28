@@ -63,7 +63,7 @@ func NewHarpoonProvider() *HarpoonProvider {
 }
 
 func (prov *HarpoonProvider) Name() string {
-	return "puipui"
+	return "harpoon"
 }
 
 func (prov *HarpoonProvider) Version() string {
@@ -140,33 +140,3 @@ func (puipui *HarpoonProvider) SSHConfig() *ssh.ClientConfig {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 }
-
-// func findKernel(ctx context.Context, files []string) (string, error) {
-// 	switch runtime.GOARCH {
-// 	case "amd64":
-// 		return findFile(files, "bzImage")
-// 	case "arm64":
-// 		compressed, err := findFile(files, "Image.gz")
-// 		if err != nil {
-// 			return "", err
-// 		}
-
-// 		dir := filepath.Dir(compressed)
-
-// 		err = extractIntoDir(ctx, compressed, dir)
-// 		if err != nil {
-// 			return "", err
-// 		}
-
-// 		expectedOutFile := filepath.Join(dir, "Image")
-
-// 		// make sure the file is in the dir
-// 		if _, err := os.Stat(expectedOutFile); err != nil {
-// 			return "", errors.Errorf("expected file %s not found", expectedOutFile)
-// 		}
-
-// 		return expectedOutFile, nil
-// 	default:
-// 		return "", fmt.Errorf("unsupported architecture '%s'", runtime.GOARCH)
-// 	}
-// }

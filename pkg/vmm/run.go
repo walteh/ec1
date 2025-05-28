@@ -28,6 +28,7 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/gvnet"
@@ -37,7 +38,14 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vmi VMIProvider, vcpus uint, memory strongunits.B, devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
+func RunVirtualMachine[VM VirtualMachine](
+	ctx context.Context,
+	hpv Hypervisor[VM],
+	vmi VMIProvider,
+	vcpus uint,
+	memory strongunits.B,
+	extraInitramfsFiles map[string]io.Reader,
+	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
 
 	startTime := time.Now()
@@ -107,7 +115,7 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 		return nil, errors.Errorf("extracting readers to cache: %w", err)
 	}
 
-	bl, bldev, wg, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles)
+	bl, bldev, wg, err := EmphericalBootLoaderConfigForGuest(ctx, workingDir, hpv, vmi, extractedFiles, extraInitramfsFiles)
 	if err != nil {
 		return nil, errors.Errorf("getting boot loader config: %w", err)
 	}
@@ -224,7 +232,38 @@ func RunVirtualMachine[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM
 
 }
 
-func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, wrkdir string, hpv Hypervisor[VM], provider VMIProvider, mem map[string]io.Reader) (bootloader.Bootloader, []virtio.VirtioDevice, *errgroup.Group, error) {
+func NewEc1BlkDevice(ctx context.Context, wrkdir string, files map[string]io.Reader, wg *errgroup.Group) (virtio.VirtioDevice, error) {
+	// save all the files to a temp file
+	err := os.MkdirAll(filepath.Join(wrkdir, "block-device"), 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating block device directory: %w", err)
+	}
+
+	// save all the files to the temp file
+	for name, file := range files {
+		filePath := filepath.Join(wrkdir, "block-device", name)
+		err = osx.WriteFileFromReaderAsync(ctx, filePath, file, 0644, wg)
+		if err != nil {
+			return nil, errors.Errorf("writing file to block device: %w", err)
+		}
+	}
+
+	blkDev, err := virtio.VirtioFsNew(filepath.Join(wrkdir, "block-device"), ec1init.Ec1VirtioTag)
+	if err != nil {
+		return nil, errors.Errorf("creating block device: %w", err)
+	}
+
+	return blkDev, nil
+}
+
+func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](
+	ctx context.Context,
+	wrkdir string,
+	hpv Hypervisor[VM],
+	provider VMIProvider,
+	mem map[string]io.Reader,
+	initramfsFiles map[string]io.Reader,
+) (bootloader.Bootloader, []virtio.VirtioDevice, *errgroup.Group, error) {
 
 	wg := &errgroup.Group{}
 	var devices []virtio.VirtioDevice
@@ -255,6 +294,24 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](ctx context.Context, 
 
 			// Use blazing fast approach for large files (>50MB) to avoid streaming overhead
 			slowReader := initramfs.StreamInjectHyper(ctx, fastReader, initramfs.NewExecHeader("init"), decompressedInitBinData)
+
+			// for name, file := range initramfsFiles {
+			// 	dat, err := io.ReadAll(file)
+			// 	if err != nil {
+			// 		return nil, nil, wg, errors.Errorf("reading initramfs file: %w", err)
+			// 	}
+			// 	if strings.HasPrefix(name, "dir:") {
+			// 		slowReader = initramfs.StreamInjectHyper(ctx, slowReader, initramfs.NewDirHeader(name[4:]), dat)
+			// 	} else {
+			// 		slowReader = initramfs.StreamInjectHyper(ctx, slowReader, initramfs.NewExecHeader(name), dat)
+			// 	}
+			// }
+
+			blkDev, err := NewEc1BlkDevice(ctx, wrkdir, initramfsFiles, wg)
+			if err != nil {
+				return nil, nil, wg, errors.Errorf("creating block device: %w", err)
+			}
+			devices = append(devices, blkDev)
 
 			// Optional: Add timing wrapper for compression monitoring
 			// timedSlowReader := tstream.NewTimingReader(ctx, slowReader, "initramfs-processing")

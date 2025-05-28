@@ -3,6 +3,7 @@ package vf_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -30,14 +31,14 @@ import (
 // MockObjcRuntime allows mocking of objc interactions
 
 // Create a real VM for testing
-func setupVM(t *testing.T, ctx context.Context, memory strongunits.MiB, provider vmm.VMIProvider, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+func setupVM(t *testing.T, ctx context.Context, memory strongunits.MiB, provider vmm.VMIProvider, extraInitramfsFiles map[string]io.Reader, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
 	hv := vf.NewHypervisor()
 
 	ctx = slogctx.WithGroup(ctx, "test-vm-setup")
 
 	slog.DebugContext(ctx, "running vm", "memory", memory, "memory.ToBytes()", memory.ToBytes())
 
-	rvm, err := vmm.RunVirtualMachine(ctx, hv, provider, 2, memory.ToBytes(), devices...)
+	rvm, err := vmm.RunVirtualMachine(ctx, hv, provider, 2, memory.ToBytes(), extraInitramfsFiles, devices...)
 	require.NoError(t, err)
 
 	go func() {
@@ -56,15 +57,15 @@ func setupVM(t *testing.T, ctx context.Context, memory strongunits.MiB, provider
 }
 
 func setupPuipuiVM(t *testing.T, ctx context.Context, memory strongunits.MiB, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
-	return setupVM(t, ctx, memory, puipui.NewPuipuiProvider(), devices...)
+	return setupVM(t, ctx, memory, puipui.NewPuipuiProvider(), map[string]io.Reader{}, devices...)
 }
 
 func setupCoreOSVM(t *testing.T, ctx context.Context, memory strongunits.MiB, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
-	return setupVM(t, ctx, memory, coreos.NewProvider(), devices...)
+	return setupVM(t, ctx, memory, coreos.NewProvider(), map[string]io.Reader{}, devices...)
 }
 
-func setupHarpoonVM(t *testing.T, ctx context.Context, memory strongunits.MiB, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
-	return setupVM(t, ctx, memory, harpoon.NewHarpoonProvider(), devices...)
+func setupHarpoonVM(t *testing.T, ctx context.Context, memory strongunits.MiB, extraInitramfsFiles map[string]io.Reader, devices ...virtio.VirtioDevice) (*vmm.RunningVM[*vf.VirtualMachine], vmm.VMIProvider) {
+	return setupVM(t, ctx, memory, harpoon.NewHarpoonProvider(), extraInitramfsFiles, devices...)
 }
 
 func buildDiffReport(t *testing.T, title string, header1 string, header2 string, diffContent string) string {

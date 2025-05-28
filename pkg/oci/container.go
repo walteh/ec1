@@ -43,21 +43,6 @@ type ContainerToVirtioOptions struct {
 	MountPoint string
 }
 
-// ContainerMetadata contains OCI container metadata including entrypoint information
-type ContainerMetadata struct {
-	ImageRef     string              `json:"image_ref"`
-	CreatedAt    string              `json:"created_at"`
-	EC1Version   string              `json:"ec1_version"`
-	ConfigPath   string              `json:"config_path"`
-	Entrypoint   []string            `json:"entrypoint,omitempty"`
-	Cmd          []string            `json:"cmd,omitempty"`
-	Env          []string            `json:"env,omitempty"`
-	WorkingDir   string              `json:"working_dir,omitempty"`
-	User         string              `json:"user,omitempty"`
-	Labels       map[string]string   `json:"labels,omitempty"`
-	ExposedPorts map[string]struct{} `json:"exposed_ports,omitempty"`
-}
-
 // ContainerToVirtioDevice converts an OCI container image to a virtio device using the skopeo approach
 func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions) (virtio.VirtioDevice, *v1.Image, error) {
 	slog.InfoContext(ctx, "converting OCI container to virtio device (skopeo approach)",
@@ -372,28 +357,6 @@ func pullAndExtractImageSkopeo(ctx context.Context, imageRef, destDir string, sy
 		return nil, errors.Errorf("extracting layers: %w", err)
 	}
 
-	// // Create metadata from OCI config
-	// metadata := &ContainerMetadata{
-	// 	ImageRef:   imageRef,
-	// 	CreatedAt:  time.Now().Format(time.RFC3339),
-	// 	EC1Version: "dev", // TODO: get actual version
-	// 	ConfigPath: "/ec1/config.json",
-	// }
-
-	// // Extract configuration details
-	// metadata.Entrypoint = ociConfig.Config.Entrypoint
-	// metadata.Cmd = ociConfig.Config.Cmd
-	// metadata.Env = ociConfig.Config.Env
-	// metadata.WorkingDir = ociConfig.Config.WorkingDir
-	// metadata.User = ociConfig.Config.User
-	// metadata.Labels = ociConfig.Config.Labels
-	// if ociConfig.Config.ExposedPorts != nil {
-	// 	metadata.ExposedPorts = make(map[string]struct{})
-	// 	for port := range ociConfig.Config.ExposedPorts {
-	// 		metadata.ExposedPorts[port] = struct{}{}
-	// 	}
-	// }
-
 	slog.InfoContext(ctx, "successfully extracted container image with metadata",
 		"dest", destDir,
 		"entrypoint", ociConfig.Config.Entrypoint,
@@ -412,42 +375,22 @@ func extractLayersFromOCILayout(ctx context.Context, ociLayoutDir, destDir strin
 		return errors.Errorf("creating filesystem directory: %w", err)
 	}
 
-	// Get layer information
+	// Get layer information from the image
 	layerInfos := img.LayerInfos()
 	slog.InfoContext(ctx, "found layers", "count", len(layerInfos))
 
-	// For now, we'll use a simplified approach that works with the existing assembleContainerFilesystem
-	// In a full implementation, you'd want to extract each layer blob and apply it in order
+	// Extract each layer in order
+	for i, layerInfo := range layerInfos {
+		// Remove the "sha256:" prefix from digest to get the filename
+		layerFile := strings.TrimPrefix(layerInfo.Digest.String(), "sha256:")
+		// OCI layout stores blobs in blobs/sha256/ directory
+		layerPath := filepath.Join(ociLayoutDir, "blobs", "sha256", layerFile)
 
-	// Create a temporary manifest.json file that assembleContainerFilesystem expects
-	manifestPath := filepath.Join(ociLayoutDir, "manifest.json")
-	manifest := struct {
-		Layers []struct {
-			Digest string `json:"digest"`
-		} `json:"layers"`
-	}{}
+		slog.InfoContext(ctx, "extracting layer", "layer", i+1, "total", len(layerInfos), "digest", layerInfo.Digest.String(), "path", layerPath)
 
-	for _, layerInfo := range layerInfos {
-		manifest.Layers = append(manifest.Layers, struct {
-			Digest string `json:"digest"`
-		}{
-			Digest: layerInfo.Digest.String(),
-		})
-	}
-
-	manifestData, err := json.Marshal(manifest)
-	if err != nil {
-		return errors.Errorf("marshaling manifest: %w", err)
-	}
-
-	if err := os.WriteFile(manifestPath, manifestData, 0644); err != nil {
-		return errors.Errorf("writing manifest: %w", err)
-	}
-
-	// Use the existing assembleContainerFilesystem function
-	err = assembleContainerFilesystem(ctx, ociLayoutDir, destDir)
-	if err != nil {
-		return errors.Errorf("assembling container filesystem: %w", err)
+		if err := extractLayer(ctx, layerPath, fsDir); err != nil {
+			return errors.Errorf("extracting layer %d: %w", i+1, err)
+		}
 	}
 
 	slog.InfoContext(ctx, "successfully extracted layers to rootfs", "dest", fsDir)
@@ -570,9 +513,10 @@ func assembleContainerFilesystem(ctx context.Context, rawDir, destDir string) er
 	for i, layer := range manifest.Layers {
 		// Remove the "sha256:" prefix from digest to get the filename
 		layerFile := strings.TrimPrefix(layer.Digest, "sha256:")
-		layerPath := filepath.Join(rawDir, layerFile)
+		// OCI layout stores blobs in blobs/sha256/ directory
+		layerPath := filepath.Join(rawDir, "blobs", "sha256", layerFile)
 
-		slog.InfoContext(ctx, "extracting layer", "layer", i+1, "total", len(manifest.Layers), "file", layerFile)
+		slog.InfoContext(ctx, "extracting layer", "layer", i+1, "total", len(manifest.Layers), "file", layerFile, "path", layerPath)
 
 		if err := extractLayer(ctx, layerPath, fsDir); err != nil {
 			return errors.Errorf("extracting layer %d: %w", i+1, err)

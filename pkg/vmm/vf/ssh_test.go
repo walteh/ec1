@@ -2,13 +2,13 @@ package vf_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,11 +18,11 @@ import (
 	"github.com/prometheus/procfs"
 	"github.com/stretchr/testify/require"
 
+	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/oci"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
-	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -296,7 +296,7 @@ func TestGuestInitWrapperVSockHarpoon(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 	ctx = tctx.WithContext(ctx, t)
 	// Create a real VM for testing
-	rvm, _ := setupHarpoonVM(t, ctx, 1024)
+	rvm, _ := setupHarpoonVM(t, ctx, 1024, map[string]io.Reader{})
 	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return
@@ -406,7 +406,7 @@ func TestHarpoonOCI(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 	ctx = tctx.WithContext(ctx, t)
 
-	device, metadata, err := oci.ContainerToVirtioDevice(ctx, oci.ContainerToVirtioOptions{
+	device, metadata, err := oci.ContainerToVirtioDeviceCached(ctx, oci.ContainerToVirtioOptions{
 		ImageRef: "docker.io/oven/bun:alpine",
 		Platform: &types.SystemContext{
 			OSChoice:           "linux",
@@ -419,46 +419,29 @@ func TestHarpoonOCI(t *testing.T) {
 	// Log the extracted metadata
 	if metadata != nil {
 		t.Logf("Container metadata:")
-		t.Logf("  Image: %s", metadata.ImageRef)
-		t.Logf("  Entrypoint: %v", metadata.Entrypoint)
-		t.Logf("  Cmd: %v", metadata.Cmd)
-		t.Logf("  WorkingDir: %s", metadata.WorkingDir)
-		t.Logf("  User: %s", metadata.User)
+		t.Logf("  Entrypoint: %v", metadata.Config.Entrypoint)
+		t.Logf("  Cmd: %v", metadata.Config.Cmd)
+		t.Logf("  WorkingDir: %s", metadata.Config.WorkingDir)
+		t.Logf("  User: %s", metadata.Config.User)
 	}
 
-	// Debug: Check what's in the mount point on the host side
-	if vfsDevice, ok := device.(*virtio.VirtioFs); ok {
-		mountPoint := vfsDevice.SharedDir
-		t.Logf("Host mount point: %s", mountPoint)
+	buf := bytes.NewBuffer(nil)
+	err = json.NewEncoder(buf).Encode(metadata)
+	require.NoError(t, err, "Failed to encode container metadata")
 
-		// List contents of the mount point
-		entries, err := os.ReadDir(mountPoint)
-		if err != nil {
-			t.Logf("Error reading mount point: %v", err)
-		} else {
-			t.Logf("Mount point contents (%d entries):", len(entries))
-			for _, entry := range entries {
-				t.Logf("  %s (dir: %v)", entry.Name(), entry.IsDir())
-			}
-		}
+	cmd := []string{"/usr/local/bin/bun", "--version"}
 
-		// Check for specific files
-		bunPath := filepath.Join(mountPoint, "usr", "local", "bin", "bun")
-		if _, err := os.Stat(bunPath); err == nil {
-			t.Logf("Found bun binary at: %s", bunPath)
-			cmd := exec.Command("file", bunPath)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Logf("Error running file command: %v", err)
-			}
-			t.Logf("file command output: %s", string(output))
-		} else {
-			t.Logf("Bun binary not found at: %s (error: %v)", bunPath, err)
-		}
+	obuf := bytes.NewBuffer(nil)
+	err = json.NewEncoder(obuf).Encode(cmd)
+	require.NoError(t, err, "Failed to encode container metadata")
+
+	extraInitramfsFiles := map[string]io.Reader{
+		ec1init.ContainerManifestFile: buf,
+		ec1init.UserProvidedCmdline:   obuf,
 	}
 
 	// Create a real VM for testing
-	rvm, _ := setupHarpoonVM(t, ctx, 1024, device)
+	rvm, _ := setupHarpoonVM(t, ctx, 1024, extraInitramfsFiles, device)
 	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return

@@ -1,19 +1,24 @@
-//go:build linux
-
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log"
+	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
-	"time"
 
-	"github.com/mdlayher/vsock"
+	"gitlab.com/tozd/go/errors"
 
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/streamexec"
 	"github.com/walteh/ec1/pkg/streamexec/executor"
@@ -21,254 +26,67 @@ import (
 	"github.com/walteh/ec1/pkg/streamexec/transport"
 )
 
-const (
-	vsockPort = 2019
-	// vsockExecPath = "/usr/local/bin/vsock_exec"
-	realInitPath = "/iniz"
-)
-
 func main() {
 
-	log.Printf("lgia wrapper called with cmdline=%s args: %v", os.Args[0], os.Args[1:])
+	pid := os.Getpid()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ctx = logging.SetupSlogSimpleNoColor(ctx)
+	ctx = logging.SetupSlogSimple(ctx)
 
-	pid := os.Getpid()
-	log.Printf("Starting lgia as pid %d", pid)
+	ctx = slogctx.With(ctx, slog.Int("pid", pid))
+
+	slog.InfoContext(ctx, "ec1init started", "args", os.Args)
 
 	if pid == 1 {
-
-		// make an ec1 directory
-		err := os.Mkdir("ec1", 0755)
+		ctx = slogctx.With(ctx, slog.String("mode", "initramfs"))
+		err := initramfsInit(ctx)
 		if err != nil {
-			log.Fatalf("Failed to create ec1 directory: %v", err)
-		}
-
-		pid, hf, err := syscall.StartProcess(os.Args[0], os.Args[1:], &syscall.ProcAttr{
-			Env:   os.Environ(),
-			Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
-		})
-		if err != nil {
-			log.Fatalf("Failed to start process: %v", err)
-		}
-
-		log.Printf("Starting lgia at %s, pid %d, hf %d", os.Args[0], pid, hf)
-
-		// // check if realInitPath exists
-		// if _, err := os.Stat(realInitPath); os.IsNotExist(err) {
-		// 	// read the command line
-
-		// 	// parse the kernel command line, get the rootfs path
-		// 	// kernelCmdLine, err := os.ReadFile("/proc/cmdline")
-		// 	// if err != nil {
-		// 	// 	log.Fatalf("Failed to read kernel command line: %v", err)
-		// 	// }
-		// 	kernelCmdLineStr := strings.Join(os.Args[1:], " ")
-		// 	kernelCmdLineStr = strings.TrimSpace(kernelCmdLineStr)
-
-		// 	// parse the kernel command line, get the rootfs path
-		// 	rootfsPath := "/dev/nvme0n1p1"
-		// 	initCommand := "/sbin/init"
-		// 	for _, arg := range strings.Split(kernelCmdLineStr, " ") {
-		// 		if strings.HasPrefix(arg, "root=") {
-		// 			rootfsPath = arg[6:]
-		// 			break
-		// 		}
-		// 		if strings.HasPrefix(arg, "init=") {
-		// 			initCommand = arg[5:]
-		// 			break
-		// 		}
-		// 	}
-
-		// 	// 1) Mount real root
-		// 	err = syscall.Mount(rootfsPath, rootfsPath, "", syscall.MS_BIND|syscall.MS_REC, "")
-		// 	if err != nil {
-		// 		log.Fatalf("mount failed: %v", err)
-		// 	}
-		// 	// 2) pivot_root into new root
-		// 	if err := syscall.PivotRoot(rootfsPath, rootfsPath+"/.oldroot"); err != nil {
-		// 		log.Fatalf("pivot_root failed: %v", err)
-		// 	}
-		// 	// 3) Change working directory and unmount old root
-		// 	err = syscall.Chdir("/")
-		// 	if err != nil {
-		// 		log.Fatalf("chdir failed: %v", err)
-		// 	}
-		// 	err = syscall.Unmount("/.oldroot", syscall.MNT_DETACH)
-		// 	if err != nil {
-		// 		log.Fatalf("unmount failed: %v", err)
-		// 	}
-		// 	// 4) Exec the real init
-		// 	if err := syscall.Exec(initCommand, []string{initCommand}, os.Environ()); err != nil {
-		// 		log.Fatalf("Failed to exec real init: %v", err)
-		// 	}
-
-		// 	// we need to do the switch to rootfs
-		// 	// command := []string{rootfsPath, initCommand}
-		// 	// log.Printf("Switching to rootfs: %s, initCommand: %s", rootfsPath, initCommand)
-		// 	// if err := syscall.Exec("switch_root", command, os.Environ()); err != nil {
-		// 	// 	log.Fatalf("Failed to exec switch_root: %v", err)
-		// 	// }
-		// }
-
-		// pidFile.WriteString(strconv.Itoa(pid))
-		// pidFile.WriteString(strconv.Itoa(pid))
-		// pidFile.Close()
-
-		// handleFile.WriteString(strconv.Itoa(int(h)))
-		// handleFile.Close()
-
-		files, err := os.ReadDir("/")
-		if err != nil {
-			log.Fatalf("Failed to read /ec1: %v", err)
-		}
-
-		log.Printf("Files found: %d", len(files))
-
-		for _, file := range files {
-			log.Printf("File: %s", file.Name())
-		}
-
-		outArgs := os.Args[1:]
-		if strings.TrimSpace(strings.Join(outArgs, " ")) == "" {
-			outArgs = []string{" "}
-		}
-
-		// Check if this is an OCI container by looking for container metadata
-		ociConfigPaths := []string{
-			"/ec1/config.json",
-			"/config.json", 
-			"/oci/config.json",
-		}
-		
-		var ociConfigPath string
-		for _, path := range ociConfigPaths {
-			if _, err := os.Stat(path); err == nil {
-				ociConfigPath = path
-				log.Printf("Found OCI config at: %s", path)
-				break
-			}
-		}
-
-		if ociConfigPath != "" {
-			// This is an OCI container, hand off to vm-init supervisor
-			vmInitPath := "/sbin/vm-init"
-			if _, err := os.Stat(vmInitPath); err == nil {
-				log.Printf("Handing off to OCI supervisor: %s %s", vmInitPath, ociConfigPath)
-				args := []string{vmInitPath, ociConfigPath}
-				args = append(args, outArgs...)
-				if err := syscall.Exec(vmInitPath, args, os.Environ()); err != nil {
-					log.Fatalf("Failed to exec OCI supervisor '%s': %v", vmInitPath, err)
-				}
-			} else {
-				log.Printf("OCI config found but vm-init supervisor not available, falling back to traditional init")
-			}
-		}
-
-		// Traditional VM path - make sure the real init exists
-		if s, err := os.Stat(realInitPath); os.IsNotExist(err) {
-			log.Fatalf("Real init '%s' does not exist: %v", realInitPath, err)
-		} else {
-			log.Printf("Real init exists at %s, size: %d", realInitPath, s.Size())
-			log.Printf("Real init '%s' is executable: %v", realInitPath, s.Mode()&0111 != 0)
-		}
-
-		log.Printf("Executing traditional init: %s %s", realInitPath, strings.Join(outArgs, " "))
-		if err := syscall.Exec(realInitPath, outArgs, os.Environ()); err != nil {
-			log.Fatalf("Failed to exec original init '%s': %v", realInitPath, err)
+			slog.ErrorContext(ctx, "problem initializing initramfs", "error", err)
+			os.Exit(1)
 		}
 	} else {
-
-		log.Printf("Serving vsock on port %d, pid %d", vsockPort, pid)
+		ctx = slogctx.With(ctx, slog.String("mode", "vsock"))
 
 		defer func() {
-			log.Printf("Shutting down vsock server")
+			slog.InfoContext(ctx, "shutting down vsock server")
 		}()
 
-		err := serveRawVsock(ctx, vsockPort)
+		err := serveRawVsock(ctx, ec1init.VsockPort)
 		if err != nil {
-			log.Printf("Failed to serve vsock: %v", err)
-
+			slog.ErrorContext(ctx, "problem serving vsock", "error", err)
+			os.Exit(1)
 		}
-
-		log.Printf("Shutting down lgia")
 	}
-
 }
 
 func serveRawVsock(ctx context.Context, port int) error {
 
-	// wait until /dev/vsock exists
-	// for {
-	// 	if _, err := os.Stat("/dev/vsock"); err == nil {
-	// 		break
+	// os.Mkdir("/ec1", 0755)
+
+	// // just keep printing a message
+	// go func() {
+	// 	count := 0
+	// 	for {
+	// 		count++
+	// 		// check if /dev/vsock exists
+	// 		l, err := vsock.ListenContextID(3, uint32(2020+count), nil)
+	// 		if err != nil {
+	// 			log.Printf("Error listening on vsock: %v", err)
+	// 		} else {
+	// 			log.Printf("Listening on vsock")
+
+	// 		}
+
+	// 		log.Printf("Waiting for vsock to be ready (listenErr=%v)", err)
+	// 		time.Sleep(100 * time.Millisecond)
+
+	// 		if l != nil {
+	// 			l.Close()
+	// 		}
 	// 	}
-	// 	log.Printf("Waiting for /dev/vsock to exist")
-	// 	time.Sleep(1 * time.Second)
-	// }
-
-	// // wait until rootfs is mounted
-	// for {
-	// 	if _, err := os.Stat("/init.ec1"); err == nil {
-	// 		log.Printf("Rootfs is mounted, continuing")
-	// 		break
-	// 	}
-	// 	time.Sleep(1 * time.Second)
-	// }
-
-	os.Mkdir("/ec1", 0755)
-
-	// // make a pid file, stdout and
-	pidFile, err := os.Create("/ec1/init.pid")
-	if err != nil {
-		log.Fatalf("Failed to create pid file: %v", err)
-	}
-
-	// stdout, err := os.Create("/ec1/init.stdout")
-	// if err != nil {
-	// 	log.Fatalf("Failed to create stdout file: %v", err)
-	// }
-	// stderr, err := os.Create("/ec1/init.stderr")
-	// if err != nil {
-	// 	log.Fatalf("Failed to create stderr file: %v", err)
-	// }
-
-	// os.Stdout = stdout
-	// os.Stderr = stderr
-
-	// defer func() {
-	// 	stdout.Close()
-	// 	stderr.Close()
 	// }()
-
-	// just keep printing a message
-	go func() {
-		count := 0
-		for {
-			count++
-			// check if /dev/vsock exists
-			l, err := vsock.ListenContextID(3, uint32(2020+count), nil)
-			if err != nil {
-				log.Printf("Error listening on vsock: %v", err)
-			} else {
-				log.Printf("Listening on vsock")
-
-			}
-
-			log.Printf("Waiting for z to be ready (listenErr=%v)", err)
-			time.Sleep(100 * time.Millisecond)
-
-			if l != nil {
-				l.Close()
-			}
-		}
-	}()
-
-	pidFile.WriteString(strconv.Itoa(os.Getpid()))
-	pidFile.Close()
 
 	tranport := transport.NewVSockTransport(0, uint32(port))
 	executor := executor.NewStreamingExecutor(1024)
@@ -277,4 +95,189 @@ func serveRawVsock(ctx context.Context, port int) error {
 	})
 
 	return server.Serve()
+}
+
+func triggerVsock(ctx context.Context) error {
+	pid, _, err := syscall.StartProcess(os.Args[0], os.Args[1:], &syscall.ProcAttr{
+		Env:   os.Environ(),
+		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+	})
+	if err != nil {
+		return errors.Errorf("starting process: %w", err)
+	}
+
+	slog.InfoContext(ctx, "started vsock")
+
+	// // make a pid file, stdout and
+	pidFile, err := os.Create(filepath.Join(ec1init.Ec1AbsPath, ec1init.VsockPidFile))
+	if err != nil {
+		return errors.Errorf("creating pid file: %w", err)
+	}
+
+	pidFile.WriteString(strconv.Itoa(pid))
+	pidFile.Close()
+
+	return nil
+}
+
+func initramfsInit(ctx context.Context) error {
+
+	slog.InfoContext(ctx, "initramfs init started, mounting rootfs")
+
+	mounts := [][]string{
+		{"mkdir", "-p", "/proc", "/sys", "/dev", ec1init.NewRootAbsPath, "/run", "/run/ovl", ec1init.Ec1AbsPath},
+		{"mount", "-t", "devtmpfs", "devtmpfs", "/dev"},
+		{"mount", "-t", "proc", "proc", "/proc"},
+		{"mount", "-t", "sysfs", "sysfs", "/sys"},
+		{"mount", "-t", "tmpfs", "tmpfs", "/run"},
+		{"mkdir", "-p", "/dev/pts", "/dev/shm"},
+		{"mount", "-t", "devpts", "devpts", "/dev/pts"},
+		{"mount", "-t", "tmpfs", "tmpfs", "/dev/shm"},
+		{"mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath},
+		{"mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath},
+	}
+
+	// mount dirs
+	for _, mount := range mounts {
+		err := execCmdForwardingStdio(ctx, mount...)
+		if err != nil {
+			return errors.Errorf("running command: %v: %w", mount, err)
+		}
+	}
+
+	slog.InfoContext(ctx, "triggering vsock")
+
+	err := triggerVsock(ctx)
+	if err != nil {
+		return errors.Errorf("triggering vsock: %w", err)
+	}
+
+	slog.InfoContext(ctx, "loading manifest")
+
+	manifest, err := loadManifest(ctx)
+	if err != nil {
+		return errors.Errorf("loading manifest: %w", err)
+	}
+
+	slog.InfoContext(ctx, "loading init cmd line args")
+
+	// switch_root to the new rootfs, calling the entrypoint
+
+	cmd, err := loadInitCmdLineArgs(ctx)
+	if err != nil {
+		return errors.Errorf("loading init cmd line args: %w", err)
+	}
+
+	moveMounts := [][]string{
+		{"mount", "-o", "move", "/dev", ec1init.NewRootAbsPath + "/dev"},
+		{"mount", "-o", "move", "/proc", ec1init.NewRootAbsPath + "/proc"},
+		{"mount", "-o", "move", "/sys", ec1init.NewRootAbsPath + "/sys"},
+		{"mount", "-o", "move", "/run", ec1init.NewRootAbsPath + "/run"},
+		{"mount", "-o", "move", "/ec1", ec1init.NewRootAbsPath + ec1init.Ec1AbsPath},
+	}
+
+	for _, mount := range moveMounts {
+		err := execCmdForwardingStdio(ctx, mount...)
+		if err != nil {
+			return errors.Errorf("running command: %v: %w", mount, err)
+		}
+	}
+
+	err = switchRoot(ctx, manifest, cmd)
+	if err != nil {
+		return errors.Errorf("switching root: %w", err)
+	}
+
+	panic("unreachable, we should have switched root")
+}
+
+func loadInitCmdLineArgs(ctx context.Context) ([]string, error) {
+	initCmdLineArgs, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.UserProvidedCmdline))
+	if err != nil {
+		if os.IsNotExist(err) {
+			slog.WarnContext(ctx, "user provided cmdline not found, ignoring")
+			return []string{}, nil
+		}
+		return nil, errors.Errorf("loading user provided cmdline: %w", err)
+	}
+
+	var args []string
+	err = json.Unmarshal(initCmdLineArgs, &args)
+	if err != nil {
+		return nil, errors.Errorf("unmarshalling user provided cmdline: %w", err)
+	}
+
+	return args, nil
+}
+
+func switchRoot(ctx context.Context, manifest *v1.Image, cmd []string) error {
+
+	entrypoint := manifest.Config.Entrypoint
+	if len(cmd) == 0 {
+		cmd = manifest.Config.Cmd
+	}
+
+	env := manifest.Config.Env
+	env = append(env, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
+
+	argc := "/bin/busybox"
+	argv := append([]string{"switch_root", ec1init.NewRootAbsPath}, entrypoint...)
+	argv = append(argv, cmd...)
+
+	slog.InfoContext(ctx, "switching root - godspeed little process", "rootfs", ec1init.NewRootAbsPath, "argv", argv)
+
+	if err := syscall.Exec(argc, argv, env); err != nil {
+		return errors.Errorf("Failed to exec %v %v: %v", entrypoint, cmd, err)
+	}
+
+	panic("unreachable, we hand off to the entrypoint")
+
+}
+
+func loadManifest(ctx context.Context) (*v1.Image, error) {
+	manifest, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerManifestFile))
+	if err != nil {
+		return nil, errors.Errorf("reading manifest: %w", err)
+	}
+
+	var image v1.Image
+	err = json.Unmarshal(manifest, &image)
+	if err != nil {
+		return nil, errors.Errorf("unmarshalling manifest: %w", err)
+	}
+
+	log.Printf("Loaded manifest: %+v", image)
+
+	return &image, nil
+}
+
+func execCmdForwardingStdio(ctx context.Context, cmds ...string) error {
+	if len(cmds) == 0 {
+		return errors.Errorf("no command to execute")
+	}
+
+	argc := "/bin/busybox"
+	argv := cmds
+
+	// argc := cmds[0]
+	// var argv []string
+	// if len(cmds) > 1 {
+	// 	argv = cmds[1:]
+	// } else {
+	// 	argv = []string{}
+	// }
+	slog.DebugContext(ctx, "executing command", "argc", argc, "argv", argv)
+	cmd := exec.CommandContext(ctx, argc, argv...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Cloneflags: syscall.CLONE_NEWNS,
+	}
+	cmd.Stdin = bytes.NewBuffer(nil) // set to avoid reading /dev/null since it may not be mounted
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.Errorf("running busybox command (stdio was copied to the parent process): %v: %w", cmds, err)
+	}
+
+	return nil
 }
