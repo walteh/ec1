@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"gitlab.com/tozd/go/errors"
@@ -40,14 +41,31 @@ func main() {
 	slog.InfoContext(ctx, "ec1init started", "args", os.Args)
 
 	if pid == 1 {
-		ctx = slogctx.With(ctx, slog.String("mode", "initramfs"))
-		err := initramfsInit(ctx)
+		err := mountInitramfs(ctx)
 		if err != nil {
-			slog.ErrorContext(ctx, "problem initializing initramfs", "error", err)
+			slog.ErrorContext(ctx, "problem mounting initramfs", "error", err)
 			os.Exit(1)
 		}
-	} else {
-		ctx = slogctx.With(ctx, slog.String("mode", "vsock"))
+
+		if len(os.Args) > 1 && os.Args[1] == "vsock" {
+			ctx = slogctx.With(ctx, slog.String("mode", "primary_vsock"))
+
+			err = serveRawVsockChroot(ctx, ec1init.VsockPort)
+			if err != nil {
+				slog.ErrorContext(ctx, "problem serving vsock", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			ctx = slogctx.With(ctx, slog.String("mode", "switch_root"))
+			err := handOffToContainer(ctx)
+			if err != nil {
+				slog.ErrorContext(ctx, "problem initializing initramfs", "error", err)
+				os.Exit(1)
+			}
+		}
+
+	} else if len(os.Args) > 1 && os.Args[1] == "vsock" {
+		ctx = slogctx.With(ctx, slog.String("mode", "secondary_vsock"))
 
 		defer func() {
 			slog.InfoContext(ctx, "shutting down vsock server")
@@ -61,32 +79,34 @@ func main() {
 	}
 }
 
+func serveRawVsockChroot(ctx context.Context, port int) error {
+
+	manifest, err := loadManifest(ctx)
+	if err != nil {
+		return errors.Errorf("loading manifest: %w", err)
+	}
+
+	tranport := transport.NewVSockTransport(0, uint32(port))
+	executor := executor.NewStreamingExecutorWithCommandCreationFunc(1024, func(ctx context.Context, command string) *exec.Cmd {
+		parts := strings.Fields(command)
+		if len(parts) == 0 {
+			return nil
+		}
+		full := append(manifest.Config.Entrypoint, parts...)
+		cmd := exec.CommandContext(ctx, full[0], full[1:]...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Chroot: ec1init.NewRootAbsPath,
+		}
+		return cmd
+	})
+	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {
+		return protocol.NewFramedProtocol(conn)
+	})
+
+	return server.Serve()
+}
+
 func serveRawVsock(ctx context.Context, port int) error {
-
-	// os.Mkdir("/ec1", 0755)
-
-	// // just keep printing a message
-	// go func() {
-	// 	count := 0
-	// 	for {
-	// 		count++
-	// 		// check if /dev/vsock exists
-	// 		l, err := vsock.ListenContextID(3, uint32(2020+count), nil)
-	// 		if err != nil {
-	// 			log.Printf("Error listening on vsock: %v", err)
-	// 		} else {
-	// 			log.Printf("Listening on vsock")
-
-	// 		}
-
-	// 		log.Printf("Waiting for vsock to be ready (listenErr=%v)", err)
-	// 		time.Sleep(100 * time.Millisecond)
-
-	// 		if l != nil {
-	// 			l.Close()
-	// 		}
-	// 	}
-	// }()
 
 	tranport := transport.NewVSockTransport(0, uint32(port))
 	executor := executor.NewStreamingExecutor(1024)
@@ -97,8 +117,8 @@ func serveRawVsock(ctx context.Context, port int) error {
 	return server.Serve()
 }
 
-func triggerVsock(ctx context.Context) error {
-	pid, _, err := syscall.StartProcess(os.Args[0], os.Args[1:], &syscall.ProcAttr{
+func triggerSecondaryVsock(ctx context.Context) error {
+	pid, _, err := syscall.StartProcess(os.Args[0], append([]string{"vsock"}, os.Args[1:]...), &syscall.ProcAttr{
 		Env:   os.Environ(),
 		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
 	})
@@ -120,8 +140,7 @@ func triggerVsock(ctx context.Context) error {
 	return nil
 }
 
-func initramfsInit(ctx context.Context) error {
-
+func mountInitramfs(ctx context.Context) error {
 	slog.InfoContext(ctx, "initramfs init started, mounting rootfs")
 
 	mounts := [][]string{
@@ -145,9 +164,14 @@ func initramfsInit(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+func handOffToContainer(ctx context.Context) error {
+
 	slog.InfoContext(ctx, "triggering vsock")
 
-	err := triggerVsock(ctx)
+	err := triggerSecondaryVsock(ctx)
 	if err != nil {
 		return errors.Errorf("triggering vsock: %w", err)
 	}

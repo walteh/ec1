@@ -23,8 +23,9 @@ type CommandExecutor interface {
 
 // StreamingExecutor implements CommandExecutor using a Protocol for streaming
 type StreamingExecutor struct {
-	mu         sync.Mutex
-	bufferSize int
+	mu                  sync.Mutex
+	bufferSize          int
+	commandCreationFunc func(ctx context.Context, command string) *exec.Cmd
 }
 
 // NewStreamingExecutor creates a new StreamingExecutor
@@ -34,8 +35,20 @@ func NewStreamingExecutor(bufferSize int) *StreamingExecutor {
 	}
 }
 
+func NewStreamingExecutorWithCommandCreationFunc(bufferSize int, commandCreationFunc func(ctx context.Context, command string) *exec.Cmd) *StreamingExecutor {
+	return &StreamingExecutor{
+		bufferSize:          bufferSize,
+		commandCreationFunc: commandCreationFunc,
+	}
+}
+
 // ExecuteCommand executes a command and streams stdin/stdout/stderr through the protocol
 func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error {
+
+	if e.commandCreationFunc != nil {
+		cmd := e.commandCreationFunc(ctx, command)
+		return e.setupAndRunCommand(ctx, proto, cmd)
+	}
 
 	// Split the command into parts
 	parts := strings.Fields(command)
@@ -116,28 +129,28 @@ func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protoc
 	return nil
 }
 
-// streamOutput reads from a reader and sends the data through the protocol
-func (e *StreamingExecutor) streamOutput(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
+// // streamOutput reads from a reader and sends the data through the protocol
+// func (e *StreamingExecutor) streamOutput(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
 
-	debugBuf := []byte{}
-	buf := make([]byte, e.bufferSize)
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			if err := proto.WriteMessage(msgType, buf[:n]); err != nil {
-				log.Printf("Error sending output: %v", err)
-				break
-			}
-			debugBuf = append(debugBuf, buf[:n]...)
-		}
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading output (only got %d bytes): %v: %s", n, err, string(debugBuf))
-			}
-			break
-		}
-	}
-}
+// 	debugBuf := []byte{}
+// 	buf := make([]byte, e.bufferSize)
+// 	for {
+// 		n, err := r.Read(buf)
+// 		if n > 0 {
+// 			if err := proto.WriteMessage(msgType, buf[:n]); err != nil {
+// 				log.Printf("Error sending output: %v", err)
+// 				break
+// 			}
+// 			debugBuf = append(debugBuf, buf[:n]...)
+// 		}
+// 		if err != nil {
+// 			if err != io.EOF {
+// 				log.Printf("Error reading output (only got %d bytes): %v: %s", n, err, string(debugBuf))
+// 			}
+// 			break
+// 		}
+// 	}
+// }
 
 func (e *StreamingExecutor) streamOutput2(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
 	_, err := io.Copy(NewWrappedWriter(proto, msgType), r)

@@ -486,10 +486,7 @@ func TestHarpoonOCI(t *testing.T) {
 	fmt.Println("exitCode", exitCode)
 
 	require.NoError(t, errres, "Failed to execute commands")
-	require.Contains(t, stdout, "/newroot/usr/local/bin/bun", "Should find bun binary")
-	require.Contains(t, stdout, "/newroot/etc/", "Should find etc directory")
-	require.Contains(t, stdout, "/newroot/bin/", "Should find bin directory")
-	require.Contains(t, exitCode, "successfully", "Command should complete successfully")
+	require.Contains(t, stdout, "1.2.14", "Should find bun binary")
 
 	// Test passed - OCI container filesystem is properly mounted and accessible!
 

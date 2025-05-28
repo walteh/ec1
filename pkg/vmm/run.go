@@ -270,6 +270,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](
 	switch kt := provider.GuestKernelType(); kt {
 	case guest.GuestKernelTypeLinux:
 		extraArgs := ""
+		extraInitArgs := ""
 		if linuxVMIProvider, ok := provider.(LinuxVMIProvider); ok {
 
 			entries := []slog.Attr{}
@@ -325,6 +326,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](
 			initramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
 			extraArgs += " init=/init"
+			extraInitArgs += " vsock"
 
 			slog.InfoContext(ctx, "writing initramfs")
 
@@ -362,7 +364,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](
 
 				devices = append(devices, blkDev)
 
-				extraArgs = "  root=/dev/nvme0n1p2"
+				extraArgs += "  root=/dev/nvme0n1p2"
 			}
 
 			if linuxVMIProvider.KernelPath() == "" {
@@ -389,7 +391,7 @@ func EmphericalBootLoaderConfigForGuest[VM VirtualMachine](
 			entries = append(entries, slog.Group("kernel", "path", kernelPath))
 
 			// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-			cmdLine := strings.TrimSpace(linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs)
+			cmdLine := strings.TrimSpace(linuxVMIProvider.KernelArgs() + " console=hvc0 " + extraArgs + " -- " + extraInitArgs)
 
 			entries = append(entries, slog.Group("cmdline", "cmdline", cmdLine))
 
