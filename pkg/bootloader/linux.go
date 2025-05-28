@@ -18,7 +18,7 @@ import (
 	"gitlab.com/tozd/go/errors"
 	"go.pdmccormick.com/initramfs"
 
-	"github.com/walteh/ec1/gen/binembed/lgia_linux_arm64"
+	"github.com/walteh/ec1/gen/harpoon/harpoon_harpoond_arm64"
 	"github.com/walteh/ec1/pkg/host"
 )
 
@@ -46,7 +46,7 @@ func NewLinuxBootloader(vmlinuzPath, kernelCmdLine, initrdPath string) *LinuxBoo
 
 var (
 	// Embedded, statically‑compiled init+gRPC binary (as XZ data)
-	initBin             = lgia_linux_arm64.BinaryXZ
+	initBin             = harpoon_harpoond_arm64.BinaryXZ
 	uncompressedInitBin = []byte{}
 )
 

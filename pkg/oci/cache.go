@@ -6,29 +6,33 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/containers/image/v5/types"
+	"github.com/diskfs/go-diskfs/backend/file"
+	"github.com/diskfs/go-diskfs/filesystem/squashfs"
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-
-	"github.com/walteh/ec1/pkg/virtio"
 )
 
 // CacheEntry represents a cached container image with metadata
 type CacheEntry struct {
-	ImageRef     string    `json:"image_ref"`
-	Platform     string    `json:"platform"`
-	CachedAt     time.Time `json:"cached_at"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	RootfsPath   string    `json:"rootfs_path"`
-	MetadataPath string    `json:"metadata_path"`
-	Size         int64     `json:"size"`
+	ImageRef       string    `json:"image_ref"`
+	Platform       string    `json:"platform"`
+	CachedAt       time.Time `json:"cached_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	RootfsPath     string    `json:"rootfs_path"`
+	MetadataPath   string    `json:"metadata_path"`
+	Size           int64     `json:"size"`
+	RootfsDiskPath string    `json:"rootfs_disk_path"`
 }
 
 const (
@@ -160,7 +164,7 @@ func getCachedRootfsSize(rootfsPath string) (int64, error) {
 
 // ContainerToVirtioDeviceCached is a cached version of ContainerToVirtioDevice
 // It caches extracted container images for 24 hours and handles offline scenarios gracefully
-func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOptions) (virtio.VirtioDevice, *v1.Image, error) {
+func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOptions) (string, *v1.Image, error) {
 	slog.InfoContext(ctx, "converting OCI container to virtio device with caching",
 		"image", opts.ImageRef,
 		"cache_expiration", CacheExpiration)
@@ -169,7 +173,7 @@ func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOp
 	cacheDir, err := getCacheDirForImage(opts.ImageRef, opts.Platform)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to get cache directory, falling back to non-cached", "error", err)
-		return ContainerToVirtioDevice(ctx, opts)
+		return "", nil, errors.Errorf("failed to get cache directory: %w", err)
 	}
 
 	// Load existing cache entry
@@ -215,23 +219,23 @@ func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOp
 			slog.ErrorContext(ctx, "failed to load from expired cache fallback", "fallback_error", fallbackErr)
 		}
 
-		return nil, nil, errors.Errorf("failed to download image and no valid cache available: %w", err)
+		return "", nil, errors.Errorf("failed to download image and no valid cache available: %w", err)
 	}
 
 	return device, metadata, nil
 }
 
 // downloadAndCache downloads an image and caches it
-func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheDir string) (virtio.VirtioDevice, *v1.Image, error) {
+func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheDir string) (string, *v1.Image, error) {
 	// Ensure cache directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return nil, nil, errors.Errorf("creating cache directory: %w", err)
+		return "", nil, errors.Errorf("creating cache directory: %w", err)
 	}
 
 	// Create a temporary directory for the download
 	tempDir, err := os.MkdirTemp(cacheDir, "download-*")
 	if err != nil {
-		return nil, nil, errors.Errorf("creating temp directory: %w", err)
+		return "", nil, errors.Errorf("creating temp directory: %w", err)
 	}
 
 	// Clean up temp directory on error
@@ -241,15 +245,9 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 		}
 	}()
 
-	// Update opts to use the temp directory
-	tempOpts := opts
-	tempOpts.OutputDir = tempDir
-	tempOpts.MountPoint = filepath.Join(tempDir, "mount")
-
-	// Download and extract the image
-	device, metadata, err := ContainerToVirtioDevice(ctx, tempOpts)
+	metadata, err := pullAndExtractImageSkopeo(ctx, opts.ImageRef, tempDir, opts.Platform)
 	if err != nil {
-		return nil, nil, errors.Errorf("downloading container image: %w", err)
+		return "", nil, errors.Errorf("pulling and extracting image: %w", err)
 	}
 
 	// Move the extracted content to the cache
@@ -261,27 +259,20 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 	os.Remove(cachedMetadataPath)
 
 	// Find the extracted rootfs in the temp directory
-	tempRootfsPath := ""
-	if vfsDevice, ok := device.(*virtio.VirtioFs); ok {
-		tempRootfsPath = vfsDevice.SharedDir
-	} else {
-		// Fallback: look for rootfs directory
-		tempRootfsPath = filepath.Join(tempDir, "rootfs")
-	}
-
+	tempRootfsPath := tempDir
 	// Move rootfs to cache
 	if err := os.Rename(tempRootfsPath, cachedRootfsPath); err != nil {
-		return nil, nil, errors.Errorf("moving rootfs to cache: %w", err)
+		return "", nil, errors.Errorf("moving rootfs to cache: %w", err)
 	}
 
 	// Save metadata to cache
 	metadataData, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
-		return nil, nil, errors.Errorf("marshaling metadata: %w", err)
+		return "", nil, errors.Errorf("marshaling metadata: %w", err)
 	}
 
 	if err := os.WriteFile(cachedMetadataPath, metadataData, 0644); err != nil {
-		return nil, nil, errors.Errorf("writing metadata to cache: %w", err)
+		return "", nil, errors.Errorf("writing metadata to cache: %w", err)
 	}
 
 	// Calculate cache size
@@ -291,16 +282,22 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 		cacheSize = 0
 	}
 
+	rootfsDiskPath, err := bundleToSquashfs(ctx, cachedRootfsPath, cacheDir)
+	if err != nil {
+		return "", nil, errors.Errorf("bundling rootfs to squashfs: %w", err)
+	}
+
 	// Create cache entry
 	now := time.Now()
 	cacheEntry := &CacheEntry{
-		ImageRef:     opts.ImageRef,
-		Platform:     getPlatformString(opts.Platform),
-		CachedAt:     now,
-		ExpiresAt:    now.Add(CacheExpiration),
-		RootfsPath:   cachedRootfsPath,
-		MetadataPath: cachedMetadataPath,
-		Size:         cacheSize,
+		ImageRef:       opts.ImageRef,
+		Platform:       getPlatformString(opts.Platform),
+		CachedAt:       now,
+		ExpiresAt:      now.Add(CacheExpiration),
+		RootfsPath:     cachedRootfsPath,
+		MetadataPath:   cachedMetadataPath,
+		RootfsDiskPath: rootfsDiskPath,
+		Size:           cacheSize,
 	}
 
 	// Save cache entry metadata
@@ -311,6 +308,7 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 	slog.InfoContext(ctx, "successfully cached container image",
 		"image", opts.ImageRef,
 		"cache_dir", cacheDir,
+		"rootfs_disk_path", rootfsDiskPath,
 		"size_mb", cacheSize/1024/1024,
 		"expires_at", cacheEntry.ExpiresAt)
 
@@ -321,24 +319,101 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 	return loadFromCache(ctx, cacheEntry, opts)
 }
 
+func bundleToSquashfs(ctx context.Context, rootfsPath string, cacheDir string) (string, error) {
+	rootfsDiskPath := filepath.Join(cacheDir, "rootfs.squashfs")
+
+	backend, err := file.CreateFromPath(rootfsDiskPath, 0)
+	if err != nil {
+		return "", errors.Errorf("creating local backend: %w", err)
+	}
+
+	fs, err := squashfs.Create(backend, 0, 0, 0)
+	if err != nil {
+		return "", errors.Errorf("creating squashfs filesystem: %w", err)
+	}
+
+	errgrp, _ := errgroup.WithContext(ctx)
+
+	err = filepath.Walk(rootfsPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return errors.Errorf("walking source dir: %w", err)
+		}
+		// Compute the path inside the SquashFS
+		rel, _ := filepath.Rel(rootfsPath, path)
+		dest := "/" + rel
+
+		if info.IsDir() {
+			return fs.Mkdir(dest) // create directory inside FS  [oai_citation:6‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			// Handle symlink
+			target, err := os.Readlink(path)
+			if err != nil {
+				return errors.Errorf("reading symlink: %w", err)
+			}
+			return fs.Symlink(target, dest) // create symlink inside FS  [oai_citation:7‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
+		}
+		// Regular file: copy contents
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return errors.Errorf("opening source file: %w", err)
+		}
+
+		outFile, err := fs.OpenFile(dest, os.O_CREATE|os.O_RDWR)
+		if err != nil {
+			return errors.Errorf("opening destination file: %w", err)
+		}
+
+		errgrp.Go(func() error {
+			defer outFile.Close()
+			defer srcFile.Close()
+			if _, err := io.Copy(outFile, srcFile); err != nil {
+				return errors.Errorf("copying file: %w", err)
+			}
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return "", errors.Errorf("walking source dir: %w", err)
+	}
+
+	if err := errgrp.Wait(); err != nil {
+		return "", errors.Errorf("walking source dir: %w", err)
+	}
+
+	optz := squashfs.FinalizeOptions{
+		Compression: &squashfs.CompressorXz{},
+	}
+	if err := fs.Finalize(optz); err != nil {
+		return "", errors.Errorf("finalizing squashfs: %w", err)
+	}
+
+	if err := fs.Close(); err != nil {
+		return "", errors.Errorf("closing squashfs filesystem: %w", err)
+	}
+
+	return rootfsDiskPath, nil
+}
+
 // loadFromCache loads a virtio device from cached data
-func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerToVirtioOptions) (virtio.VirtioDevice, *v1.Image, error) {
+func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerToVirtioOptions) (string, *v1.Image, error) {
 	// Load metadata from cache
 	metadataData, err := os.ReadFile(cacheEntry.MetadataPath)
 	if err != nil {
-		return nil, nil, errors.Errorf("reading cached metadata: %w", err)
+		return "", nil, errors.Errorf("reading cached metadata: %w", err)
 	}
 
 	var metadata v1.Image
 	if err := json.Unmarshal(metadataData, &metadata); err != nil {
-		return nil, nil, errors.Errorf("unmarshaling cached metadata: %w", err)
+		return "", nil, errors.Errorf("unmarshaling cached metadata: %w", err)
 	}
 
 	// Set up mount point if specified
 	if opts.MountPoint != "" {
 		// Create mount point directory
 		if err := os.MkdirAll(opts.MountPoint, 0755); err != nil {
-			return nil, nil, errors.Errorf("creating mount point: %w", err)
+			return "", nil, errors.Errorf("creating mount point: %w", err)
 		}
 
 		// Create mount manager for cached rootfs
@@ -346,23 +421,10 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 
 		// Mount the cached filesystem
 		if err := mountMng.Mount(ctx); err != nil {
-			return nil, nil, errors.Errorf("mounting cached filesystem: %w", err)
+			return "", nil, errors.Errorf("mounting cached filesystem: %w", err)
 		}
 
-		// Create virtio device pointing to mount point
-		device, err := virtio.VirtioFsNew(opts.MountPoint, "rootfs")
-		if err != nil {
-			mountMng.Unmount(ctx)
-			return nil, nil, errors.Errorf("creating virtio device from mount: %w", err)
-		}
-
-		return device, &metadata, nil
-	}
-
-	// Create virtio device pointing directly to cached rootfs
-	device, err := virtio.VirtioFsNew(cacheEntry.RootfsPath, "rootfs")
-	if err != nil {
-		return nil, nil, errors.Errorf("creating virtio device from cache: %w", err)
+		return opts.MountPoint, &metadata, nil
 	}
 
 	slog.InfoContext(ctx, "successfully loaded container from cache",
@@ -370,7 +432,7 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 		"rootfs_path", cacheEntry.RootfsPath,
 		"cached_at", cacheEntry.CachedAt)
 
-	return device, &metadata, nil
+	return cacheEntry.RootfsPath, &metadata, nil
 }
 
 // getPlatformString converts a SystemContext to a string representation

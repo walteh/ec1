@@ -37,7 +37,7 @@ func TestContainerToVirtioDevice(t *testing.T) {
 		t.Fatalf("Failed to convert container to virtio device: %v", err)
 	}
 
-	if device == nil {
+	if device == "" {
 		t.Fatal("Expected non-nil virtio device")
 	}
 

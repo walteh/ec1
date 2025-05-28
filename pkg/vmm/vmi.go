@@ -27,9 +27,9 @@ type DownloadableVMIProvider interface {
 	ExtractDownloads(ctx context.Context, cacheDir map[string]io.Reader) (map[string]io.Reader, error)
 }
 
-type RootFSProvider interface {
-	RelativeRootFSPath() string
-}
+// type RootFSProvider interface {
+// 	RelativeRootFSPath() string
+// }
 
 type MacOSVMIProvider interface {
 	BootLoaderConfig() *bootloader.MacOSBootloader

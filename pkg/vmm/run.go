@@ -140,7 +140,7 @@ func RunVirtualMachine[VM VirtualMachine](
 
 	errgrp, ctx := errgroup.WithContext(ctx)
 
-	netdev, hostIPPort, err := NewNetDevice(ctx, errgrp)
+	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
 	}
@@ -593,7 +593,7 @@ func teeReadersToCache(ctx context.Context, extractedFiles map[string]io.Reader,
 	return nil
 }
 
-func NewNetDevice(ctx context.Context, groupErrs *errgroup.Group) (*virtio.VirtioNet, uint16, error) {
+func PrepareVirtualNetwork(ctx context.Context, groupErrs *errgroup.Group) (*virtio.VirtioNet, uint16, error) {
 	port, err := port.ReservePort(ctx)
 	if err != nil {
 		return nil, 0, errors.Errorf("reserving port: %w", err)

@@ -8,6 +8,6 @@ const (
 	Ec1AbsPath            = "/ec1"
 	NewRootAbsPath        = "/newroot"
 	VsockPidFile          = "/ec1.vsock.pid"
-	UserProvidedCmdline   = "/ec1.container-cmd.json"
-	ContainerManifestFile = "/ec1.manifest.json"
+	ContainerCmdlineFile  = "/container-cmdline.json"
+	ContainerManifestFile = "/container-manifest.json"
 )

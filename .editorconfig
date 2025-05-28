@@ -6,7 +6,7 @@ indent_size = 4
 indent_style = tab
 max_line_length = 120
 go_module_name = github.com/walteh/ec1
-go_rename_imports = github.com/pkg/errors=gitlab.com/tozd/go/errors,github.com/k0kubun/pp=github.com/k0kubun/pp/v3,github.com/tj/assert=github.com/stretchr/testify/assert
+go_rename_imports = github.com/pkg/errors=gitlab.com/tozd/go/errors,github.com/k0kubun/pp=github.com/k0kubun/pp/v3,github.com/tj/assert=github.com/stretchr/testify/assert,github.com/containers/image/types=github.com/containers/image/v5/types
 
 [*.yaml]
 indent_size = 4

@@ -23,6 +23,7 @@ import (
 	"github.com/walteh/ec1/pkg/oci"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -428,11 +429,14 @@ func TestHarpoonOCI(t *testing.T) {
 
 	extraInitramfsFiles := map[string]io.Reader{
 		ec1init.ContainerManifestFile: buf,
-		ec1init.UserProvidedCmdline:   obuf,
+		ec1init.ContainerCmdlineFile:   obuf,
 	}
 
+	vfs, err := virtio.VirtioFsNew(device, ec1init.RootfsVirtioTag)
+	require.NoError(t, err, "Failed to create virtio fs")
+
 	// Create a real VM for testing
-	rvm, _ := setupHarpoonVM(t, ctx, 1024, extraInitramfsFiles, device)
+	rvm, _ := setupHarpoonVM(t, ctx, 1024, extraInitramfsFiles, vfs)
 	if rvm == nil {
 		t.Skip("Could not create test VM")
 		return

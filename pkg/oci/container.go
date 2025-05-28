@@ -21,8 +21,6 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-
-	"github.com/walteh/ec1/pkg/virtio"
 )
 
 // ContainerToVirtioOptions configures how a container image is converted to a virtio device
@@ -44,7 +42,7 @@ type ContainerToVirtioOptions struct {
 }
 
 // ContainerToVirtioDevice converts an OCI container image to a virtio device using the skopeo approach
-func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions) (virtio.VirtioDevice, *v1.Image, error) {
+func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions) (string, *v1.Image, error) {
 	slog.InfoContext(ctx, "converting OCI container to virtio device (skopeo approach)",
 		"image", opts.ImageRef,
 		"output", opts.OutputDir,
@@ -64,13 +62,13 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 	// Create temporary directory for OCI layout extraction
 	tempDir, err := os.MkdirTemp(opts.OutputDir, "oci-layout-*")
 	if err != nil {
-		return nil, nil, errors.Errorf("creating temp directory: %w", err)
+		return "", nil, errors.Errorf("creating temp directory: %w", err)
 	}
 
 	// Pull and extract the container image using skopeo approach
-	metadata, err := pullAndExtractImageSkopeo(ctx, opts.ImageRef, tempDir, opts.Platform)
+	metadata, err := pullAndExtractImageSkopeo(ctx, opts.ImageRef, opts.OutputDir, opts.Platform)
 	if err != nil {
-		return nil, nil, errors.Errorf("pulling and extracting image: %w", err)
+		return "", nil, errors.Errorf("pulling and extracting image: %w", err)
 	}
 
 	// Create containerd mount manager
@@ -80,7 +78,7 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 	// Mount the filesystem using containerd's mount system
 	err = mountMng.Mount(ctx)
 	if err != nil {
-		return nil, nil, errors.Errorf("mounting containerd filesystem: %w", err)
+		return "", nil, errors.Errorf("mounting containerd filesystem: %w", err)
 	}
 
 	// Debug: Check if the mount actually worked
@@ -105,26 +103,18 @@ func ContainerToVirtioDevice(ctx context.Context, opts ContainerToVirtioOptions)
 		}
 	}
 
-	// Write container metadata to the rootfs for the supervisor to use
-	err = writeContainerMetadataToRootfs(ctx, assembledFS, metadata)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to write container metadata", "error", err)
-		// Don't fail the whole operation, just log the warning
-	}
-
-	// Create virtio device pointing to the mounted filesystem
-	device, err := virtio.VirtioFsNew(assembledFS, "rootfs")
-	if err != nil {
-		// Cleanup on failure
-		mountMng.Unmount(ctx)
-		return nil, nil, errors.Errorf("creating virtio device: %w", err)
-	}
+	// // Write container metadata to the rootfs for the supervisor to use
+	// err = writeContainerMetadataToRootfs(ctx, assembledFS, metadata)
+	// if err != nil {
+	// 	slog.WarnContext(ctx, "failed to write container metadata", "error", err)
+	// 	// Don't fail the whole operation, just log the warning
+	// }
 
 	slog.InfoContext(ctx, "successfully created containerd-mounted virtio device from container",
 		"image", opts.ImageRef,
 		"mount_point", opts.MountPoint)
 
-	return device, metadata, nil
+	return assembledFS, metadata, nil
 }
 
 // ContainerdMountManager manages a containerd mount for OCI container content
@@ -202,73 +192,6 @@ func (m *ContainerdMountManager) Mount(ctx context.Context) error {
 	if err != nil {
 		return errors.Errorf("mounting containerd filesystem: %w", err)
 	}
-
-	// err = Runner(ctx, RunnerOpts{
-	// 	Target: m.mountPoint,
-	// 	Ref:    m.imageRef,
-	// 	Platform: platforms.Platform{
-	// 		Architecture: "arm64",
-	// 		OS:           "linux",
-	// 	}, // TODO: use opts.Platform
-	// 	Rw:          !m.readOnly,
-	// 	Snapshotter: "overlayfs",
-	// })
-	// if err != nil {
-	// 	return errors.Errorf("mounting containerd filesystem: %w", err)
-	// }
-
-	// Retry mount operation to handle intermittent FUSE-T issues
-	// var lastErr error
-	// maxRetries := 3
-	// for attempt := 1; attempt <= maxRetries; attempt++ {
-	// 	slog.InfoContext(ctx, "attempting mount", "attempt", attempt, "max_retries", maxRetries)
-
-	// 	// Use containerd's mount.All to perform the mount
-	// 	err = mount.All(mounts, m.mountPoint)
-	// 	if err != nil {
-	// 		lastErr = err
-	// 		slog.WarnContext(ctx, "mount attempt failed", "attempt", attempt, "error", err)
-	// 		if attempt < maxRetries {
-	// 			// Wait a bit before retrying
-	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-	// 			continue
-	// 		}
-	// 		return errors.Errorf("containerd mount failed after %d attempts: %w", maxRetries, err)
-	// 	}
-
-	// 	// Verify the mount worked by checking the mount point contents
-	// 	mountEntries, err := os.ReadDir(m.mountPoint)
-	// 	if err != nil {
-	// 		lastErr = err
-	// 		slog.WarnContext(ctx, "mount verification failed", "attempt", attempt, "error", err)
-	// 		if attempt < maxRetries {
-	// 			// Unmount and retry
-	// 			mount.UnmountAll(m.mountPoint, 0)
-	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-	// 			continue
-	// 		}
-	// 		return errors.Errorf("mount verification failed after %d attempts: %w", maxRetries, err)
-	// 	}
-
-	// 	slog.InfoContext(ctx, "mount point after mounting", "path", m.mountPoint, "entries", len(mountEntries), "attempt", attempt)
-
-	// 	if len(mountEntries) == 0 {
-	// 		lastErr = errors.New("mount point is empty")
-	// 		slog.WarnContext(ctx, "mount appears empty", "attempt", attempt)
-	// 		if attempt < maxRetries {
-	// 			// Unmount and retry
-	// 			mount.UnmountAll(m.mountPoint, 0)
-	// 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-	// 			continue
-	// 		}
-	// 		return errors.Errorf("mount appears to have failed - mount point is empty after %d attempts", maxRetries)
-	// 	}
-
-	// 	// Success!
-	// 	m.mounted = true
-	// 	slog.InfoContext(ctx, "successfully mounted with containerd", "mount_point", m.mountPoint, "entry_count", len(mountEntries), "attempt", attempt)
-	// 	return nil
-	// }
 
 	// return errors.Errorf("mount failed after %d attempts, last error: %w", maxRetries, lastErr)
 	return nil

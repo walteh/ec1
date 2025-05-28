@@ -11,8 +11,8 @@ import (
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/gen/initramfs/initramfs_aarch64"
-	"github.com/walteh/ec1/gen/kernel/vmlinux_aarch64"
+	"github.com/walteh/ec1/gen/harpoon/harpoon_initramfs_arm64"
+	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_arm64"
 	"github.com/walteh/ec1/pkg/guest"
 	"github.com/walteh/ec1/pkg/vmm"
 )
@@ -20,8 +20,8 @@ import (
 const puipuiVersion = "v0.0.1"
 
 const (
-	extractedCpioName   = "initramfs.ec1-extract." + initramfs_aarch64.BinaryGZChecksum + ".cpio"
-	extractedKernelName = "vmlinux.ec1-extract." + vmlinux_aarch64.BinaryXZChecksum
+	extractedCpioName   = "initramfs.ec1-extract." + harpoon_initramfs_arm64.BinaryXZChecksum + ".cpio"
+	extractedKernelName = "vmlinux.ec1-extract." + harpoon_vmlinux_arm64.BinaryXZChecksum
 )
 
 var (
@@ -112,12 +112,17 @@ func (prov *HarpoonProvider) ExtractDownloads(ctx context.Context, cacheDir map[
 		return out, nil
 	}
 
-	r, err := (archives.Xz{}).OpenReader(bytes.NewReader(vmlinux_aarch64.BinaryXZ))
+	r, err := (archives.Xz{}).OpenReader(bytes.NewReader(harpoon_vmlinux_arm64.BinaryXZ))
 	if err != nil {
 		return nil, errors.Errorf("failed to open kernel: %w", err)
 	}
 
-	gzr, err := (archives.Gz{}).OpenReader(bytes.NewReader(initramfs_aarch64.BinaryGZ))
+	gzr, err := (archives.Xz{}).OpenReader(bytes.NewReader(harpoon_initramfs_arm64.BinaryXZ))
+	if err != nil {
+		return nil, errors.Errorf("failed to open initramfs: %w", err)
+	}
+
+	gzr, err = (archives.Gz{}).OpenReader(gzr)
 	if err != nil {
 		return nil, errors.Errorf("failed to open initramfs: %w", err)
 	}
