@@ -407,7 +407,7 @@ func TestHarpoonOCI(t *testing.T) {
 	ctx = tctx.WithContext(ctx, t)
 
 	device, metadata, err := oci.ContainerToVirtioDeviceCached(ctx, oci.ContainerToVirtioOptions{
-		ImageRef: "docker.io/oven/bun:alpine",
+		ImageRef: "docker.io/oven/bun:debian",
 		Platform: &types.SystemContext{
 			OSChoice:           "linux",
 			ArchitectureChoice: "arm64",
@@ -415,15 +415,6 @@ func TestHarpoonOCI(t *testing.T) {
 		OutputDir: t.TempDir(),
 	})
 	require.NoError(t, err, "Failed to create virtio device")
-
-	// Log the extracted metadata
-	if metadata != nil {
-		t.Logf("Container metadata:")
-		t.Logf("  Entrypoint: %v", metadata.Config.Entrypoint)
-		t.Logf("  Cmd: %v", metadata.Config.Cmd)
-		t.Logf("  WorkingDir: %s", metadata.Config.WorkingDir)
-		t.Logf("  User: %s", metadata.Config.User)
-	}
 
 	buf := bytes.NewBuffer(nil)
 	err = json.NewEncoder(buf).Encode(metadata)
@@ -460,8 +451,6 @@ func TestHarpoonOCI(t *testing.T) {
 
 	t.Logf("ready to exec")
 
-	<-time.After(1 * time.Second)
-
 	var errres error
 	var stdout string
 	var stderr string
@@ -469,9 +458,11 @@ func TestHarpoonOCI(t *testing.T) {
 	var errchan = make(chan error, 1)
 
 	go func() {
+		start := time.Now()
 		// Verify the OCI container filesystem is properly mounted and accessible
 		// Focus on filesystem verification rather than binary execution due to library dependencies
 		stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "/usr/local/bin/bun --version")
+		slog.InfoContext(ctx, "bun --version", "duration", time.Since(start))
 		errchan <- errres
 	}()
 
