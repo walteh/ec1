@@ -13,11 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/containers/image/v5/types"
-	"github.com/diskfs/go-diskfs/backend/file"
-	"github.com/diskfs/go-diskfs/filesystem/squashfs"
+	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -133,6 +131,14 @@ func isCacheValid(entry *CacheEntry) bool {
 		return false
 	}
 
+	if entry.RootfsDiskPath == "" {
+		return false
+	}
+
+	if _, err := os.Stat(entry.RootfsDiskPath); err != nil {
+		return false
+	}
+
 	// Check if cached files still exist
 	if _, err := os.Stat(entry.RootfsPath); err != nil {
 		return false
@@ -188,6 +194,7 @@ func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOp
 			"image", opts.ImageRef,
 			"cached_at", cacheEntry.CachedAt,
 			"expires_at", cacheEntry.ExpiresAt,
+			"rootfs_disk_path", cacheEntry.RootfsDiskPath,
 			"size_mb", cacheEntry.Size/1024/1024)
 
 		return loadFromCache(ctx, cacheEntry, opts)
@@ -320,78 +327,124 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 }
 
 func bundleToSquashfs(ctx context.Context, rootfsPath string, cacheDir string) (string, error) {
-	rootfsDiskPath := filepath.Join(cacheDir, "rootfs.squashfs")
+	rootfsDiskPath := filepath.Join(cacheDir, "rootfs.ext4")
 
-	backend, err := file.CreateFromPath(rootfsDiskPath, 0)
-	if err != nil {
-		return "", errors.Errorf("creating local backend: %w", err)
-	}
-
-	fs, err := squashfs.Create(backend, 0, 0, 0)
-	if err != nil {
-		return "", errors.Errorf("creating squashfs filesystem: %w", err)
-	}
-
-	errgrp, _ := errgroup.WithContext(ctx)
-
-	err = filepath.Walk(rootfsPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return errors.Errorf("walking source dir: %w", err)
-		}
-		// Compute the path inside the SquashFS
-		rel, _ := filepath.Rel(rootfsPath, path)
-		dest := "/" + rel
-
-		if info.IsDir() {
-			return fs.Mkdir(dest) // create directory inside FS  [oai_citation:6‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			// Handle symlink
-			target, err := os.Readlink(path)
-			if err != nil {
-				return errors.Errorf("reading symlink: %w", err)
-			}
-			return fs.Symlink(target, dest) // create symlink inside FS  [oai_citation:7‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
-		}
-		// Regular file: copy contents
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return errors.Errorf("opening source file: %w", err)
-		}
-
-		outFile, err := fs.OpenFile(dest, os.O_CREATE|os.O_RDWR)
-		if err != nil {
-			return errors.Errorf("opening destination file: %w", err)
-		}
-
-		errgrp.Go(func() error {
-			defer outFile.Close()
-			defer srcFile.Close()
-			if _, err := io.Copy(outFile, srcFile); err != nil {
-				return errors.Errorf("copying file: %w", err)
-			}
-			return nil
-		})
-		return nil
+	fles, err := archives.FilesFromDisk(ctx, &archives.FromDiskOptions{
+		// Root: rootfsPath,
+	}, map[string]string{
+		rootfsPath: rootfsDiskPath,
 	})
 	if err != nil {
-		return "", errors.Errorf("walking source dir: %w", err)
+		return "", errors.Errorf("getting files from disk: %w", err)
 	}
 
-	if err := errgrp.Wait(); err != nil {
-		return "", errors.Errorf("walking source dir: %w", err)
+	os.Remove(rootfsDiskPath)
+
+	// pack the folder into a tar stream
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		err := (&archives.Tar{}).Archive(ctx, pw, fles)
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to archive files", "error", err)
+		}
+	}()
+
+	out, err := os.Create(rootfsDiskPath) // will be ext4 inside a raw file
+	if err != nil {
+		return "", errors.Errorf("creating rootfs disk file: %w", err)
+	}
+	err = tar2ext4.ConvertTarToExt4(pr, out, tar2ext4.MaximumDiskSize(1<<30), tar2ext4.InlineData) // 1 GiB
+	if err != nil {
+		return "", errors.Errorf("converting tar to ext4: %w", err)
 	}
 
-	optz := squashfs.FinalizeOptions{
-		Compression: &squashfs.CompressorXz{},
-	}
-	if err := fs.Finalize(optz); err != nil {
-		return "", errors.Errorf("finalizing squashfs: %w", err)
-	}
+	// backend, err := file.CreateFromPath(rootfsDiskPath, 2048)
+	// if err != nil {
+	// 	return "", errors.Errorf("creating local backend: %w", err)
+	// }
 
-	if err := fs.Close(); err != nil {
-		return "", errors.Errorf("closing squashfs filesystem: %w", err)
-	}
+	// fs, err := squashfs.Create(backend, 0, 0, 0)
+	// if err != nil {
+	// 	return "", errors.Errorf("creating squashfs filesystem: %w", err)
+	// }
+
+	// just use mksquashfs to create the squashfs file
+	// cmd := exec.Command("mksquashfs", rootfsPath, rootfsDiskPath)
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
+	// if err := cmd.Run(); err != nil {
+	// 	return "", errors.Errorf("creating squashfs file: %w", err)
+	// }
+
+	// errgrp, _ := errgroup.WithContext(ctx)
+
+	// err = filepath.Walk(rootfsPath, func(path string, info os.FileInfo, err error) error {
+	// 	if err != nil {
+	// 		return errors.Errorf("walking source dir: %w", err)
+	// 	}
+	// 	// Compute the path inside the SquashFS
+	// 	rel, _ := filepath.Rel(rootfsPath, path)
+	// 	dest := "/" + rel
+
+	// 	if info.IsDir() {
+	// 		err := fs.Mkdir(dest) // create directory inside FS  [oai_citation:6‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
+	// 		if err != nil {
+	// 			return errors.Errorf("creating directory: %w", err)
+	// 		}
+	// 		return nil
+	// 	}
+	// 	if info.Mode()&os.ModeSymlink != 0 {
+	// 		// Handle symlink
+	// 		target, err := os.Readlink(path)
+	// 		if err != nil {
+	// 			return errors.Errorf("reading symlink: %w", err)
+	// 		}
+	// 		err = fs.Symlink(target, dest) // create symlink inside FS  [oai_citation:7‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
+	// 		if err != nil {
+	// 			return errors.Errorf("creating symlink: %w", err)
+	// 		}
+	// 		return nil
+	// 	}
+	// 	// Regular file: copy contents
+	// 	srcFile, err := os.Open(path)
+	// 	if err != nil {
+	// 		return errors.Errorf("opening source file: %w", err)
+	// 	}
+
+	// 	outFile, err := fs.OpenFile(dest, os.O_CREATE|os.O_RDWR)
+	// 	if err != nil {
+	// 		return errors.Errorf("opening destination file: %w", err)
+	// 	}
+
+	// 	errgrp.Go(func() error {
+	// 		defer outFile.Close()
+	// 		defer srcFile.Close()
+	// 		if _, err := io.Copy(outFile, srcFile); err != nil {
+	// 			return errors.Errorf("copying file: %w", err)
+	// 		}
+	// 		return nil
+	// 	})
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	return "", errors.Errorf("walking source dir: %w", err)
+	// }
+
+	// if err := errgrp.Wait(); err != nil {
+	// 	return "", errors.Errorf("walking source dir: %w", err)
+	// }
+
+	// optz := squashfs.FinalizeOptions{
+	// 	Compression: &squashfs.CompressorXz{},
+	// }
+	// if err := fs.Finalize(optz); err != nil {
+	// 	return "", errors.Errorf("finalizing squashfs: %w", err)
+	// }
+
+	// if err := fs.Close(); err != nil {
+	// 	return "", errors.Errorf("closing squashfs filesystem: %w", err)
+	// }
 
 	return rootfsDiskPath, nil
 }
@@ -429,10 +482,11 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 
 	slog.InfoContext(ctx, "successfully loaded container from cache",
 		"image", opts.ImageRef,
+		"rootfs_disk_path", cacheEntry.RootfsDiskPath,
 		"rootfs_path", cacheEntry.RootfsPath,
 		"cached_at", cacheEntry.CachedAt)
 
-	return cacheEntry.RootfsPath, &metadata, nil
+	return cacheEntry.RootfsDiskPath, &metadata, nil
 }
 
 // getPlatformString converts a SystemContext to a string representation

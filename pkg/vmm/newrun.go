@@ -150,34 +150,82 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 
-	rootfsPath := filepath.Join(wrkdir, "harpoon-rootfs-fs-device")
+	// rootfsPath := filepath.Join(wrkdir, "harpoon-rootfs-fs-device")
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
+	tempPath := filepath.Join(wrkdir, "harpoon-temp-block-device.raw")
 
 	devices := []virtio.VirtioDevice{}
 
-	for _, path := range []string{rootfsPath, ec1DataPath} {
+	for _, path := range []string{ec1DataPath} {
 		err := os.MkdirAll(path, 0755)
 		if err != nil {
 			return nil, errors.Errorf("creating block device directory: %w", err)
 		}
 	}
 
-	_, metadata, err := oci.ContainerToVirtioDeviceCached(ctx, oci.ContainerToVirtioOptions{
+	diskPath, metadata, err := oci.ContainerToVirtioDeviceCached(ctx, oci.ContainerToVirtioOptions{
 		ImageRef: imageConfig.ImageRef,
 		Platform: &types.SystemContext{
 			OSChoice:           imageConfig.OS,
 			ArchitectureChoice: imageConfig.Arch,
 		},
-		OutputDir: rootfsPath,
+		// OutputDir: rootfsPath,
 	})
 	if err != nil {
 		return nil, errors.Errorf("container to virtio device: %w", err)
 	}
 
-	blkDev, err := virtio.VirtioFsNew(rootfsPath, ec1init.RootfsVirtioTag)
+	// img, err := iso9660.NewWriter()
+	// if err != nil {
+	// 	return nil, errors.Errorf("creating iso writer: %w", err)
+	// }
+
+	tempFile, err := os.OpenFile(tempPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, errors.Errorf("creating temp file: %w", err)
+	}
+	defer tempFile.Close()
+
+	// err = img.WriteTo(tempFile, ec1init.TempVirtioTag+".iso")
+	// if err != nil {
+	// 	return nil, errors.Errorf("writing iso to temp file: %w", err)
+	// }
+
+	// tempFile.Close()
+
+	// tempFile, err = os.OpenFile(tempPath, os.O_WRONLY, 0644)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening temp file: %w", err)
+	// }
+
+	// temp file
+	// backend, err := file.CreateFromPath(tempPath, 2048)
+	// if err != nil {
+	// 	return nil, errors.Errorf("creating temp file: %w", err)
+	// }
+
+	// fs, err := ext4.Create(backend, 2048*1024, 0, 0, nil)
+	// if err != nil {
+	// 	return nil, errors.Errorf("creating temp file: %w", err)
+	// }
+	// if err := fs.Close(); err != nil {
+	// 	return nil, errors.Errorf("closing temp file: %w", err)
+	// }
+
+	blkDev, err := virtio.VirtioBlkNew(tempPath)
 	if err != nil {
 		return nil, errors.Errorf("creating block device: %w", err)
 	}
+	blkDev.DeviceIdentifier = ec1init.TempVirtioTag
+	blkDev.ReadOnly = false
+	devices = append(devices, blkDev)
+
+	blkDev, err = virtio.VirtioBlkNew(diskPath)
+	if err != nil {
+		return nil, errors.Errorf("creating block device: %w", err)
+	}
+	blkDev.DeviceIdentifier = ec1init.RootfsVirtioTag
+	blkDev.ReadOnly = true
 	devices = append(devices, blkDev)
 
 	// save all the files to a temp file

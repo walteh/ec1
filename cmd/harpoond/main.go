@@ -147,17 +147,23 @@ func triggerSecondaryVsock(ctx context.Context) error {
 
 func mountInitramfs(ctx context.Context) error {
 	slog.InfoContext(ctx, "initramfs init started, mounting rootfs")
-
+	// mkdir -p /mnt/lower /mnt/upper /mnt/overlay
+	// sudo mount -t squashfs ./my.squashfs /mnt/lower
+	// sudo mount -t tmpfs tmpfs /mnt/upper
+	// sudo mount -t overlay overlay \
+	//   -o lowerdir=/mnt/lower,upperdir=/mnt/upper \
+	//   /mnt/overlay
 	mounts := [][]string{
-		{"mkdir", "-p", "/proc", "/sys", "/dev", ec1init.NewRootAbsPath, "/run", "/run/ovl", ec1init.Ec1AbsPath},
+		{"mkdir", "-p", "/proc", "/sys", "/dev", ec1init.NewRootAbsPath, "/run", ec1init.Ec1AbsPath, "/mnt/lower", "/mnt/upper", "/mnt/overlay"},
 		{"mount", "-t", "devtmpfs", "devtmpfs", "/dev"},
 		{"mount", "-t", "proc", "proc", "/proc"},
 		{"mount", "-t", "sysfs", "sysfs", "/sys"},
-		{"mount", "-t", "tmpfs", "tmpfs", "/run"},
 		{"mkdir", "-p", "/dev/pts", "/dev/shm"},
 		{"mount", "-t", "devpts", "devpts", "/dev/pts"},
-		{"mount", "-t", "tmpfs", "tmpfs", "/dev/shm"},
-		{"mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath},
+		// {"mount", "-t", "tmpfs", "tmpfs", "/dev/shm"},
+		{"mount", "-t", "ext4", "/dev/vdb", "/mnt/lower"},
+		{"mount", "-t", "tmpfs", "/dev/vda", "/mnt/upper"},
+		{"mount", "-t", "overlay", "overlay", "-o", "lowerdir=/mnt/lower,upperdir=/mnt/upper", ec1init.NewRootAbsPath},
 		{"mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath},
 	}
 

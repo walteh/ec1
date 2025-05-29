@@ -12,11 +12,11 @@ func VirtioRootfsNew(imagePath string) (*VirtioRootfs, error) {
 	}, nil
 }
 
-func (v *VirtioRootfs) toVZ() ([]string, error) {
-	nvme, err := NVMExpressControllerNew(v.ImagePath)
-	if err != nil {
-		return nil, err
-	}
+// func (v *VirtioRootfs) toVZ() ([]string, error) {
+// 	nvme, err := NVMExpressControllerNew(v.ImagePath)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return nvme.ToCmdLine()
-}
+// 	return nvme.ToCmdLine()
+// }

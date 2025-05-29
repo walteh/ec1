@@ -3,7 +3,6 @@ package virtio
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -241,52 +240,52 @@ func strvToOptions(opts []string) []option {
 	return parsedOpts
 }
 
-func deviceFromCmdLine(deviceOpts string) (VirtioDevice, error) {
-	opts := strings.Split(deviceOpts, ",")
-	if len(opts) == 0 {
-		return nil, fmt.Errorf("empty option list in command line argument")
-	}
-	var dev VirtioDevice
-	switch opts[0] {
-	case "rosetta":
-		dev = &RosettaShare{}
-	case "nvme":
-		dev = nvmExpressControllerNewEmpty()
-	case "virtio-blk":
-		dev = virtioBlkNewEmpty()
-	case "virtio-fs":
-		dev = &VirtioFs{}
-	case "virtio-net":
-		dev = &VirtioNet{}
-	case "virtio-rng":
-		dev = &VirtioRng{}
-	case "virtio-serial":
-		dev = &VirtioSerial{}
-	case "virtio-vsock":
-		dev = &VirtioVsock{}
-	case "usb-mass-storage":
-		dev = usbMassStorageNewEmpty()
-	case "virtio-input":
-		dev = &VirtioInput{}
-	case "virtio-gpu":
-		dev = &VirtioGPU{}
-	case "virtio-balloon":
-		dev = &VirtioBalloon{}
-	case "nbd":
-		dev = networkBlockDeviceNewEmpty()
-	default:
-		return nil, fmt.Errorf("unknown device type: %s", opts[0])
-	}
+// func deviceFromCmdLine(deviceOpts string) (VirtioDevice, error) {
+// 	opts := strings.Split(deviceOpts, ",")
+// 	if len(opts) == 0 {
+// 		return nil, fmt.Errorf("empty option list in command line argument")
+// 	}
+// 	var dev VirtioDevice
+// 	switch opts[0] {
+// 	case "rosetta":
+// 		dev = &RosettaShare{}
+// 	case "nvme":
+// 		dev = nvmExpressControllerNewEmpty()
+// 	case "virtio-blk":
+// 		dev = virtioBlkNewEmpty()
+// 	case "virtio-fs":
+// 		dev = &VirtioFs{}
+// 	case "virtio-net":
+// 		dev = &VirtioNet{}
+// 	case "virtio-rng":
+// 		dev = &VirtioRng{}
+// 	case "virtio-serial":
+// 		dev = &VirtioSerial{}
+// 	case "virtio-vsock":
+// 		dev = &VirtioVsock{}
+// 	case "usb-mass-storage":
+// 		dev = usbMassStorageNewEmpty()
+// 	case "virtio-input":
+// 		dev = &VirtioInput{}
+// 	case "virtio-gpu":
+// 		dev = &VirtioGPU{}
+// 	case "virtio-balloon":
+// 		dev = &VirtioBalloon{}
+// 	case "nbd":
+// 		dev = networkBlockDeviceNewEmpty()
+// 	default:
+// 		return nil, fmt.Errorf("unknown device type: %s", opts[0])
+// 	}
 
-	parsedOpts := strvToOptions(opts[1:])
-	if v, ok := dev.(interface{ FromOptions(options []option) error }); ok {
-		if err := v.FromOptions(parsedOpts); err != nil {
-			return nil, err
-		}
-	}
+// 	parsedOpts := strvToOptions(opts[1:])
+// 	if v, ok := dev.(interface{ FromOptions(options []option) error }); ok {
+// 		if err := v.FromOptions(parsedOpts); err != nil {
+// 			return nil, err
+// 		}
+// 	}
 
-	return dev, nil
-}
+// 	return dev, nil
+// }
 
 // VirtioSerialNew creates a new serial device for the virtual machine. The
 // output the virtual machine sent to the serial port will be written to the
@@ -326,41 +325,41 @@ func (dev *VirtioSerial) validate() error {
 	return nil
 }
 
-func (dev *VirtioSerial) ToCmdLine() ([]string, error) {
-	if err := dev.validate(); err != nil {
-		return nil, err
-	}
-	switch {
-	case dev.UsesStdio:
-		return []string{"--device", "virtio-serial,stdio"}, nil
-	case dev.UsesPty:
-		return []string{"--device", "virtio-serial,pty"}, nil
-	case dev.LogFile != "":
-		fallthrough
-	default:
-		return []string{"--device", fmt.Sprintf("virtio-serial,logFilePath=%s", dev.LogFile)}, nil
-	}
-}
+// func (dev *VirtioSerial) ToCmdLine() ([]string, error) {
+// 	if err := dev.validate(); err != nil {
+// 		return nil, err
+// 	}
+// 	switch {
+// 	case dev.UsesStdio:
+// 		return []string{"--device", "virtio-serial,stdio"}, nil
+// 	case dev.UsesPty:
+// 		return []string{"--device", "virtio-serial,pty"}, nil
+// 	case dev.LogFile != "":
+// 		fallthrough
+// 	default:
+// 		return []string{"--device", fmt.Sprintf("virtio-serial,logFilePath=%s", dev.LogFile)}, nil
+// 	}
+// }
 
-func (dev *VirtioSerial) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "logFilePath":
-			dev.LogFile = option.value
-		case "stdio":
-			if option.value != "" {
-				return fmt.Errorf("unexpected value for virtio-serial 'stdio' option: %s", option.value)
-			}
-			dev.UsesStdio = true
-		case "pty":
-			dev.UsesPty = true
-		default:
-			return fmt.Errorf("unknown option for virtio-serial devices: %s", option.key)
-		}
-	}
+// func (dev *VirtioSerial) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "logFilePath":
+// 			dev.LogFile = option.value
+// 		case "stdio":
+// 			if option.value != "" {
+// 				return fmt.Errorf("unexpected value for virtio-serial 'stdio' option: %s", option.value)
+// 			}
+// 			dev.UsesStdio = true
+// 		case "pty":
+// 			dev.UsesPty = true
+// 		default:
+// 			return fmt.Errorf("unknown option for virtio-serial devices: %s", option.key)
+// 		}
+// 	}
 
-	return dev.validate()
-}
+// 	return dev.validate()
+// }
 
 // VirtioInputNew creates a new input device for the virtual machine.
 // The inputType parameter is the type of virtio-input device that will be added
@@ -384,28 +383,28 @@ func (dev *VirtioInput) validate() error {
 	return nil
 }
 
-func (dev *VirtioInput) ToCmdLine() ([]string, error) {
-	if err := dev.validate(); err != nil {
-		return nil, err
-	}
+// func (dev *VirtioInput) ToCmdLine() ([]string, error) {
+// 	if err := dev.validate(); err != nil {
+// 		return nil, err
+// 	}
 
-	return []string{"--device", fmt.Sprintf("virtio-input,%s", dev.InputType)}, nil
-}
+// 	return []string{"--device", fmt.Sprintf("virtio-input,%s", dev.InputType)}, nil
+// }
 
-func (dev *VirtioInput) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case VirtioInputPointingDevice, VirtioInputKeyboardDevice:
-			if option.value != "" {
-				return fmt.Errorf("unexpected value for virtio-input %s option: %s", option.key, option.value)
-			}
-			dev.InputType = option.key
-		default:
-			return fmt.Errorf("unknown option for virtio-input devices: %s", option.key)
-		}
-	}
-	return dev.validate()
-}
+// func (dev *VirtioInput) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case VirtioInputPointingDevice, VirtioInputKeyboardDevice:
+// 			if option.value != "" {
+// 				return fmt.Errorf("unexpected value for virtio-input %s option: %s", option.key, option.value)
+// 			}
+// 			dev.InputType = option.key
+// 		default:
+// 			return fmt.Errorf("unknown option for virtio-input devices: %s", option.key)
+// 		}
+// 	}
+// 	return dev.validate()
+// }
 
 // VirtioGPUNew creates a new gpu device for the virtual machine.
 // The usesGUI parameter determines whether a graphical application window will
@@ -428,43 +427,43 @@ func (dev *VirtioGPU) validate() error {
 	return nil
 }
 
-func (dev *VirtioGPU) ToCmdLine() ([]string, error) {
-	if err := dev.validate(); err != nil {
-		return nil, err
-	}
+// func (dev *VirtioGPU) ToCmdLine() ([]string, error) {
+// 	if err := dev.validate(); err != nil {
+// 		return nil, err
+// 	}
 
-	return []string{"--device", fmt.Sprintf("virtio-gpu,width=%d,height=%d", dev.Width, dev.Height)}, nil
-}
+// 	return []string{"--device", fmt.Sprintf("virtio-gpu,width=%d,height=%d", dev.Width, dev.Height)}, nil
+// }
 
-func (dev *VirtioGPU) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case VirtioGPUResolutionHeight:
-			height, err := strconv.Atoi(option.value)
-			if err != nil || height < 1 {
-				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
-			}
+// func (dev *VirtioGPU) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case VirtioGPUResolutionHeight:
+// 			height, err := strconv.Atoi(option.value)
+// 			if err != nil || height < 1 {
+// 				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
+// 			}
 
-			dev.Height = height
-		case VirtioGPUResolutionWidth:
-			width, err := strconv.Atoi(option.value)
-			if err != nil || width < 1 {
-				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
-			}
+// 			dev.Height = height
+// 		case VirtioGPUResolutionWidth:
+// 			width, err := strconv.Atoi(option.value)
+// 			if err != nil || width < 1 {
+// 				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
+// 			}
 
-			dev.Width = width
-		default:
-			return fmt.Errorf("unknown option for virtio-gpu devices: %s", option.key)
-		}
-	}
+// 			dev.Width = width
+// 		default:
+// 			return fmt.Errorf("unknown option for virtio-gpu devices: %s", option.key)
+// 		}
+// 	}
 
-	if dev.Width == 0 && dev.Height == 0 {
-		dev.Width = defaultVirtioGPUResolutionWidth
-		dev.Height = defaultVirtioGPUResolutionHeight
-	}
+// 	if dev.Width == 0 && dev.Height == 0 {
+// 		dev.Width = defaultVirtioGPUResolutionWidth
+// 		dev.Height = defaultVirtioGPUResolutionHeight
+// 	}
 
-	return dev.validate()
-}
+// 	return dev.validate()
+// }
 
 // VirtioRngNew creates a new random number generator device to feed entropy
 // into the virtual machine.
@@ -472,16 +471,16 @@ func VirtioRngNew() (VirtioDevice, error) {
 	return &VirtioRng{}, nil
 }
 
-func (dev *VirtioRng) ToCmdLine() ([]string, error) {
-	return []string{"--device", "virtio-rng"}, nil
-}
+// func (dev *VirtioRng) ToCmdLine() ([]string, error) {
+// 	return []string{"--device", "virtio-rng"}, nil
+// }
 
-func (dev *VirtioRng) FromOptions(options []option) error {
-	if len(options) != 0 {
-		return fmt.Errorf("unknown options for virtio-rng devices: %s", options)
-	}
-	return nil
-}
+// func (dev *VirtioRng) FromOptions(options []option) error {
+// 	if len(options) != 0 {
+// 		return fmt.Errorf("unknown options for virtio-rng devices: %s", options)
+// 	}
+// 	return nil
+// }
 
 func nvmExpressControllerNewEmpty() *NVMExpressController {
 	return &NVMExpressController{
@@ -526,33 +525,33 @@ func (dev *VirtioBlk) SetDeviceIdentifier(devID string) {
 	dev.DeviceIdentifier = devID
 }
 
-func (dev *VirtioBlk) FromOptions(options []option) error {
-	unhandledOpts := []option{}
-	for _, option := range options {
-		switch option.key {
-		case "deviceId":
-			dev.DeviceIdentifier = option.value
-		default:
-			unhandledOpts = append(unhandledOpts, option)
-		}
-	}
+// func (dev *VirtioBlk) FromOptions(options []option) error {
+// 	unhandledOpts := []option{}
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "deviceId":
+// 			dev.DeviceIdentifier = option.value
+// 		default:
+// 			unhandledOpts = append(unhandledOpts, option)
+// 		}
+// 	}
 
-	return dev.DiskStorageConfig.FromOptions(unhandledOpts)
-}
+// 	return dev.DiskStorageConfig.FromOptions(unhandledOpts)
+// }
 
-func (dev *VirtioBlk) ToCmdLine() ([]string, error) {
-	cmdLine, err := dev.DiskStorageConfig.ToCmdLine()
-	if err != nil {
-		return []string{}, err
-	}
-	if len(cmdLine) != 2 {
-		return []string{}, fmt.Errorf("unexpected storage config commandline")
-	}
-	if dev.DeviceIdentifier != "" {
-		cmdLine[1] = fmt.Sprintf("%s,deviceId=%s", cmdLine[1], dev.DeviceIdentifier)
-	}
-	return cmdLine, nil
-}
+// func (dev *VirtioBlk) ToCmdLine() ([]string, error) {
+// 	cmdLine, err := dev.DiskStorageConfig.ToCmdLine()
+// 	if err != nil {
+// 		return []string{}, err
+// 	}
+// 	if len(cmdLine) != 2 {
+// 		return []string{}, fmt.Errorf("unexpected storage config commandline")
+// 	}
+// 	if dev.DeviceIdentifier != "" {
+// 		cmdLine[1] = fmt.Sprintf("%s,deviceId=%s", cmdLine[1], dev.DeviceIdentifier)
+// 	}
+// 	return cmdLine, nil
+// }
 
 // VirtioVsockNew creates a new virtio-vsock device for 2-way communication
 // between the host and the virtual machine. The communication will happen on
@@ -574,43 +573,43 @@ func VirtioVsockNew(port uint, socketURL string, shouldHostActAsServer bool) (Vi
 	}, nil
 }
 
-func (dev *VirtioVsock) ToCmdLine() ([]string, error) {
-	if dev.Port == 0 || dev.SocketURL == "" {
-		return nil, fmt.Errorf("virtio-vsock needs both a port and a socket URL")
-	}
-	var listenStr string
-	if dev.Direction == VirtioVsockDirectionGuestConnectsAsClient {
-		// the listenStr is for the host, so it's the opposite of the direction
-		listenStr = "listen"
-	} else {
-		listenStr = "connect"
-	}
-	return []string{"--device", fmt.Sprintf("virtio-vsock,port=%d,socketURL=%s,%s", dev.Port, dev.SocketURL, listenStr)}, nil
-}
+// func (dev *VirtioVsock) ToCmdLine() ([]string, error) {
+// 	if dev.Port == 0 || dev.SocketURL == "" {
+// 		return nil, fmt.Errorf("virtio-vsock needs both a port and a socket URL")
+// 	}
+// 	var listenStr string
+// 	if dev.Direction == VirtioVsockDirectionGuestConnectsAsClient {
+// 		// the listenStr is for the host, so it's the opposite of the direction
+// 		listenStr = "listen"
+// 	} else {
+// 		listenStr = "connect"
+// 	}
+// 	return []string{"--device", fmt.Sprintf("virtio-vsock,port=%d,socketURL=%s,%s", dev.Port, dev.SocketURL, listenStr)}, nil
+// }
 
-func (dev *VirtioVsock) FromOptions(options []option) error {
-	// default to listen for backwards compatibliity
-	dev.Direction = VirtioVsockDirectionGuestListensAsServer
-	for _, option := range options {
-		switch option.key {
-		case "socketURL":
-			dev.SocketURL = option.value
-		case "port":
-			port, err := strconv.ParseUint(option.value, 10, 32)
-			if err != nil {
-				return err
-			}
-			dev.Port = uint32(port) //#nosec G115 -- ParseUint(_, _, 32) guarantees no overflow
-		case "listen":
-			dev.Direction = VirtioVsockDirectionGuestListensAsServer
-		case "connect":
-			dev.Direction = VirtioVsockDirectionGuestConnectsAsClient
-		default:
-			return fmt.Errorf("unknown option for virtio-vsock devices: %s", option.key)
-		}
-	}
-	return nil
-}
+// func (dev *VirtioVsock) FromOptions(options []option) error {
+// 	// default to listen for backwards compatibliity
+// 	dev.Direction = VirtioVsockDirectionGuestListensAsServer
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "socketURL":
+// 			dev.SocketURL = option.value
+// 		case "port":
+// 			port, err := strconv.ParseUint(option.value, 10, 32)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			dev.Port = uint32(port) //#nosec G115 -- ParseUint(_, _, 32) guarantees no overflow
+// 		case "listen":
+// 			dev.Direction = VirtioVsockDirectionGuestListensAsServer
+// 		case "connect":
+// 			dev.Direction = VirtioVsockDirectionGuestConnectsAsClient
+// 		default:
+// 			return fmt.Errorf("unknown option for virtio-vsock devices: %s", option.key)
+// 		}
+// 	}
+// 	return nil
+// }
 
 // VirtioFsNew creates a new virtio-fs device for file sharing. It will share
 // the directory at sharedDir with the virtual machine. This directory can be
@@ -624,30 +623,30 @@ func VirtioFsNew(sharedDir string, mountTag string) (VirtioDevice, error) {
 	}, nil
 }
 
-func (dev *VirtioFs) ToCmdLine() ([]string, error) {
-	if dev.SharedDir == "" {
-		return nil, fmt.Errorf("virtio-fs needs the path to the directory to share")
-	}
-	if dev.MountTag != "" {
-		return []string{"--device", fmt.Sprintf("virtio-fs,sharedDir=%s,mountTag=%s", dev.SharedDir, dev.MountTag)}, nil
-	}
+// func (dev *VirtioFs) ToCmdLine() ([]string, error) {
+// 	if dev.SharedDir == "" {
+// 		return nil, fmt.Errorf("virtio-fs needs the path to the directory to share")
+// 	}
+// 	if dev.MountTag != "" {
+// 		return []string{"--device", fmt.Sprintf("virtio-fs,sharedDir=%s,mountTag=%s", dev.SharedDir, dev.MountTag)}, nil
+// 	}
 
-	return []string{"--device", fmt.Sprintf("virtio-fs,sharedDir=%s", dev.SharedDir)}, nil
-}
+// 	return []string{"--device", fmt.Sprintf("virtio-fs,sharedDir=%s", dev.SharedDir)}, nil
+// }
 
-func (dev *VirtioFs) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "sharedDir":
-			dev.SharedDir = option.value
-		case "mountTag":
-			dev.MountTag = option.value
-		default:
-			return fmt.Errorf("unknown option for virtio-fs devices: %s", option.key)
-		}
-	}
-	return nil
-}
+// func (dev *VirtioFs) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "sharedDir":
+// 			dev.SharedDir = option.value
+// 		case "mountTag":
+// 			dev.MountTag = option.value
+// 		default:
+// 			return fmt.Errorf("unknown option for virtio-fs devices: %s", option.key)
+// 		}
+// 	}
+// 	return nil
+// }
 
 // RosettaShareNew RosettaShare creates a new rosetta share for running x86_64 binaries on M1 machines.
 // It will share a directory containing the linux rosetta binaries with the
@@ -661,38 +660,38 @@ func RosettaShareNew(mountTag string) (VirtioDevice, error) {
 	}, nil
 }
 
-func (dev *RosettaShare) ToCmdLine() ([]string, error) {
-	if dev.MountTag == "" {
-		return nil, fmt.Errorf("rosetta shares require a mount tag to be specified")
-	}
-	builder := strings.Builder{}
-	builder.WriteString("rosetta")
-	fmt.Fprintf(&builder, ",mountTag=%s", dev.MountTag)
-	if dev.InstallRosetta {
-		builder.WriteString(",install")
-	}
-	if dev.IgnoreIfMissing {
-		builder.WriteString(",ignore-if-missing")
-	}
+// func (dev *RosettaShare) ToCmdLine() ([]string, error) {
+// 	if dev.MountTag == "" {
+// 		return nil, fmt.Errorf("rosetta shares require a mount tag to be specified")
+// 	}
+// 	builder := strings.Builder{}
+// 	builder.WriteString("rosetta")
+// 	fmt.Fprintf(&builder, ",mountTag=%s", dev.MountTag)
+// 	if dev.InstallRosetta {
+// 		builder.WriteString(",install")
+// 	}
+// 	if dev.IgnoreIfMissing {
+// 		builder.WriteString(",ignore-if-missing")
+// 	}
 
-	return []string{"--device", builder.String()}, nil
-}
+// 	return []string{"--device", builder.String()}, nil
+// }
 
-func (dev *RosettaShare) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "mountTag":
-			dev.MountTag = option.value
-		case "install":
-			dev.InstallRosetta = true
-		case "ignore-if-missing":
-			dev.IgnoreIfMissing = true
-		default:
-			return fmt.Errorf("unknown option for rosetta share: %s", option.key)
-		}
-	}
-	return nil
-}
+// func (dev *RosettaShare) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "mountTag":
+// 			dev.MountTag = option.value
+// 		case "install":
+// 			dev.InstallRosetta = true
+// 		case "ignore-if-missing":
+// 			dev.IgnoreIfMissing = true
+// 		default:
+// 			return fmt.Errorf("unknown option for rosetta share: %s", option.key)
+// 		}
+// 	}
+// 	return nil
+// }
 
 func networkBlockDeviceNewEmpty() *NetworkBlockDevice {
 	return &NetworkBlockDevice{
@@ -721,56 +720,56 @@ func NetworkBlockDeviceNew(uri string, timeout uint32, synchronization NBDSynchr
 	return nbd, nil
 }
 
-func (nbd *NetworkBlockDevice) ToCmdLine() ([]string, error) {
-	cmdLine, err := nbd.NetworkBlockStorageConfig.ToCmdLine()
-	if err != nil {
-		return []string{}, err
-	}
-	if len(cmdLine) != 2 {
-		return []string{}, fmt.Errorf("unexpected storage config commandline")
-	}
+// func (nbd *NetworkBlockDevice) ToCmdLine() ([]string, error) {
+// 	cmdLine, err := nbd.NetworkBlockStorageConfig.ToCmdLine()
+// 	if err != nil {
+// 		return []string{}, err
+// 	}
+// 	if len(cmdLine) != 2 {
+// 		return []string{}, fmt.Errorf("unexpected storage config commandline")
+// 	}
 
-	if nbd.DeviceIdentifier != "" {
-		cmdLine[1] = fmt.Sprintf("%s,deviceId=%s", cmdLine[1], nbd.DeviceIdentifier)
-	}
-	if nbd.Timeout.Milliseconds() > 0 {
-		cmdLine[1] = fmt.Sprintf("%s,timeout=%d", cmdLine[1], nbd.Timeout.Milliseconds())
-	}
-	if nbd.SynchronizationMode == "none" || nbd.SynchronizationMode == "full" {
-		cmdLine[1] = fmt.Sprintf("%s,sync=%s", cmdLine[1], nbd.SynchronizationMode)
-	}
+// 	if nbd.DeviceIdentifier != "" {
+// 		cmdLine[1] = fmt.Sprintf("%s,deviceId=%s", cmdLine[1], nbd.DeviceIdentifier)
+// 	}
+// 	if nbd.Timeout.Milliseconds() > 0 {
+// 		cmdLine[1] = fmt.Sprintf("%s,timeout=%d", cmdLine[1], nbd.Timeout.Milliseconds())
+// 	}
+// 	if nbd.SynchronizationMode == "none" || nbd.SynchronizationMode == "full" {
+// 		cmdLine[1] = fmt.Sprintf("%s,sync=%s", cmdLine[1], nbd.SynchronizationMode)
+// 	}
 
-	return cmdLine, nil
-}
+// 	return cmdLine, nil
+// }
 
-func (nbd *NetworkBlockDevice) FromOptions(options []option) error {
-	unhandledOpts := []option{}
-	for _, option := range options {
-		switch option.key {
-		case "deviceId":
-			nbd.DeviceIdentifier = option.value
-		case "timeout":
-			timeoutMS, err := strconv.ParseInt(option.value, 10, 32)
-			if err != nil {
-				return err
-			}
-			nbd.Timeout = time.Duration(timeoutMS) * time.Millisecond
-		case "sync":
-			switch option.value {
-			case string(SynchronizationFullMode):
-				nbd.SynchronizationMode = SynchronizationFullMode
-			case string(SynchronizationNoneMode):
-				nbd.SynchronizationMode = SynchronizationNoneMode
-			default:
-				return fmt.Errorf("invalid sync mode: %s, must be 'full' or 'none'", option.value)
-			}
-		default:
-			unhandledOpts = append(unhandledOpts, option)
-		}
-	}
+// func (nbd *NetworkBlockDevice) FromOptions(options []option) error {
+// 	unhandledOpts := []option{}
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "deviceId":
+// 			nbd.DeviceIdentifier = option.value
+// 		case "timeout":
+// 			timeoutMS, err := strconv.ParseInt(option.value, 10, 32)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			nbd.Timeout = time.Duration(timeoutMS) * time.Millisecond
+// 		case "sync":
+// 			switch option.value {
+// 			case string(SynchronizationFullMode):
+// 				nbd.SynchronizationMode = SynchronizationFullMode
+// 			case string(SynchronizationNoneMode):
+// 				nbd.SynchronizationMode = SynchronizationNoneMode
+// 			default:
+// 				return fmt.Errorf("invalid sync mode: %s, must be 'full' or 'none'", option.value)
+// 			}
+// 		default:
+// 			unhandledOpts = append(unhandledOpts, option)
+// 		}
+// 	}
 
-	return nbd.NetworkBlockStorageConfig.FromOptions(unhandledOpts)
-}
+// 	return nbd.NetworkBlockStorageConfig.FromOptions(unhandledOpts)
+// }
 
 type USBMassStorage struct {
 	DiskStorageConfig
@@ -815,62 +814,62 @@ type NetworkBlockStorageConfig struct {
 	URI string `json:"uri,omitempty"`
 }
 
-func (config *DiskStorageConfig) ToCmdLine() ([]string, error) {
-	if config.ImagePath == "" {
-		return nil, fmt.Errorf("%s devices need the path to a disk image", config.DevName)
-	}
+// func (config *DiskStorageConfig) ToCmdLine() ([]string, error) {
+// 	if config.ImagePath == "" {
+// 		return nil, fmt.Errorf("%s devices need the path to a disk image", config.DevName)
+// 	}
 
-	value := fmt.Sprintf("%s,path=%s", config.DevName, config.ImagePath)
+// 	value := fmt.Sprintf("%s,path=%s", config.DevName, config.ImagePath)
 
-	if config.ReadOnly {
-		value += ",readonly"
-	}
-	return []string{"--device", value}, nil
-}
+// 	if config.ReadOnly {
+// 		value += ",readonly"
+// 	}
+// 	return []string{"--device", value}, nil
+// }
 
-func (config *DiskStorageConfig) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "path":
-			config.ImagePath = option.value
-		case "readonly":
-			if option.value != "" {
-				return fmt.Errorf("unexpected value for virtio-blk 'readonly' option: %s", option.value)
-			}
-			config.ReadOnly = true
-		default:
-			return fmt.Errorf("unknown option for %s devices: %s", config.DevName, option.key)
-		}
-	}
-	return nil
-}
+// func (config *DiskStorageConfig) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "path":
+// 			config.ImagePath = option.value
+// 		case "readonly":
+// 			if option.value != "" {
+// 				return fmt.Errorf("unexpected value for virtio-blk 'readonly' option: %s", option.value)
+// 			}
+// 			config.ReadOnly = true
+// 		default:
+// 			return fmt.Errorf("unknown option for %s devices: %s", config.DevName, option.key)
+// 		}
+// 	}
+// 	return nil
+// }
 
-func (config *NetworkBlockStorageConfig) ToCmdLine() ([]string, error) {
-	if config.URI == "" {
-		return nil, fmt.Errorf("%s devices need the uri to a remote block device", config.DevName)
-	}
+// func (config *NetworkBlockStorageConfig) ToCmdLine() ([]string, error) {
+// 	if config.URI == "" {
+// 		return nil, fmt.Errorf("%s devices need the uri to a remote block device", config.DevName)
+// 	}
 
-	value := fmt.Sprintf("%s,uri=%s", config.DevName, config.URI)
+// 	value := fmt.Sprintf("%s,uri=%s", config.DevName, config.URI)
 
-	if config.ReadOnly {
-		value += ",readonly"
-	}
-	return []string{"--device", value}, nil
-}
+// 	if config.ReadOnly {
+// 		value += ",readonly"
+// 	}
+// 	return []string{"--device", value}, nil
+// }
 
-func (config *NetworkBlockStorageConfig) FromOptions(options []option) error {
-	for _, option := range options {
-		switch option.key {
-		case "uri":
-			config.URI = option.value
-		case "readonly":
-			if option.value != "" {
-				return fmt.Errorf("unexpected value for virtio-blk 'readonly' option: %s", option.value)
-			}
-			config.ReadOnly = true
-		default:
-			return fmt.Errorf("unknown option for %s devices: %s", config.DevName, option.key)
-		}
-	}
-	return nil
-}
+// func (config *NetworkBlockStorageConfig) FromOptions(options []option) error {
+// 	for _, option := range options {
+// 		switch option.key {
+// 		case "uri":
+// 			config.URI = option.value
+// 		case "readonly":
+// 			if option.value != "" {
+// 				return fmt.Errorf("unexpected value for virtio-blk 'readonly' option: %s", option.value)
+// 			}
+// 			config.ReadOnly = true
+// 		default:
+// 			return fmt.Errorf("unknown option for %s devices: %s", config.DevName, option.key)
+// 		}
+// 	}
+// 	return nil
+// }

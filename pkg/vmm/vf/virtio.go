@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/crc-org/vfkit/pkg/util"
+	"github.com/pkg/term/termios"
 	"golang.org/x/sys/unix"
 
-	"github.com/walteh/ec1/pkg/virtio"
-
 	"github.com/Code-Hex/vz/v3"
-	"github.com/pkg/term/termios"
+	"github.com/crc-org/vfkit/pkg/util"
+
 	log "github.com/sirupsen/logrus"
+
+	"github.com/walteh/ec1/pkg/virtio"
 )
 
 // vf will define toVZ() and AddToVirtualMachineConfig() methods on these types
@@ -69,6 +70,7 @@ func (dev *VirtioBlk) toVz() (vz.StorageDeviceConfiguration, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	devConfig, err := vz.NewVirtioBlockDeviceConfiguration(attachment)
 	if err != nil {
 		return nil, err
@@ -496,6 +498,9 @@ func (config *DiskStorageConfig) toVz() (vz.StorageDeviceAttachment, error) {
 	}
 	syncMode := vz.DiskImageSynchronizationModeFsync
 	caching := vz.DiskImageCachingModeCached
+
+	// return vz.NewDiskBlockDeviceStorageDeviceAttachment(config.=, config.ReadOnly, syncMode)
+
 	return vz.NewDiskImageStorageDeviceAttachmentWithCacheAndSync(config.ImagePath, config.ReadOnly, caching, syncMode)
 }
 
