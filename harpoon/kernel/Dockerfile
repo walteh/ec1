@@ -31,10 +31,15 @@ WORKDIR ${LINUX_DIR}
 
 ARG TARGETARCH
 
-ARG KERNEL_CONFIG=harpoon-${TARGETARCH}.config
+# Set ARCH environment variable for kernel build
+# ENV ARCH=${TARGETARCH}
 
-# Copy kernel config
-COPY ${KERNEL_CONFIG} .config
+# Copy base config and architecture-specific fragment
+COPY harpoon.config ./
+COPY harpoon-${TARGETARCH}.fragment.config ./
+
+# Merge base config with architecture-specific fragment
+RUN scripts/kconfig/merge_config.sh -m harpoon.config harpoon-${TARGETARCH}.fragment.config
 
 RUN make LOCALVERSION= olddefconfig
 

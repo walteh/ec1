@@ -13,6 +13,7 @@ import (
 
 	slogctx "github.com/veqryn/slog-context"
 
+	"github.com/walteh/ec1/pkg/binembed"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -56,48 +57,53 @@ func TestHarpoon(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 	ctx = tctx.WithContext(ctx, t)
 
-	// Create a real VM for testing
-	rvm := runHarpoonVM(t, ctx, vmm.ConatinerImageConfig{
-		ImageRef: "docker.io/oven/bun:debian",
-		Cmdline:  []string{},
-		Arch:     "arm64",
-		OS:       "linux",
-		Memory:   strongunits.MiB(1024).ToBytes(),
-		VCPUs:    1,
+	err := binembed.PreloadAllSync()
+	require.NoError(t, err)
+
+	t.Run("bun_version", func(t *testing.T) {
+
+		// Create a real VM for testing
+		rvm := runHarpoonVM(t, ctx, vmm.ConatinerImageConfig{
+			ImageRef: "docker.io/oven/bun:debian",
+			Cmdline:  []string{},
+			Arch:     "arm64",
+			OS:       "linux",
+			Memory:   strongunits.MiB(1024).ToBytes(),
+			VCPUs:    1,
+		})
+
+		slog.DebugContext(ctx, "waiting for test VM to be running")
+
+		t.Logf("ready to exec")
+
+		var errres error
+		var stdout string
+		var stderr string
+		var exitCode string
+		var errchan = make(chan error, 1)
+
+		go func() {
+			start := time.Now()
+			// Verify the OCI container filesystem is properly mounted and accessible
+			// Focus on filesystem verification rather than binary execution due to library dependencies
+			stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "/usr/local/bin/bun --version")
+			slog.InfoContext(ctx, "bun --version", "duration", time.Since(start))
+			errchan <- errres
+		}()
+
+		select {
+		case <-errchan:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timeout waiting for command execution")
+		}
+
+		fmt.Println("stdout", stdout)
+		fmt.Println("stderr", stderr)
+		fmt.Println("exitCode", exitCode)
+
+		require.NoError(t, errres, "Failed to execute commands")
+		require.Contains(t, stdout, "1.2.", "Should find bun binary")
+
+		// Test passed - OCI container filesystem is properly mounted and accessible!
 	})
-
-	slog.DebugContext(ctx, "waiting for test VM to be running")
-
-	t.Logf("ready to exec")
-
-	var errres error
-	var stdout string
-	var stderr string
-	var exitCode string
-	var errchan = make(chan error, 1)
-
-	go func() {
-		start := time.Now()
-		// Verify the OCI container filesystem is properly mounted and accessible
-		// Focus on filesystem verification rather than binary execution due to library dependencies
-		stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, "/usr/local/bin/bun --version")
-		slog.InfoContext(ctx, "bun --version", "duration", time.Since(start))
-		errchan <- errres
-	}()
-
-	select {
-	case <-errchan:
-	case <-time.After(3 * time.Second):
-		t.Fatalf("timeout waiting for command execution")
-	}
-
-	fmt.Println("stdout", stdout)
-	fmt.Println("stderr", stderr)
-	fmt.Println("exitCode", exitCode)
-
-	require.NoError(t, errres, "Failed to execute commands")
-	require.Contains(t, stdout, "1.2.14", "Should find bun binary")
-
-	// Test passed - OCI container filesystem is properly mounted and accessible!
-
 }

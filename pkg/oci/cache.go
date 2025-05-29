@@ -28,6 +28,7 @@ type CacheEntry struct {
 	CachedAt       time.Time `json:"cached_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
 	RootfsPath     string    `json:"rootfs_path"`
+	OciLayoutPath  string    `json:"oci_layout_path"`
 	MetadataPath   string    `json:"metadata_path"`
 	Size           int64     `json:"size"`
 	RootfsDiskPath string    `json:"rootfs_disk_path"`
@@ -168,9 +169,16 @@ func getCachedRootfsSize(rootfsPath string) (int64, error) {
 	return size, err
 }
 
+type CachedContainer struct {
+	ImageRef         string
+	Platform         *types.SystemContext
+	ReadonlyFSPath   string
+	ReadonlyExt4Path string
+}
+
 // ContainerToVirtioDeviceCached is a cached version of ContainerToVirtioDevice
 // It caches extracted container images for 24 hours and handles offline scenarios gracefully
-func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOptions) (string, *v1.Image, error) {
+func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOptions) (*CachedContainer, *v1.Image, error) {
 	slog.InfoContext(ctx, "converting OCI container to virtio device with caching",
 		"image", opts.ImageRef,
 		"cache_expiration", CacheExpiration)
@@ -179,7 +187,7 @@ func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOp
 	cacheDir, err := getCacheDirForImage(opts.ImageRef, opts.Platform)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to get cache directory, falling back to non-cached", "error", err)
-		return "", nil, errors.Errorf("failed to get cache directory: %w", err)
+		return nil, nil, errors.Errorf("failed to get cache directory: %w", err)
 	}
 
 	// Load existing cache entry
@@ -226,23 +234,23 @@ func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOp
 			slog.ErrorContext(ctx, "failed to load from expired cache fallback", "fallback_error", fallbackErr)
 		}
 
-		return "", nil, errors.Errorf("failed to download image and no valid cache available: %w", err)
+		return nil, nil, errors.Errorf("failed to download image and no valid cache available: %w", err)
 	}
 
 	return device, metadata, nil
 }
 
 // downloadAndCache downloads an image and caches it
-func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheDir string) (string, *v1.Image, error) {
+func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheDir string) (*CachedContainer, *v1.Image, error) {
 	// Ensure cache directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return "", nil, errors.Errorf("creating cache directory: %w", err)
+		return nil, nil, errors.Errorf("creating cache directory: %w", err)
 	}
 
 	// Create a temporary directory for the download
 	tempDir, err := os.MkdirTemp(cacheDir, "download-*")
 	if err != nil {
-		return "", nil, errors.Errorf("creating temp directory: %w", err)
+		return nil, nil, errors.Errorf("creating temp directory: %w", err)
 	}
 
 	// Clean up temp directory on error
@@ -254,32 +262,40 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 
 	metadata, err := pullAndExtractImageSkopeo(ctx, opts.ImageRef, tempDir, opts.Platform)
 	if err != nil {
-		return "", nil, errors.Errorf("pulling and extracting image: %w", err)
+		return nil, nil, errors.Errorf("pulling and extracting image: %w", err)
 	}
 
 	// Move the extracted content to the cache
-	cachedRootfsPath := filepath.Join(cacheDir, "rootfs")
+	cachedRootfsPath := filepath.Join(cacheDir, "fs")
+	cachedOciLayoutPath := filepath.Join(cacheDir, "oci-layout")
 	cachedMetadataPath := filepath.Join(cacheDir, "metadata.json")
 
 	// Remove old cache if it exists
+
 	os.RemoveAll(cachedRootfsPath)
 	os.Remove(cachedMetadataPath)
 
 	// Find the extracted rootfs in the temp directory
-	tempRootfsPath := tempDir
 	// Move rootfs to cache
-	if err := os.Rename(tempRootfsPath, cachedRootfsPath); err != nil {
-		return "", nil, errors.Errorf("moving rootfs to cache: %w", err)
+	if err := os.Rename(filepath.Join(tempDir, "rootfs"), cachedRootfsPath); err != nil {
+		return nil, nil, errors.Errorf("moving rootfs to cache: %w", err)
 	}
+
+	if err := os.Rename(filepath.Join(tempDir, "oci-layout"), cachedOciLayoutPath); err != nil {
+		return nil, nil, errors.Errorf("moving rootfs to cache: %w", err)
+	}
+
+	// remove the temp dir
+	os.RemoveAll(tempDir)
 
 	// Save metadata to cache
 	metadataData, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
-		return "", nil, errors.Errorf("marshaling metadata: %w", err)
+		return nil, nil, errors.Errorf("marshaling metadata: %w", err)
 	}
 
 	if err := os.WriteFile(cachedMetadataPath, metadataData, 0644); err != nil {
-		return "", nil, errors.Errorf("writing metadata to cache: %w", err)
+		return nil, nil, errors.Errorf("writing metadata to cache: %w", err)
 	}
 
 	// Calculate cache size
@@ -291,8 +307,11 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 
 	rootfsDiskPath, err := bundleToSquashfs(ctx, cachedRootfsPath, cacheDir)
 	if err != nil {
-		return "", nil, errors.Errorf("bundling rootfs to squashfs: %w", err)
+		return nil, nil, errors.Errorf("bundling rootfs to squashfs: %w", err)
 	}
+
+	// mark all these things as read only
+	// os.Chmod(cacheDir, 0555)
 
 	// Create cache entry
 	now := time.Now()
@@ -302,6 +321,7 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 		CachedAt:       now,
 		ExpiresAt:      now.Add(CacheExpiration),
 		RootfsPath:     cachedRootfsPath,
+		OciLayoutPath:  cachedOciLayoutPath,
 		MetadataPath:   cachedMetadataPath,
 		RootfsDiskPath: rootfsDiskPath,
 		Size:           cacheSize,
@@ -327,7 +347,7 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 }
 
 func bundleToSquashfs(ctx context.Context, rootfsPath string, cacheDir string) (string, error) {
-	rootfsDiskPath := filepath.Join(cacheDir, "rootfs.ext4")
+	rootfsDiskPath := filepath.Join(cacheDir, "fs.ext4.img")
 
 	fles, err := archives.FilesFromDisk(ctx, &archives.FromDiskOptions{
 		// Root: rootfsPath,
@@ -450,23 +470,23 @@ func bundleToSquashfs(ctx context.Context, rootfsPath string, cacheDir string) (
 }
 
 // loadFromCache loads a virtio device from cached data
-func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerToVirtioOptions) (string, *v1.Image, error) {
+func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerToVirtioOptions) (*CachedContainer, *v1.Image, error) {
 	// Load metadata from cache
 	metadataData, err := os.ReadFile(cacheEntry.MetadataPath)
 	if err != nil {
-		return "", nil, errors.Errorf("reading cached metadata: %w", err)
+		return nil, nil, errors.Errorf("reading cached metadata: %w", err)
 	}
 
 	var metadata v1.Image
 	if err := json.Unmarshal(metadataData, &metadata); err != nil {
-		return "", nil, errors.Errorf("unmarshaling cached metadata: %w", err)
+		return nil, nil, errors.Errorf("unmarshaling cached metadata: %w", err)
 	}
 
 	// Set up mount point if specified
 	if opts.MountPoint != "" {
 		// Create mount point directory
 		if err := os.MkdirAll(opts.MountPoint, 0755); err != nil {
-			return "", nil, errors.Errorf("creating mount point: %w", err)
+			return nil, nil, errors.Errorf("creating mount point: %w", err)
 		}
 
 		// Create mount manager for cached rootfs
@@ -474,10 +494,15 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 
 		// Mount the cached filesystem
 		if err := mountMng.Mount(ctx); err != nil {
-			return "", nil, errors.Errorf("mounting cached filesystem: %w", err)
+			return nil, nil, errors.Errorf("mounting cached filesystem: %w", err)
 		}
 
-		return opts.MountPoint, &metadata, nil
+		return &CachedContainer{
+			ImageRef:         opts.ImageRef,
+			Platform:         opts.Platform,
+			ReadonlyFSPath:   opts.MountPoint,
+			ReadonlyExt4Path: cacheEntry.RootfsDiskPath,
+		}, &metadata, nil
 	}
 
 	slog.InfoContext(ctx, "successfully loaded container from cache",
@@ -486,7 +511,12 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 		"rootfs_path", cacheEntry.RootfsPath,
 		"cached_at", cacheEntry.CachedAt)
 
-	return cacheEntry.RootfsDiskPath, &metadata, nil
+	return &CachedContainer{
+		ImageRef:         opts.ImageRef,
+		Platform:         opts.Platform,
+		ReadonlyFSPath:   cacheEntry.RootfsPath,
+		ReadonlyExt4Path: cacheEntry.RootfsDiskPath,
+	}, &metadata, nil
 }
 
 // getPlatformString converts a SystemContext to a string representation

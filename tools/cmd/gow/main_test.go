@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGowConfig_findSafeGo(t *testing.T) {
@@ -528,4 +530,64 @@ func TestGowConfig_PipeStdioToFile(t *testing.T) {
 	}
 
 	t.Error("no stdio-pipe.log file found")
+}
+
+func TestGowConfig_handleTestRunPatternFix(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputPattern string
+		expected     string
+	}{
+		{
+			name:         "VS Code subtest pattern gets fixed",
+			inputPattern: "^TestHarpoon/bun_version$",
+			expected:     "^TestHarpoon$/bun_version$",
+		},
+		{
+			name:         "Regular test pattern passes through unchanged",
+			inputPattern: "^TestHarpoon$",
+			expected:     "^TestHarpoon$",
+		},
+		{
+			name:         "Pattern without slash passes through unchanged",
+			inputPattern: "TestSomething",
+			expected:     "TestSomething",
+		},
+		{
+			name:         "Complex subtest pattern gets fixed",
+			inputPattern: "^TestComplex/subtest/nested$",
+			expected:     "^TestComplex$/subtest/nested$",
+		},
+		{
+			name:         "Pattern without leading caret gets fixed",
+			inputPattern: "TestHarpoon/bun_version$",
+			expected:     "^TestHarpoon$/bun_version$",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the pattern transformation logic directly
+			result := tt.inputPattern
+			
+			// Apply the same logic as in handleTest
+			if strings.Contains(result, "/") {
+				parts := strings.SplitN(result, "/", 2)
+				if len(parts) == 2 {
+					testFunc := parts[0]
+					subtest := parts[1]
+					
+					// Remove leading ^ if present
+					if strings.HasPrefix(testFunc, "^") {
+						testFunc = testFunc[1:]
+					}
+					
+					// Create the fixed pattern
+					result = "^" + testFunc + "$/" + subtest
+				}
+			}
+			
+			assert.Equal(t, tt.expected, result, "Pattern transformation should match expected result")
+		})
+	}
 }

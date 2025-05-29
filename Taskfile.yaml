@@ -403,7 +403,7 @@ tasks:
                 echo -e "const Version = \"{{.KERNEL_VERSION}}\"\n" >> {{.OUT_DIR}}/embed.gen.go
                 echo -e "//go:embed config-{{.KERNEL_VERSION}}\n\nvar Config []byte\n" >> {{.OUT_DIR}}/embed.gen.go
                 echo -e "const ConfigChecksum = \"$(cat {{.OUT_DIR}}/config-{{.KERNEL_VERSION}}.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n\tbinembed.RegisterXZ(ConfigChecksum, Config)\n}\n" >> {{.OUT_DIR}}/embed.gen.go
+                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n\tbinembed.RegisterRaw(ConfigChecksum, Config)\n}\n" >> {{.OUT_DIR}}/embed.gen.go
           - cmd: go fmt {{.OUT_DIR}}/embed.gen.go
 
     harpoon:kernel:

@@ -429,10 +429,10 @@ func TestHarpoonOCI(t *testing.T) {
 
 	extraInitramfsFiles := map[string]io.Reader{
 		ec1init.ContainerManifestFile: buf,
-		ec1init.ContainerCmdlineFile:   obuf,
+		ec1init.ContainerCmdlineFile:  obuf,
 	}
 
-	vfs, err := virtio.VirtioFsNew(device, ec1init.RootfsVirtioTag)
+	vfs, err := virtio.VirtioFsNew(device.ReadonlyFSPath, ec1init.RootfsVirtioTag)
 	require.NoError(t, err, "Failed to create virtio fs")
 
 	// Create a real VM for testing

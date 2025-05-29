@@ -26,7 +26,7 @@ RUN cp busybox /rootfs/bin/ \
 
 RUN mkdir -p /rootfs/etc/network
 RUN echo -e 'auto eth0\niface eth0 inet dhcp' > /rootfs/etc/network/interfaces
-RUN apk add --no-cache file
+# RUN apk add --no-cache file
 
 # download jq
 FROM debian:bookworm-slim AS jq-build
@@ -60,17 +60,40 @@ RUN cd /app \
 
 RUN cd /app && make check || echo "check failed"
 
+# # FROM busybox-build AS e2fsprogs-build
+# # RUN apt-get install -y gcc-arm-linux-gnueabi
+# FROM alpine:3.21 AS e2fsprogs-build
+# RUN apk add --no-cache e2fsprogs e2fsprogs-static file
+# RUN which mke2fs && file $(which mke2fs) && exit 1
+# # RUN git clone https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git /e2fsprogs
+# # WORKDIR /e2fsprogs
+# # RUN ./configure CFLAGS='-g -O2 -static'
+# # RUN make -j$(nproc)
+# # RUN strip /e2fsprogs/misc/mke2fs
+# # RUN cp /bin/mke2fs /bin/mke2fs
+
+FROM alpine:3.21 AS e2fsprogs-build
+RUN apk add --no-cache build-base git autoconf automake linux-headers musl-dev
+RUN git clone https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git /src
+WORKDIR /src
+# Pass STATIC LDFLAGS so no interpreter is needed
+RUN CFLAGS='-O2' \
+	LDFLAGS='-static -s' \
+	./configure --enable-static --disable-shared
+RUN make -j$(nproc)
+RUN strip misc/mke2fs
+RUN cp misc/mke2fs /bin/
+
 # FROM alpine:3.21 AS symlink-build
 # RUN touch /bin/harpoond
 # RUN ln -s /bin/harpoond /init
 
-FROM scratch AS rootfs
+FROM scratch AS rootfsd
 COPY --from=alpine/socat /usr/bin/socat /bin/socat
-COPY --from=busybox-build /usr/bin/file /bin/file
-COPY --from=busybox-build /rootfs/ /
-COPY --from=jq-build /app/jq /bin/jq
+COPY --from=e2fsprogs-build /bin/mke2fs /bin/mke2fs
 COPY --from=harpoond /harpoond /bin/harpoond
-# COPY --from=symlink-build /rootfs/ /
+COPY --from=busybox-build /rootfs/ /
+
 
 # ---------- 3. pack with Go cpio writer ----------
 FROM alpine:3.21 AS cpio
@@ -78,7 +101,7 @@ RUN apk add --no-cache cpio gzip
 WORKDIR /work
 
 # copy populated rootfs from previous stage
-COPY --from=rootfs / /rootfs
+COPY --from=rootfsd / /rootfs
 
 COPY udhcpc.default /rootfs/etc/udhcpc/default.script
 COPY resolv.conf /rootfs/etc/resolv.conf

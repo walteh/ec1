@@ -147,27 +147,31 @@ func triggerSecondaryVsock(ctx context.Context) error {
 
 func mountInitramfs(ctx context.Context) error {
 	slog.InfoContext(ctx, "initramfs init started, mounting rootfs")
-	// mkdir -p /mnt/lower /mnt/upper /mnt/overlay
-	// sudo mount -t squashfs ./my.squashfs /mnt/lower
-	// sudo mount -t tmpfs tmpfs /mnt/upper
-	// sudo mount -t overlay overlay \
-	//   -o lowerdir=/mnt/lower,upperdir=/mnt/upper \
-	//   /mnt/overlay
+
 	mounts := [][]string{
-		{"mkdir", "-p", "/proc", "/sys", "/dev", ec1init.NewRootAbsPath, "/run", ec1init.Ec1AbsPath, "/mnt/lower", "/mnt/upper", "/mnt/overlay"},
+		{"mkdir", "-p", "/proc", "/sys", "/dev", ec1init.NewRootAbsPath, "/run", ec1init.Ec1AbsPath, "/mnt/lower", "/mnt/upper", "/mnt/overlay", "/mnt/wrk"},
 		{"mount", "-t", "devtmpfs", "devtmpfs", "/dev"},
 		{"mount", "-t", "proc", "proc", "/proc"},
 		{"mount", "-t", "sysfs", "sysfs", "/sys"},
-		{"mkdir", "-p", "/dev/pts", "/dev/shm"},
+		{"mkdir", "-p", "/dev/pts"},
 		{"mount", "-t", "devpts", "devpts", "/dev/pts"},
-		// {"mount", "-t", "tmpfs", "tmpfs", "/dev/shm"},
-		{"mount", "-t", "ext4", "/dev/vdb", "/mnt/lower"},
-		{"mount", "-t", "tmpfs", "/dev/vda", "/mnt/upper"},
-		{"mount", "-t", "overlay", "overlay", "-o", "lowerdir=/mnt/lower,upperdir=/mnt/upper", ec1init.NewRootAbsPath},
 		{"mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath},
+
+		{"mount", "-t", "virtiofs", "-o", "ro", ec1init.RootfsVirtioTag, "/mnt/lower"},
+		// read only lower layer
+		// {"mount", "-t", "ext4", "-o", "ro", "/dev/vdb", "/mnt/lower"},
+		// {"ls", "-la", "/bin/mke2fs"},
+		// {"/bin/file", "/bin/mke2fs"},
+		// mkfs.ext4 -L upper -O has_journal /dev/vda
+		// {"truncate", "-s", "128M", ec1init.Ec1AbsPath + "upper.img"},
+		// {"/bin/mke2fs", "-t", "ext4", "-L", "upper", "-O", "has_journal", ec1init.Ec1AbsPath + "upper.img"},
+		// writable upper layer
+
+		{"mount", "-t", "tmpfs", "tmpfs", "/mnt/upper"},
+		{"mkdir", "-p", "/mnt/upper/upper", "/mnt/upper/work"},
+		{"mount", "-t", "overlay", "overlay", "-o", "lowerdir=/mnt/lower,upperdir=/mnt/upper/upper,workdir=/mnt/upper/work", ec1init.NewRootAbsPath},
 	}
 
-	// mount dirs
 	for _, mount := range mounts {
 		err := execCmdForwardingStdio(ctx, mount...)
 		if err != nil {
@@ -311,6 +315,10 @@ func execCmdForwardingStdio(ctx context.Context, cmds ...string) error {
 	}
 
 	argc := "/bin/busybox"
+	if strings.HasPrefix(cmds[0], "/") {
+		argc = cmds[0]
+		cmds = cmds[1:]
+	}
 	argv := cmds
 
 	// argc := cmds[0]

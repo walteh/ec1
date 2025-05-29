@@ -174,13 +174,35 @@ func (vm *VirtualMachine) StateChangeNotify(ctx context.Context) <-chan vmm.Virt
 	return stateChangeNotify
 }
 
+type FormattedNSError struct {
+	inter *vz.NSError
+}
+
+func (f *FormattedNSError) Error() string {
+	return fmt.Sprintf("NSError: %s[code=%d]: %s", f.inter.Domain, f.inter.Code, f.inter.LocalizedDescription)
+}
+
+func formatNSError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if ns, ok := err.(*vz.NSError); ok {
+		return &FormattedNSError{inter: ns}
+	}
+	return err
+}
+
 // VSockConnect implements vmm.VirtualMachine.
 func (vm *VirtualMachine) VSockConnect(ctx context.Context, port uint32) (net.Conn, error) {
 	vsockDev, err := vm.GetVSockDevice()
 	if err != nil {
 		return nil, errors.Errorf("getting vsock device: %w", err)
 	}
-	return vsockDev.Connect(port)
+	conn, err := vsockDev.Connect(port)
+	if err != nil {
+		return nil, errors.Errorf("connecting to vsock device: %w", formatNSError(err))
+	}
+	return conn, nil
 }
 
 // VSockListen implements vmm.VirtualMachine.
@@ -189,7 +211,11 @@ func (vm *VirtualMachine) VSockListen(ctx context.Context, port uint32) (net.Lis
 	if err != nil {
 		return nil, errors.Errorf("getting vsock device: %w", err)
 	}
-	return vsockDev.Listen(port)
+	lstn, err := vsockDev.Listen(port)
+	if err != nil {
+		return nil, errors.Errorf("listening to vsock device: %w", err)
+	}
+	return lstn, nil
 }
 
 func (vm *VirtualMachine) CanStart(_ context.Context) bool {

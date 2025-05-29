@@ -300,6 +300,39 @@ func (cfg *GowConfig) handleTest(args []string) error {
 				targetDir = args[i+1]
 				i++ // Skip the target value
 			}
+		case "-run":
+			// Handle -run with special processing for subtest patterns
+			if i+1 < len(args) {
+				runPattern := args[i+1]
+				// Fix VS Code subtest patterns that incorrectly match multiple test functions
+				// Pattern like "^TestHarpoon/bun_version$" should only match TestHarpoon, not TestHarpoonOCI
+				if strings.Contains(runPattern, "/") {
+					// Extract the test function name (part before the first "/")
+					parts := strings.SplitN(runPattern, "/", 2)
+					if len(parts) == 2 {
+						testFunc := parts[0]
+						subtest := parts[1]
+						
+						// Remove leading ^ if present
+						if strings.HasPrefix(testFunc, "^") {
+							testFunc = testFunc[1:]
+						}
+						
+						// Create a more precise pattern that ensures exact test function match
+						// Pattern: ^TestFunc$/^subtest$ ensures TestFunc is matched exactly, not as prefix
+						fixedPattern := "^" + testFunc + "$/" + subtest
+						if cfg.Verbose {
+							fmt.Printf("🔧 Fixed -run pattern: %s -> %s\n", runPattern, fixedPattern)
+						}
+						goArgs = append(goArgs, "-run", fixedPattern)
+						i++ // Skip the run pattern value
+						break
+					}
+				}
+				// If no "/" or pattern doesn't match expected format, pass through as-is
+				goArgs = append(goArgs, "-run", runPattern)
+				i++ // Skip the run pattern value
+			}
 		default:
 			// Pass through all other arguments to go test
 			goArgs = append(goArgs, arg)
