@@ -64,11 +64,13 @@ func CreateWriterPipeline(ctx context.Context, reader io.Reader, writerFunc func
 	}
 
 	go func() {
-		defer pipeWriter.Close()
 		defer wrtr.Close()
 		_, err := io.Copy(wrtr, reader)
 		if err != nil {
 			slog.Warn("error copying to pipeline writer", "error", err)
+			pipeWriter.CloseWithError(err)
+		} else {
+			pipeWriter.Close()
 		}
 	}()
 

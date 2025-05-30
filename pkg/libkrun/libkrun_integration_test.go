@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -19,12 +18,6 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/pkg/vmnet"
-)
-
-// Global flag to ensure we only initialize libkrun logger once
-var (
-	loggerInitialized sync.Once
-	loggerInitError   error
 )
 
 func setupIntegrationContext(t testing.TB) context.Context {
@@ -42,14 +35,6 @@ func setupIntegrationContext(t testing.TB) context.Context {
 	}
 }
 
-// initializeLibkrunLogger ensures libkrun logger is only initialized once
-func initializeLibkrunLogger(ctx context.Context) error {
-	loggerInitialized.Do(func() {
-		loggerInitError = SetLogLevel(ctx, LogLevelInfo)
-	})
-	return loggerInitError
-}
-
 // TestIntegrationBasicVM tests creating a basic VM with minimal configuration
 func TestIntegrationBasicVM(t *testing.T) {
 
@@ -58,8 +43,8 @@ func TestIntegrationBasicVM(t *testing.T) {
 
 	log.InfoContext(ctx, "starting basic VM integration test")
 
-	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	// Initialize libkrun logger (now protected by sync.Once globally)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	// Create libkrun context
@@ -114,7 +99,7 @@ func TestIntegrationVMNetNetworking(t *testing.T) {
 	log.InfoContext(ctx, "starting vmnet networking integration test")
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	// Create libkrun context
@@ -248,7 +233,7 @@ func TestIntegrationDiskOperations(t *testing.T) {
 	log := slog.With(slog.String("test", "DiskOperations"))
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	// Create temporary disk files for testing
@@ -331,7 +316,7 @@ func TestIntegrationAdvancedFeatures(t *testing.T) {
 	log := slog.With(slog.String("test", "AdvancedFeatures"))
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	// Create libkrun context
@@ -473,7 +458,7 @@ func TestIntegrationVariantSpecificFeatures(t *testing.T) {
 	log := slog.With(slog.String("test", "VariantSpecific"))
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	// Create libkrun context
@@ -543,7 +528,7 @@ func BenchmarkTestIntegrationPerformance(t *testing.B) {
 	log := slog.With(slog.String("test", "Performance"))
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	log.InfoContext(ctx, "starting performance benchmarks")
@@ -612,7 +597,7 @@ func TestIntegrationLibkrunAvailability(t *testing.T) {
 	log.InfoContext(ctx, "checking libkrun availability")
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "libkrun should be available")
 
 	// Try to create context
@@ -630,7 +615,7 @@ func TestIntegrationCleanup(t *testing.T) {
 	log := slog.With(slog.String("test", "Cleanup"))
 
 	// Initialize libkrun logger once globally
-	err := initializeLibkrunLogger(ctx)
+	err := SetLogLevel(ctx, LogLevelInfo)
 	require.NoError(t, err, "should initialize libkrun logger")
 
 	log.InfoContext(ctx, "testing resource cleanup")

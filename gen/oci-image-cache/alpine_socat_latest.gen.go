@@ -5,7 +5,7 @@ import _ "embed"
 //go:embed alpine_socat_latest.tar.gz
 var ALPINE_SOCAT_LATEST_TAR_GZ []byte
 
-const ALPINE_SOCAT_LATEST_TAR_GZ_CHECKSUM = "a1c82627d9f23df6f263a22e3039fd9b68b58d36631efaac395059dd8ab1b961"
+const ALPINE_SOCAT_LATEST_TAR_GZ_CHECKSUM = "7813a0c3179ff876fc90ad587ed55d20457a410ad3180ed45a1c5ed8476b85fb"
 
 const ALPINE_SOCAT_LATEST OCICachedImage = "docker.io/alpine/socat:latest"
 

@@ -11,21 +11,33 @@ import "C"
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"unsafe"
 
 	"gitlab.com/tozd/go/errors"
 )
 
+// Global protection for libkrun logger initialization
+var (
+	loggerInitialized sync.Once
+	loggerInitError   error
+)
+
 // SetLogLevel sets the log level for libkrun
+// This function is protected by sync.Once to prevent race conditions
+// when multiple tests try to initialize the Rust logger simultaneously
 func SetLogLevel(ctx context.Context, level LogLevel) error {
 	log := slog.With(slog.String("component", "libkrun"))
 	log.DebugContext(ctx, "setting libkrun log level", slog.Any("level", level))
 
-	result := C.krun_set_log_level(C.uint32_t(level))
-	if result < 0 {
-		return errors.Errorf("setting libkrun log level: %d", result)
-	}
-	return nil
+	loggerInitialized.Do(func() {
+		result := C.krun_set_log_level(C.uint32_t(level))
+		if result < 0 {
+			loggerInitError = errors.Errorf("setting libkrun log level: %d", result)
+		}
+	})
+	
+	return loggerInitError
 }
 
 // CreateContext creates a new libkrun configuration context

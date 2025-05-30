@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -41,6 +42,12 @@ func (e *OCIImageExtractor) ExtractImage(ctx context.Context, ociLayoutPath stri
 		"platform", string(platform),
 		"dest", destDir)
 
+	// First, check if we need to handle duplicate manifests in the index
+	err := e.ensureCleanIndex(ctx, ociLayoutPath)
+	if err != nil {
+		return nil, errors.Errorf("cleaning index: %w", err)
+	}
+
 	// Create image reference from the OCI layout
 	imgRef, err := layout.NewReference(ociLayoutPath, "")
 	if err != nil {
@@ -60,9 +67,16 @@ func (e *OCIImageExtractor) ExtractImage(ctx context.Context, ociLayoutPath stri
 	}
 	defer imgSrc.Close()
 
-	// Create image from source
+	// Create image from source with better error handling for multi-platform
 	img, err := image.FromSource(ctx, sysCtx, imgSrc)
 	if err != nil {
+		// If we get "more than one image" error, try to be more specific
+		if strings.Contains(err.Error(), "more than one image") {
+			slog.WarnContext(ctx, "multi-platform image detected, attempting platform-specific selection",
+				"platform", string(platform),
+				"os", platform.OS(),
+				"arch", platform.Arch())
+		}
 		return nil, errors.Errorf("creating image from source: %w", err)
 	}
 	defer img.Close()
@@ -96,6 +110,60 @@ func (e *OCIImageExtractor) ExtractImage(ctx context.Context, ociLayoutPath stri
 		"platform", ociConfig.Platform)
 
 	return ociConfig, nil
+}
+
+// ensureCleanIndex checks for and fixes duplicate manifest entries in index.json
+func (e *OCIImageExtractor) ensureCleanIndex(ctx context.Context, ociLayoutPath string) error {
+	indexPath := filepath.Join(ociLayoutPath, "index.json")
+	
+	// Read the current index
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		return errors.Errorf("reading index.json: %w", err)
+	}
+
+	var index v1.Index
+	if err := json.Unmarshal(indexData, &index); err != nil {
+		return errors.Errorf("unmarshaling index.json: %w", err)
+	}
+
+	// Check for duplicate manifests
+	seen := make(map[string]bool)
+	var uniqueManifests []v1.Descriptor
+	duplicatesFound := false
+
+	for _, manifest := range index.Manifests {
+		key := manifest.Digest.String() + ":" + manifest.MediaType
+		if !seen[key] {
+			seen[key] = true
+			uniqueManifests = append(uniqueManifests, manifest)
+		} else {
+			duplicatesFound = true
+			slog.WarnContext(ctx, "found duplicate manifest entry, removing",
+				"digest", manifest.Digest.String(),
+				"media_type", manifest.MediaType)
+		}
+	}
+
+	// If we found duplicates, write the cleaned index
+	if duplicatesFound {
+		index.Manifests = uniqueManifests
+		
+		cleanedData, err := json.Marshal(index)
+		if err != nil {
+			return errors.Errorf("marshaling cleaned index: %w", err)
+		}
+
+		if err := os.WriteFile(indexPath, cleanedData, 0644); err != nil {
+			return errors.Errorf("writing cleaned index: %w", err)
+		}
+
+		slog.InfoContext(ctx, "cleaned duplicate manifest entries",
+			"original_count", len(index.Manifests) + (len(index.Manifests) - len(uniqueManifests)),
+			"cleaned_count", len(uniqueManifests))
+	}
+
+	return nil
 }
 
 // extractLayersFromOCILayout extracts the filesystem layers from an OCI layout to create a rootfs

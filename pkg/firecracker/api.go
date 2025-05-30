@@ -15,6 +15,8 @@ import (
 
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/models"
 	"github.com/walteh/ec1/gen/firecracker-swagger-go/restapi/operations"
+	"github.com/walteh/ec1/pkg/oci"
+	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -53,7 +55,7 @@ type apiConfig struct {
 
 // NewFirecrackerMicroVM creates a new Firecracker API implementation
 // that leverages the hypervisors package for VM operations for a single microVM.
-func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
+func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], cache *oci.SimpleCache, vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
 	id := "mvm-" + xid.New().String()
 
 	// lvmi, ok := vmi.(vmm.LinuxVMIProvider)
@@ -75,7 +77,12 @@ func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hy
 
 	bytes := strongunits.GiB(2)
 
-	vm, err := vmm.RunVirtualMachine(ctx, hpv, vmi, 2, bytes.ToBytes())
+	vm, err := vmm.NewContainerizedVirtualMachine(ctx, hpv, cache, vmm.ConatinerImageConfig{
+		ImageRef: "docker.io/library/alpine:latest",
+		Platform: units.PlatformLinuxARM64,
+		Memory:   bytes.ToBytes(),
+		VCPUs:    1,
+	})
 	if err != nil {
 		slog.Error("failed to create new VM", "error", err)
 		return nil, err

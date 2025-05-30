@@ -34,9 +34,9 @@ func TestHarpoon(t *testing.T) {
 	// This moves the expensive extraction work to setup time, not test execution time
 	imagesToPreload := []toci.ImagePlatformPair{
 		{ImageRef: oci_image_cache.OVEN_BUN_ALPINE.String(), Platform: units.PlatformLinuxARM64},
-		// TODO: Fix multi-platform image support for alpine/socat:latest
-		// {ImageRef: oci_image_cache.ALPINE_SOCAT_LATEST.String(), Platform: units.PlatformLinuxARM64},
+		{ImageRef: oci_image_cache.ALPINE_SOCAT_LATEST.String(), Platform: units.PlatformLinuxARM64},
 		{ImageRef: oci_image_cache.ALPINE_LATEST.String(), Platform: units.PlatformLinuxARM64},
+		{ImageRef: oci_image_cache.BUSYBOX_GLIBC.String(), Platform: units.PlatformLinuxARM64},
 	}
 
 	cache := toci.TestSimpleCacheWithPreload(t, imagesToPreload)
@@ -107,30 +107,24 @@ func TestHarpoon(t *testing.T) {
 
 		go func() {
 			start := time.Now()
-			// Verify the OCI container filesystem is properly mounted and accessible
-			// Focus on filesystem verification rather than binary execution due to library dependencies
 			stdout, stderr, exitCode, errres = vmm.Exec(ctx, rvm, serverCmd)
-			if exitCode != "" {
-				t.Logf("exitCode: %s", exitCode)
-			}
-			slog.InfoContext(ctx, "bun --version", "duration", time.Since(start))
+			slog.InfoContext(ctx, "socat command", "duration", time.Since(start))
 			errchan <- errres
 		}()
 
-		select {
-		case <-errchan:
-		case <-time.After(3 * time.Second):
-			t.Fatalf("timeout waiting for command execution")
-		}
-
-		require.NoError(t, errres, "Failed to execute commands")
-		require.NotEmpty(t, stdout, "stdout should not be empty")
-		require.Empty(t, stderr, "stderr should be empty")
-
 		slog.DebugContext(ctx, "Guest vsock server started, waiting for it to be ready...")
+
 		// Give the server a moment to start up.
 		// A more robust way would be to try connecting in a loop.
-		time.Sleep(2 * time.Second)
+		select {
+		case <-errchan:
+			t.Logf("stdout: %s", stdout)
+			t.Logf("stderr: %s", stderr)
+			t.Logf("exitCode: %s", exitCode)
+			t.Logf("errres: %v", errres)
+			t.Fatalf("the socat command exited early, see output above")
+		case <-time.After(10 * time.Millisecond):
+		}
 
 		slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
 		// Expose the guest's vsock port. The host will connect to the guest's server.

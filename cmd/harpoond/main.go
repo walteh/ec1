@@ -99,12 +99,30 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		if len(parts) == 0 {
 			return nil
 		}
-		full := append(manifest.Config.Entrypoint, parts...)
-		cmd := exec.CommandContext(ctx, full[0], full[1:]...)
+
+		entrypointString := strings.Join(manifest.Config.Entrypoint, " ")
+		fullCommand := strings.Join(parts, " ")
+
+		if !strings.HasPrefix(fullCommand, entrypointString) {
+			fullCommand = entrypointString + " " + fullCommand
+		}
+
+		// Use busybox sh -c to execute the command in the chrooted environment
+		// This ensures PATH resolution happens within the chroot
+		cmd := exec.CommandContext(ctx, "/bin/busybox", "sh", "-c", fullCommand)
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Chroot: ec1init.NewRootAbsPath,
 		}
 		cmd.Dir = "/" // without this, we end up with a stderr sh: 0: getcwd() failed: No such file or directory
+
+		// Set the environment from the container manifest
+		env := manifest.Config.Env
+		// Ensure PATH is set correctly for the container
+		env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+		cmd.Env = env
+
+		slog.DebugContext(ctx, "executing chrooted command", "command", fullCommand, "env", env)
+
 		return cmd
 	})
 	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {

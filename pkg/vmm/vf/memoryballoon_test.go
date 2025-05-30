@@ -6,6 +6,7 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
+	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/require"
 
 	"github.com/walteh/ec1/pkg/testing/tlog"
@@ -62,7 +63,7 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 	rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
 		ImageRef: "docker.io/library/alpine:latest",
 		Platform: units.PlatformLinuxARM64,
-		Memory:   strongunits.MiB(1024).ToBytes(),
+		Memory:   startingMemory.ToBytes(),
 		VCPUs:    1,
 	}, cache)
 	require.NotNil(t, rvm)
@@ -81,7 +82,7 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 
 	// Get the current target memory size
 	sizeBefore := trad.GetTargetVirtualMachineMemorySize()
-	slog.DebugContext(ctx, "sizeBefore", "sizeBefore", sizeBefore, "startingMemory", startingMemory)
+	slog.DebugContext(ctx, "sizeBefore", "sizeBefore", humanize.Bytes(sizeBefore), "startingMemory", humanize.Bytes(uint64(startingMemory.ToBytes())))
 	require.Equal(t, sizeBefore, uint64(startingMemory.ToBytes()))
 
 	trad.SetTargetVirtualMachineMemorySize(uint64(targetMemory.ToBytes())) // 100 MB

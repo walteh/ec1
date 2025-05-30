@@ -109,7 +109,7 @@ func (d *TestImageDownloader) InitializeCache(ctx context.Context) error {
 	}
 	d.mutex.Unlock()
 
-	slog.InfoContext(ctx, "initializing test image cache")
+	// slog.InfoContext(ctx, "initializing test image cache")
 
 	// Create cache directory for this test
 	var err error
@@ -123,7 +123,7 @@ func (d *TestImageDownloader) InitializeCache(ctx context.Context) error {
 	// Extract all images from the registry
 	for imageRef, data := range oci_image_cache.Registry {
 		imageRefStr := string(imageRef)
-		slog.InfoContext(ctx, "extracting image to cache", "image", imageRefStr)
+		// slog.InfoContext(ctx, "extracting image to cache", "image", imageRefStr)
 
 		// Create directory for this image
 		imageCacheDir := filepath.Join(d.cacheDir, sanitizeImageRef(imageRefStr))
@@ -140,7 +140,7 @@ func (d *TestImageDownloader) InitializeCache(ctx context.Context) error {
 		d.mutex.Lock()
 		d.imageCache[imageRefStr] = imageCacheDir
 		d.mutex.Unlock()
-		slog.InfoContext(ctx, "cached image", "image", imageRefStr, "path", imageCacheDir)
+		// slog.InfoContext(ctx, "cached image", "image", imageRefStr, "path", imageCacheDir)
 	}
 
 	// Mark as initialized

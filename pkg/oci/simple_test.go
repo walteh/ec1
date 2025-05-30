@@ -2,7 +2,9 @@ package oci_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -320,4 +322,68 @@ func TestGlobalCacheFunctions(t *testing.T) {
 	images, err := oci.ListAllCachedImages(ctx)
 	require.NoError(t, err)
 	assert.Len(t, images, 0)
+}
+
+func TestAlpineSocatMultiPlatform(t *testing.T) {
+	ctx := context.Background()
+	cache := toci.TestSimpleCache(t)
+	defer cache.ClearCache(ctx)
+
+	// Test the problematic alpine/socat:latest image
+	imageRef := oci_image_cache.ALPINE_SOCAT_LATEST.String()
+	platform := units.PlatformLinuxARM64
+
+	t.Logf("Testing image: %s with platform: %s", imageRef, platform)
+
+	// First, let's examine the OCI layout structure
+	downloader := toci.TestImageDownloaderInitialized(t)
+	ociLayoutPath, err := downloader.DownloadImage(ctx, imageRef)
+	require.NoError(t, err)
+	
+	// Read and examine the index.json
+	indexPath := filepath.Join(ociLayoutPath, "index.json")
+	indexData, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+	t.Logf("Index.json content: %s", string(indexData))
+	
+	// Parse the index to understand the structure
+	var index struct {
+		SchemaVersion int `json:"schemaVersion"`
+		MediaType     string `json:"mediaType"`
+		Manifests     []struct {
+			MediaType string `json:"mediaType"`
+			Digest    string `json:"digest"`
+			Size      int    `json:"size"`
+		} `json:"manifests"`
+	}
+	err = json.Unmarshal(indexData, &index)
+	require.NoError(t, err)
+	
+	t.Logf("Index media type: %s", index.MediaType)
+	t.Logf("Number of manifests: %d", len(index.Manifests))
+	for i, manifest := range index.Manifests {
+		t.Logf("Manifest %d: type=%s, digest=%s", i, manifest.MediaType, manifest.Digest)
+	}
+
+	// Try to load the image
+	cached, err := cache.LoadImage(ctx, imageRef, platform)
+	if err != nil {
+		t.Logf("Error details: %v", err)
+		// Let's also try with AMD64 to see if it's platform-specific
+		platform2 := units.PlatformLinuxAMD64
+		t.Logf("Trying with platform: %s", platform2)
+		cached2, err2 := cache.LoadImage(ctx, imageRef, platform2)
+		if err2 != nil {
+			t.Logf("AMD64 also failed: %v", err2)
+		} else {
+			t.Logf("AMD64 succeeded: %+v", cached2)
+		}
+		require.NoError(t, err, "Failed to load alpine/socat:latest")
+	}
+
+	assert.Equal(t, imageRef, cached.ImageRef)
+	assert.Equal(t, platform, cached.Platform)
+	assert.DirExists(t, cached.RootfsPath)
+	assert.FileExists(t, cached.Ext4Path)
+	assert.NotNil(t, cached.Metadata)
 }
