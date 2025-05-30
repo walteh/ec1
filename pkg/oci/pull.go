@@ -4,6 +4,9 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -19,56 +22,122 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/walteh/ec1/pkg/units"
 )
 
-// pullAndExtractImageSkopeo pulls a container image using the skopeo approach and extracts it to OCI layout
-func PullAndExtractImageSkopeo(ctx context.Context, imageRef, destDir string, sysCtx *types.SystemContext) (*v1.Image, error) {
-	slog.InfoContext(ctx, "pulling container image using skopeo approach", "image", imageRef)
+// SkopeoImageDownloader implements ImageDownloader using skopeo/containers library
+type SkopeoImageDownloader struct {
+	RootDir string
+}
+
+func (d *SkopeoImageDownloader) DownloadImage(ctx context.Context, imageRef string) (string, error) {
+	slog.InfoContext(ctx, "downloading container image using skopeo",
+		"image", imageRef,
+	)
+
+	// get the current main digest of the image
 
 	// Create policy context (allow all for now - in production this should be more restrictive)
 	policyContext, err := signature.NewPolicyContext(&signature.Policy{
 		Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()},
 	})
 	if err != nil {
-		return nil, errors.Errorf("creating policy context: %w", err)
+		return "", errors.Errorf("creating policy context: %w", err)
 	}
 	defer policyContext.Destroy()
 
 	// Parse source image reference
 	srcRef, err := docker.ParseReference("//" + imageRef)
 	if err != nil {
-		return nil, errors.Errorf("parsing source reference: %w", err)
+		return "", errors.Errorf("parsing source reference: %w", err)
 	}
+
+	// get image index manifest
+	srcImg, err := srcRef.NewImage(ctx, &types.SystemContext{})
+	if err != nil {
+		return "", errors.Errorf("creating source image: %w", err)
+	}
+	defer srcImg.Close()
+
+	bdig, _, err := srcImg.Manifest(ctx)
+	if err != nil {
+		return "", errors.Errorf("getting manifest: %w", err)
+	}
+
+	// var manifest v1.Manifest
+	// if sdig == "application/vnd.oci.image.index.v1+json" {
+	// 	var index v1.Index
+	// 	if err := json.Unmarshal(bdig, &index); err != nil {
+	// 		return "", errors.Errorf("unmarshalling index: %w", err)
+	// 	}
+
+	// } else {
+	// 	var manifest v1.Manifest
+	// 	if err := json.Unmarshal(bdig, &manifest); err != nil {
+	// 		return "", errors.Errorf("unmarshalling manifest: %w", err)
+	// 	}
+	// }
+
+	var manifest v1.Manifest
+	if err := json.Unmarshal(bdig, &manifest); err != nil {
+		return "", errors.Errorf("unmarshalling manifest: %w", err)
+	}
+	hashd := sha256.Sum256(bdig)
+	destDir := filepath.Join(d.RootDir, hex.EncodeToString(hashd[:]))
 
 	// Create OCI layout destination
-	ociLayoutDir := filepath.Join(destDir, "oci-layout")
-	if err := os.MkdirAll(ociLayoutDir, 0755); err != nil {
-		return nil, errors.Errorf("creating oci layout directory: %w", err)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", errors.Errorf("creating destination directory: %w", err)
 	}
 
-	destRef, err := layout.NewReference(ociLayoutDir, imageRef)
+	destRef, err := layout.NewReference(destDir, imageRef)
 	if err != nil {
-		return nil, errors.Errorf("creating oci layout reference: %w", err)
+		return "", errors.Errorf("creating oci layout reference: %w", err)
 	}
+
+	// Create system context with platform information
+	sysCtx := &types.SystemContext{}
 
 	// Copy image from source to OCI layout
 	_, err = copy.Image(ctx, policyContext, destRef, srcRef, &copy.Options{
 		SourceCtx:      sysCtx,
 		DestinationCtx: sysCtx,
 		ReportWriter:   os.Stdout,
+		// Instances:      digests,
 	})
 	if err != nil {
-		return nil, errors.Errorf("copying image: %w", err)
+		return "", errors.Errorf("copying image: %w", err)
 	}
 
-	// Create image source from the copied OCI layout to extract configuration
-	imgSrc, err := destRef.NewImageSource(ctx, sysCtx)
+	slog.InfoContext(ctx, "successfully downloaded container image", "dest", destDir)
+	return destDir, nil
+}
+
+func ExtractOCIImageToDir(ctx context.Context, downloadedPath string, destDir string, platform units.Platform) (*v1.Image, error) {
+	slog.InfoContext(ctx, "extracting image from OCI layout",
+		"source", downloadedPath,
+		"dest", destDir)
+
+	sysCtx := &types.SystemContext{
+		OSChoice:           platform.OS(),
+		ArchitectureChoice: platform.Arch(),
+	}
+
+	// Create image reference from the downloaded OCI layout
+	imgRef, err := layout.NewReference(downloadedPath, "")
+	if err != nil {
+		return nil, errors.Errorf("creating image reference: %w", err)
+	}
+
+	// Create image source
+	imgSrc, err := imgRef.NewImageSource(ctx, sysCtx)
 	if err != nil {
 		return nil, errors.Errorf("creating image source: %w", err)
 	}
 	defer imgSrc.Close()
 
-	// Create image from source to get configuration
+	// Create image from source
 	img, err := image.FromSource(ctx, sysCtx, imgSrc)
 	if err != nil {
 		return nil, errors.Errorf("creating image from source: %w", err)
@@ -82,7 +151,7 @@ func PullAndExtractImageSkopeo(ctx context.Context, imageRef, destDir string, sy
 	}
 
 	// Extract the filesystem layers to a rootfs directory
-	err = extractLayersFromOCILayout(ctx, ociLayoutDir, destDir, img)
+	err = extractLayersFromOCILayout(ctx, downloadedPath, destDir, img)
 	if err != nil {
 		return nil, errors.Errorf("extracting layers: %w", err)
 	}
@@ -90,7 +159,8 @@ func PullAndExtractImageSkopeo(ctx context.Context, imageRef, destDir string, sy
 	slog.InfoContext(ctx, "successfully extracted container image with metadata",
 		"dest", destDir,
 		"entrypoint", ociConfig.Config.Entrypoint,
-		"cmd", ociConfig.Config.Cmd)
+		"cmd", ociConfig.Config.Cmd,
+		"platform", ociConfig.Platform)
 
 	return ociConfig, nil
 }
@@ -204,4 +274,25 @@ func extractFile(tarReader *tar.Reader, targetPath string, header *tar.Header) e
 	}
 
 	return nil
+}
+
+// Legacy function for backward compatibility - now uses the separated approach
+func PullAndExtractImageSkopeo(ctx context.Context, imageRef, destDir string, sysCtx *types.SystemContext) (*v1.Image, error) {
+	// Extract platform from system context
+	platform := units.Platform("linux/amd64") // default
+	if sysCtx != nil {
+		platform = units.Platform(sysCtx.OSChoice + "/" + sysCtx.ArchitectureChoice)
+	}
+
+	// Use the separated approach
+	downloader := &SkopeoImageDownloader{}
+
+	// Download the image
+	ociLayoutPath, err := downloader.DownloadImage(ctx, imageRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the image
+	return ExtractOCIImageToDir(ctx, ociLayoutPath, destDir, platform)
 }
