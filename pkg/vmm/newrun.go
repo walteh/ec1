@@ -17,8 +17,6 @@ import (
 
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/containers/image/v5/types"
-	"github.com/diskfs/go-diskfs/backend/file"
-	"github.com/diskfs/go-diskfs/filesystem/fat32"
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
@@ -100,21 +98,15 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		Devices: devices,
 	}
 
-	slog.InfoContext(ctx, "creating virtual machine")
-
 	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bootloader)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
 
-	slog.WarnContext(ctx, "booting virtual machine")
-
 	err = bootContainerVM(ctx, vm)
 	if err != nil {
 		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
-
-	slog.WarnContext(ctx, "running virtual machine")
 
 	runErrGroup, runCancel, err := runContainerVM(ctx, hpv, vm)
 	if err != nil {
@@ -152,9 +144,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 
-	// rootfsPath := filepath.Join(wrkdir, "harpoon-rootfs-fs-device")
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
-	// tempPath := filepath.Join(wrkdir, "harpoon-writable-overlay-blk-device.img")
 
 	devices := []virtio.VirtioDevice{}
 
@@ -171,18 +161,10 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 			OSChoice:           imageConfig.OS,
 			ArchitectureChoice: imageConfig.Arch,
 		},
-		// OutputDir: rootfsPath,
 	})
 	if err != nil {
 		return nil, errors.Errorf("container to virtio device: %w", err)
 	}
-
-	// wo, err := emptyWritableOverlayFS(ctx, tempPath, humanize.MiByte*128)
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating writable overlay block device: %w", err)
-	// }
-	// wo.DeviceIdentifier = ec1init.TempVirtioTag
-	// devices = append(devices, wo)
 
 	blkDev, err := virtio.VirtioFsNew(diskPath.ReadonlyFSPath, ec1init.RootfsVirtioTag)
 	if err != nil {
@@ -190,14 +172,6 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	}
 
 	devices = append(devices, blkDev)
-
-	// blkDev, err := virtio.VirtioBlkNew(diskPath.ReadonlyExt4Path)
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating block device: %w", err)
-	// }
-	// blkDev.DeviceIdentifier = ec1init.RootfsVirtioTag
-	// blkDev.ReadOnly = true
-	// devices = append(devices, blkDev)
 
 	// save all the files to a temp file
 	metadataBytes, err := json.Marshal(metadata)
@@ -231,134 +205,6 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	devices = append(devices, ec1Dev)
 
 	return devices, nil
-}
-
-func emptyWritableOverlayFS(ctx context.Context, filename string, size int64) (blkDev *virtio.VirtioBlk, err error) {
-	tempFile, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		return nil, errors.Errorf("creating temp file: %w", err)
-	}
-	defer tempFile.Close()
-
-	err = tempFile.Truncate(size)
-	if err != nil {
-		return nil, errors.Errorf("truncating temp file: %w", err)
-	}
-
-	// make file read write by all
-	// err = tempFile.Chmod(os.ModePerm)
-	// if err != nil {
-	// 	return nil, errors.Errorf("chmoding temp file: %w", err)
-	// }
-
-	// err = tempFile.Truncate(size)
-	// if err != nil {
-	// 	return nil, errors.Errorf("truncating temp file: %w", err)
-	// }
-
-	// pr, pw := io.Pipe()
-	// go func() {
-	// 	defer pw.Close()
-	// 	err = (&archives.Tar{}).Archive(ctx, pw, []archives.FileInfo{})
-	// 	if err != nil {
-	// 		slog.ErrorContext(ctx, "archiving temp file", "error", err)
-	// 	}
-	// }()
-
-	// // MaximumDiskSize tells tar2ext4 how big the raw device is
-	// err = tar2ext4.ConvertTarToExt4(
-	// 	pr,
-	// 	tempFile,
-	// 	tar2ext4.MaximumDiskSize(size),
-	// 	tar2ext4.InlineData,
-	// )
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// tempFile.Sync()
-
-	blkDev, err = virtio.VirtioBlkNew(filename)
-	if err != nil {
-		return nil, errors.Errorf("creating block device: %w", err)
-	}
-
-	blkDev.ReadOnly = false
-
-	return blkDev, nil
-}
-
-func emptyWritableOverlayFS3(ctx context.Context, filename string, size int64) (blkDev *virtio.VirtioBlk, err error) {
-
-	be, err := file.CreateFromPath(filename, size)
-	if err != nil {
-		return nil, errors.Errorf("creating temp file: %w", err)
-	}
-
-	fat32d, err := fat32.Create(be, size, 0, 512, "harpoon-overlay")
-	if err != nil {
-		return nil, errors.Errorf("creating fat32 filesystem: %w", err)
-	}
-
-	if err := fat32d.Close(); err != nil {
-		return nil, errors.Errorf("closing fat32 filesystem: %w", err)
-	}
-	// ext4d, err := ext4.Create(be, size, 0, 512, &ext4.Params{
-	// 	UUID:               &uuid,
-	// 	VolumeName:         "ec1-overlay",
-	// 	Checksum:           true,
-	// 	SparseSuperVersion: 1,
-	// 	BlocksPerGroup:     1024,
-	// 	InodeRatio:         1024,
-
-	// 	// JournalDevice: "journal",
-
-	// 	Features: []ext4.FeatureOpt{
-	// 		ext4.WithFeatureReadOnly(false),
-	// 		ext4.WithFeatureBTreeDirectory(true),
-	// 		ext4.WithFeatureHasJournal(true),
-	// 		ext4.WithFeatureCompression(true),
-	// 		ext4.WithFeatureSnapshot(true),
-	// 		ext4.WithFeatureGDTChecksum(true),
-	// 		ext4.WithFeatureFS64Bit(true),
-	// 	},
-	// // })
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating ext4 filesystem: %w", err)
-	// }
-
-	// ext4d, err := fat32.Create(be, size, 0, 512,  )
-	// if err != nil {
-	// 	return nil, errors.Errorf("creating ext4 filesystem: %w", err)
-	// // }
-	// if err := ext4d.Close(); err != nil {
-	// 	return nil, errors.Errorf("closing ext4 filesystem: %w", err)
-	// }
-
-	blkDev, err = virtio.VirtioBlkNew(filename)
-	if err != nil {
-		return nil, errors.Errorf("creating block device: %w", err)
-	}
-
-	blkDev.ReadOnly = false
-
-	return blkDev, nil
-}
-
-func init() {
-	// Pre-load the binaries into memory asynchronously for faster boot times
-	// This starts decompression in background goroutines and returns immediately
-	// binembed.PreloadAsync(harpoon_vmlinux_arm64.BinaryXZChecksum)
-	// binembed.PreloadAsync(harpoon_initramfs_arm64.BinaryXZChecksum)
-	// binembed.PreloadAsync(harpoon_vmlinux_amd64.BinaryXZChecksum)
-	// binembed.PreloadAsync(harpoon_initramfs_amd64.BinaryXZChecksum)
-
-	// Alternative: Use PreloadAllSync() if you need to ensure all binaries
-	// are ready before proceeding. This will decompress all registered binaries
-	// concurrently and wait for completion:
-	//
-	// if err := binembed.PreloadAllSync(); err != nil {
-	//     slog.Error("failed to preload binaries", "error", err)
-	// }
 }
 
 func PrepareLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (bootloader.Bootloader, []virtio.VirtioDevice, error) {

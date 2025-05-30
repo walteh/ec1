@@ -3,11 +3,11 @@
 		{
 			"name": "root",
 			"path": "."
-		},
-		{
-			"name": "docker-fs",
-			"path": "../docker-fs"
 		}
+		// {
+		// 	"name": "docker-fs",
+		// 	"path": "../docker-fs"
+		// }
 		// {
 		// 	"name": "vz",
 		// 	"path": "../vz"
