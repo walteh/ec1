@@ -25,6 +25,7 @@ tool (
 	github.com/golangci/golangci-lint/cmd/golangci-lint
 	github.com/google/go-containerregistry/cmd/crane
 	github.com/goreleaser/goreleaser/v2
+	github.com/jm33-m0/arc/v2/cmd/arc
 	github.com/kazhuravlev/options-gen/cmd/options-gen
 	github.com/ogen-go/ogen/cmd/jschemagen
 	github.com/ogen-go/ogen/cmd/ogen
@@ -46,7 +47,22 @@ require (
 
 require github.com/lmittmann/tint v1.1.0
 
-require github.com/cweill/gotests v1.6.0 // indirect
+require (
+	github.com/STARRY-S/zip v0.2.2 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/bodgit/plumbing v1.3.0 // indirect
+	github.com/bodgit/sevenzip v1.6.0 // indirect
+	github.com/bodgit/windows v1.0.1 // indirect
+	github.com/cweill/gotests v1.6.0 // indirect
+	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
+	github.com/jm33-m0/arc/v2 v2.0.1 // indirect
+	github.com/mholt/archives v0.1.0 // indirect
+	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/sorairolake/lzip-go v0.3.5 // indirect
+	github.com/therootcompany/xz v1.0.1 // indirect
+	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
+)
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect

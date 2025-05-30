@@ -462,20 +462,22 @@ tasks:
         vars:
             IMAGE: "{{ index .MATCH 0 }}"
             FMT_IMAGE: |-
-                {{.IMAGE | replace "/" "_" | replace ":" "_" | lower | replace "-" "_" | replace "." "_" | replace "+" "_" }}
+                {{.IMAGE  | trimPrefix "docker.io/library/" | trimPrefix "docker.io/" | replace "/" "_" | replace ":" "_" | lower | replace "-" "_" | replace "." "_" | replace "+" "_" }}
             VAR_NAME: '{{.FMT_IMAGE | upper }}'
             DIRECTORY: 'gen/oci-image-cache/{{.FMT_IMAGE}}'
         cmds:
-          #   - cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.DIRECTORY}}
-          #   - cmd: ./gow tool arc archive -c 'xz' -t 'tar' -f '{{.DIRECTORY}}.tar.xz' {{.DIRECTORY}}
-          - sha256sum {{.DIRECTORY}}.tar.xz > {{.DIRECTORY}}.tar.xz.sha256
-          - rm -rf {{.DIRECTORY}}
+          - cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.DIRECTORY}}
+          - cmd: ./gow run ./cmd/manifest-prune -oci-layout {{.DIRECTORY}} -platforms linux/arm64,linux/amd64,darwin/arm64,darwin/amd64
+          - cmd: ./gow tool arc archive -t 'tar' -c 'gz' -f '{{.DIRECTORY}}.tar.gz' {{.DIRECTORY}}
+          - cmd: sha256sum {{.DIRECTORY}}.tar.gz > {{.DIRECTORY}}.tar.gz.sha256
+          - cmd: rm -rf {{.DIRECTORY}}
           - cmd: |-
                 echo -e "package oci_image_cache\n\nimport _ \"embed\"\n" > {{.DIRECTORY}}.gen.go
-                echo -e "//go:embed {{.FMT_IMAGE}}.tar.xz\nvar {{.VAR_NAME }}_TAR_XZ []byte\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "const {{.VAR_NAME }}_TAR_XZ_CHECKSUM = \"$(cat {{.DIRECTORY}}.tar.xz.sha256 | awk '{print $1}')\"\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "const {{.VAR_NAME }}_IMAGE OCICachedImage = \"{{.IMAGE}}\"\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "func init() {\n\tRegistry[{{.VAR_NAME }}_IMAGE] = {{.VAR_NAME }}_TAR_XZ\n}\n" >> {{.DIRECTORY}}.gen.go
+                echo -e "//go:embed {{.FMT_IMAGE}}.tar.gz\nvar {{.VAR_NAME }}_TAR_GZ []byte\n" >> {{.DIRECTORY}}.gen.go
+                echo -e "const {{.VAR_NAME }}_TAR_GZ_CHECKSUM = \"$(cat {{.DIRECTORY}}.tar.gz.sha256 | awk '{print $1}')\"\n" >> {{.DIRECTORY}}.gen.go
+                echo -e "const {{.VAR_NAME }} OCICachedImage = \"{{.IMAGE}}\"\n" >> {{.DIRECTORY}}.gen.go
+                echo -e "func init() {\n\tRegistry[{{.VAR_NAME }}] = {{.VAR_NAME }}_TAR_GZ\n}\n" >> {{.DIRECTORY}}.gen.go
+                echo -e "const {{.VAR_NAME }}_SIZE = \"$(ls -S -lh {{.DIRECTORY}}.tar.gz | awk '{print $5}')\"\n" >> {{.DIRECTORY}}.gen.go
           - cmd: go fmt {{.DIRECTORY}}.gen.go
 
     oci:cache:
@@ -483,6 +485,12 @@ tasks:
         cmds:
           - cmd: mkdir -p gen/oci-image-cache
           - cmd: |-
-                echo -e "package oci_image_cache\n\n type OCICachedImage string\n\n var Registry = map[OCICachedImage][]byte{}\n" > gen/oci-image-cache/oci_image_cache.gen.go
-          - task: oci:cache:docker.io/library/alpine:3.21
+                echo -e "package oci_image_cache\n\n type OCICachedImage string\n\n" > gen/oci-image-cache/oci_image_cache.gen.go
+                echo -e "var Registry = map[OCICachedImage][]byte{}\n" >> gen/oci-image-cache/oci_image_cache.gen.go
+                echo -e "func (me OCICachedImage) String() string {\n\treturn string(me)\n}\n" >> gen/oci-image-cache/oci_image_cache.gen.go
+          - task: oci:cache:docker.io/library/alpine:latest
+          - task: oci:cache:docker.io/oven/bun:alpine
+          - task: oci:cache:docker.io/alpine/socat:latest
+          - task: oci:cache:docker.io/library/busybox:glibc
+          - task: oci:cache:docker.io/library/debian:bookworm-slim
 

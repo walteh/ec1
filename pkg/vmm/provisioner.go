@@ -25,6 +25,15 @@ type RuntimeProvisioner interface {
 	ReadyChan() <-chan struct{}
 }
 
+func ProvisionerForType[T Provisioner](opts *NewVMOptions) (T, bool) {
+	for _, provisioner := range opts.Provisioners {
+		if p, ok := provisioner.(T); ok {
+			return p, true
+		}
+	}
+	return *new(T), false
+}
+
 type GvproxyProvisioner struct {
 	sock  tapsocklegacy.VMSocket
 	chans chan struct{}

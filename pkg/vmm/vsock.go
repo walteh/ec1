@@ -308,3 +308,28 @@ func NewVSockStreamFileProxy(ctx context.Context, vm VirtualMachine, guestVSockP
 
 	return hostFile, closer, nil
 }
+
+func StartVSockDevices(ctx context.Context, vm VirtualMachine) error {
+	vsockDevs := virtio.VirtioDevicesOfType[*virtio.VirtioVsock](vm.Devices())
+	for _, vsock := range vsockDevs {
+		port := vsock.Port
+		socketURL := vsock.SocketURL
+		if socketURL == "" {
+			// the timesync code adds a vsock device without an associated URL.
+			// the ones that don't have urls are already set up on the main vsock
+			continue
+		}
+		var listenStr string
+		if vsock.Direction == virtio.VirtioVsockDirectionGuestConnectsAsClient {
+			listenStr = " (listening)"
+		}
+		slog.InfoContext(ctx, "Exposing vsock port", "port", port, "socketURL", socketURL, "listenStr", listenStr)
+		_, _, closer, err := ExposeVsock(ctx, vm, vsock.Port, vsock.Direction)
+		if err != nil {
+			slog.WarnContext(ctx, "error exposing vsock port", "port", port, "error", err)
+			continue
+		}
+		defer closer()
+	}
+	return nil
+}

@@ -144,7 +144,7 @@ func (vfw *kataHypervisor[VM]) CreateVM(ctx context.Context, id string, network 
 	}
 
 	opts := vmm.NewVMOptions{
-		Vcpus:   uint(hypervisorConfig.NumVCPUs()),
+		Vcpus:   uint64(hypervisorConfig.NumVCPUs()),
 		Memory:  memBytes,
 		Devices: vmDevices,
 	}

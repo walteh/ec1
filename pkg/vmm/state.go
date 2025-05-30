@@ -15,19 +15,10 @@ import (
 )
 
 type NewVMOptions struct {
-	Vcpus        uint
+	Vcpus        uint64
 	Memory       strongunits.B
 	Devices      []virtio.VirtioDevice
 	Provisioners []Provisioner
-}
-
-func ProvisionerForType[T Provisioner](opts *NewVMOptions) (T, bool) {
-	for _, provisioner := range opts.Provisioners {
-		if p, ok := provisioner.(T); ok {
-			return p, true
-		}
-	}
-	return *new(T), false
 }
 
 type VirtualMachineStateType string

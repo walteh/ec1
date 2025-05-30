@@ -78,7 +78,7 @@ func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.Ne
 		return nil, errors.Errorf("converting bootloader to vz bootloader: %w", err)
 	}
 
-	vzVMConfig, err := vz.NewVirtualMachineConfiguration(vzBootloader, opts.Vcpus, uint64(opts.Memory.ToBytes()))
+	vzVMConfig, err := vz.NewVirtualMachineConfiguration(vzBootloader, uint(opts.Vcpus), uint64(opts.Memory.ToBytes()))
 	if err != nil {
 		return nil, errors.Errorf("creating vz virtual machine configuration: %w", err)
 	}

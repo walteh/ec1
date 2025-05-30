@@ -136,13 +136,13 @@ func (vm *VirtualMachine) GetVSockDevice() (*vz.VirtioSocketDevice, error) {
 	return devices[0], nil
 }
 
-func (vm *VirtualMachine) GetConsoleDevice() (vz.ConsoleDevice, error) {
-	devices := vm.vzvm.ConsoleDevices()
-	if len(devices) == 0 {
-		return nil, fmt.Errorf("no console device found")
-	}
-	return devices[0], nil
-}
+// func (vm *VirtualMachine) GetConsoleDevice() (vz.ConsoleDevice, error) {
+// 	devices := vm.vzvm.ConsoleDevices()
+// 	if len(devices) == 0 {
+// 		return nil, fmt.Errorf("no console device found")
+// 	}
+// 	return devices[0], nil
+// }
 
 // StartGraphicApplication implements vmm.VirtualMachine.
 // Subtle: this method shadows the method (*VirtualMachine).StartGraphicApplication of VirtualMachine.VirtualMachine.

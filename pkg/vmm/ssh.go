@@ -5,8 +5,15 @@ import (
 
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,8 +37,6 @@ func ObtainSSHConnectionWithGuest(ctx context.Context, address string, cfg *ssh.
 	} else {
 		scheme = "tcp"
 	}
-
-	// tenSeconds := time.After(30 * time.Second)
 
 	for {
 		select {
@@ -68,7 +73,7 @@ func Exec[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM], command st
 func parseMemInfo(r io.Reader) (*procfs.Meminfo, error)
 
 func ProcMemInfo[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM]) (*procfs.Meminfo, error) {
-	stdout, stderr, errcode, err := rvm.Exec(ctx, "cat /proc/meminfo")
+	stdout, stderr, errcode, err := rvm.Exec(ctx, "/bin/cat /proc/meminfo")
 	if err != nil {
 		return nil, errors.Errorf("Failed to execute command: %w", err)
 	}
@@ -87,4 +92,29 @@ func ProcMemInfo[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM]) (*p
 	}
 
 	return mi, nil
+}
+
+// obviously this is not secure, we need something better long term
+// for now its fine because im not even sure it will be used
+// if this key thing is depended upon we need to move it to a more secure location
+func AddSSHKeyToVM(ctx context.Context, workingDir string) error {
+	sshKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return errors.Errorf("creating ssh key: %w", err)
+	}
+
+	m, err := x509.MarshalPKCS8PrivateKey(sshKey)
+	if err != nil {
+		return errors.Errorf("marshalling ssh key: %w", err)
+	}
+
+	sshKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: m})
+
+	sshKeyFile := filepath.Join(workingDir, "id_ecdsa")
+	err = os.WriteFile(sshKeyFile, sshKeyPEM, 0600)
+	if err != nil {
+		return errors.Errorf("writing ssh key: %w", err)
+	}
+
+	return nil
 }

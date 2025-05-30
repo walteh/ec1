@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/containers/common/pkg/strongunits"
-	"github.com/containers/image/v5/types"
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
@@ -30,21 +29,22 @@ import (
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/oci"
+	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
 type ConatinerImageConfig struct {
 	ImageRef string
-	Cmdline  []string
-	Arch     string
-	OS       string
+	// Cmdline  []string
+	Platform units.Platform
 	Memory   strongunits.B
-	VCPUs    uint
+	VCPUs    uint64
 }
 
 func NewContainerizedVirtualMachine[VM VirtualMachine](
 	ctx context.Context,
 	hpv Hypervisor[VM],
+	cache *oci.SimpleCache,
 	imageConfig ConatinerImageConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
@@ -62,7 +62,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		return nil, errors.Errorf("creating working directory: %w", err)
 	}
 
-	ec1Devices, err := PrepareContainerVirtioDevices(ctx, workingDir, imageConfig, errgrp)
+	ec1Devices, err := PrepareContainerVirtioDevices(ctx, workingDir, imageConfig, cache, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating ec1 block device: %w", err)
 	}
@@ -70,16 +70,16 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 	var bootloader bootloader.Bootloader
 
-	switch imageConfig.OS {
+	switch imageConfig.Platform.OS() {
 	case "linux":
-		bl, bldevs, err := PrepareLinuxBootloader(ctx, workingDir, imageConfig, errgrp)
+		bl, bldevs, err := PrepareHarpoonLinuxBootloader(ctx, workingDir, imageConfig, errgrp)
 		if err != nil {
 			return nil, errors.Errorf("getting boot loader config: %w", err)
 		}
 		bootloader = bl
 		devices = append(devices, bldevs...)
 	default:
-		return nil, errors.Errorf("unsupported OS: %s", imageConfig.OS)
+		return nil, errors.Errorf("unsupported OS: %s", imageConfig.Platform.OS())
 	}
 
 	devices = append(devices, &virtio.VirtioSerial{
@@ -142,7 +142,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 }
 
-func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, cache *oci.SimpleCache, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
 
@@ -155,18 +155,12 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 		}
 	}
 
-	diskPath, metadata, err := oci.ContainerToVirtioDeviceCached(ctx, oci.ContainerToVirtioOptions{
-		ImageRef: imageConfig.ImageRef,
-		Platform: &types.SystemContext{
-			OSChoice:           imageConfig.OS,
-			ArchitectureChoice: imageConfig.Arch,
-		},
-	})
+	diskPath, err := cache.LoadImage(ctx, imageConfig.ImageRef, imageConfig.Platform)
 	if err != nil {
 		return nil, errors.Errorf("container to virtio device: %w", err)
 	}
 
-	blkDev, err := virtio.VirtioFsNew(diskPath.ReadonlyFSPath, ec1init.RootfsVirtioTag)
+	blkDev, err := virtio.VirtioFsNew(diskPath.RootfsPath, ec1init.RootfsVirtioTag)
 	if err != nil {
 		return nil, errors.Errorf("creating block device: %w", err)
 	}
@@ -174,19 +168,19 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	devices = append(devices, blkDev)
 
 	// save all the files to a temp file
-	metadataBytes, err := json.Marshal(metadata)
+	metadataBytes, err := json.Marshal(diskPath.Metadata)
 	if err != nil {
 		return nil, errors.Errorf("marshalling metadata: %w", err)
 	}
 
-	cmdlineBytes, err := json.Marshal(imageConfig.Cmdline)
-	if err != nil {
-		return nil, errors.Errorf("marshalling cmdline: %w", err)
-	}
+	// cmdlineBytes, err := json.Marshal(imageConfig.Cmdline)
+	// if err != nil {
+	// 	return nil, errors.Errorf("marshalling cmdline: %w", err)
+	// }
 
 	files := map[string][]byte{
 		ec1init.ContainerManifestFile: metadataBytes,
-		ec1init.ContainerCmdlineFile:  cmdlineBytes,
+		// ec1init.ContainerCmdlineFile:  cmdlineBytes,
 	}
 
 	for name, file := range files {
@@ -207,7 +201,7 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	return devices, nil
 }
 
-func PrepareLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
 	targetVmLinuxPath := filepath.Join(wrkdir, "vmlinux")
 	targetInitramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
@@ -221,7 +215,7 @@ func PrepareLinuxBootloader(ctx context.Context, wrkdir string, imageConfig Cona
 
 	startTime := time.Now()
 
-	if imageConfig.Arch == "arm64" {
+	if imageConfig.Platform.Arch() == "arm64" {
 		kernelXz, err = binembed.GetDecompressed(harpoon_vmlinux_arm64.BinaryXZChecksum)
 		if err != nil {
 			return nil, nil, errors.Errorf("getting kernel: %w", err)
@@ -298,7 +292,7 @@ func runContainerVM[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], 
 		return nil, nil, errors.Errorf("listening network block devices: %w", err)
 	}
 
-	if err := startVSockDevices(runCtx, vm); err != nil {
+	if err := StartVSockDevices(runCtx, vm); err != nil {
 		bootCancel()
 		return nil, nil, errors.Errorf("starting vsock devices: %w", err)
 	}
