@@ -19,19 +19,26 @@ import (
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/walteh/ec1/pkg/units"
 )
 
 // CacheEntry represents a cached container image with metadata
 type CacheEntry struct {
-	ImageRef       string    `json:"image_ref"`
-	Platform       string    `json:"platform"`
-	CachedAt       time.Time `json:"cached_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	RootfsPath     string    `json:"rootfs_path"`
-	OciLayoutPath  string    `json:"oci_layout_path"`
-	MetadataPath   string    `json:"metadata_path"`
-	Size           int64     `json:"size"`
-	RootfsDiskPath string    `json:"rootfs_disk_path"`
+	ImageRef       string         `json:"image_ref"`
+	Platform       units.Platform `json:"platform"`
+	CachedAt       time.Time      `json:"cached_at"`
+	ExpiresAt      time.Time      `json:"expires_at"`
+	RootfsPath     string         `json:"rootfs_path"`
+	OciLayoutPath  string         `json:"oci_layout_path"`
+	MetadataPath   string         `json:"metadata_path"`
+	Size           int64          `json:"size"`
+	RootfsDiskPath string         `json:"rootfs_disk_path"`
+}
+
+type ContainerToVirtioOptions struct {
+	ImageRef string
+	Platform units.Platform
 }
 
 const (
@@ -52,12 +59,9 @@ func getCacheDir() (string, error) {
 }
 
 // getCacheDirForImage returns a cache directory specific to an image and platform
-func getCacheDirForImage(imageRef string, platform *types.SystemContext) (string, error) {
+func GetCacheDirForImage(imageRef string, platform units.Platform) (string, error) {
 	// Create a unique identifier for this image+platform combination
-	platformStr := "linux-amd64" // default
-	if platform != nil {
-		platformStr = fmt.Sprintf("%s-%s", platform.OSChoice, platform.ArchitectureChoice)
-	}
+	platformStr := string(platform)
 
 	// Hash the image reference and platform to create a unique directory name
 	hasher := sha256.New()
@@ -171,20 +175,20 @@ func getCachedRootfsSize(rootfsPath string) (int64, error) {
 
 type CachedContainer struct {
 	ImageRef         string
-	Platform         *types.SystemContext
+	Platform         units.Platform
 	ReadonlyFSPath   string
 	ReadonlyExt4Path string
 }
 
 // ContainerToVirtioDeviceCached is a cached version of ContainerToVirtioDevice
 // It caches extracted container images for 24 hours and handles offline scenarios gracefully
-func ContainerToVirtioDeviceCached(ctx context.Context, opts ContainerToVirtioOptions) (*CachedContainer, *v1.Image, error) {
+func LoadCachedContainer(ctx context.Context, opts ContainerToVirtioOptions) (*CachedContainer, *v1.Image, error) {
 	slog.InfoContext(ctx, "converting OCI container to virtio device with caching",
 		"image", opts.ImageRef,
 		"cache_expiration", CacheExpiration)
 
 	// Get cache directory for this image
-	cacheDir, err := getCacheDirForImage(opts.ImageRef, opts.Platform)
+	cacheDir, err := GetCacheDirForImage(opts.ImageRef, opts.Platform)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to get cache directory, falling back to non-cached", "error", err)
 		return nil, nil, errors.Errorf("failed to get cache directory: %w", err)
@@ -260,7 +264,10 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 		}
 	}()
 
-	metadata, err := pullAndExtractImageSkopeo(ctx, opts.ImageRef, tempDir, opts.Platform)
+	metadata, err := PullAndExtractImageSkopeo(ctx, opts.ImageRef, tempDir, &types.SystemContext{
+		OSChoice:           opts.Platform.OS(),
+		ArchitectureChoice: opts.Platform.Arch(),
+	})
 	if err != nil {
 		return nil, nil, errors.Errorf("pulling and extracting image: %w", err)
 	}
@@ -317,7 +324,7 @@ func downloadAndCache(ctx context.Context, opts ContainerToVirtioOptions, cacheD
 	now := time.Now()
 	cacheEntry := &CacheEntry{
 		ImageRef:       opts.ImageRef,
-		Platform:       getPlatformString(opts.Platform),
+		Platform:       opts.Platform,
 		CachedAt:       now,
 		ExpiresAt:      now.Add(CacheExpiration),
 		RootfsPath:     cachedRootfsPath,
@@ -379,93 +386,6 @@ func bundleToSquashfs(ctx context.Context, rootfsPath string, cacheDir string) (
 		return "", errors.Errorf("converting tar to ext4: %w", err)
 	}
 
-	// backend, err := file.CreateFromPath(rootfsDiskPath, 2048)
-	// if err != nil {
-	// 	return "", errors.Errorf("creating local backend: %w", err)
-	// }
-
-	// fs, err := squashfs.Create(backend, 0, 0, 0)
-	// if err != nil {
-	// 	return "", errors.Errorf("creating squashfs filesystem: %w", err)
-	// }
-
-	// just use mksquashfs to create the squashfs file
-	// cmd := exec.Command("mksquashfs", rootfsPath, rootfsDiskPath)
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	// if err := cmd.Run(); err != nil {
-	// 	return "", errors.Errorf("creating squashfs file: %w", err)
-	// }
-
-	// errgrp, _ := errgroup.WithContext(ctx)
-
-	// err = filepath.Walk(rootfsPath, func(path string, info os.FileInfo, err error) error {
-	// 	if err != nil {
-	// 		return errors.Errorf("walking source dir: %w", err)
-	// 	}
-	// 	// Compute the path inside the SquashFS
-	// 	rel, _ := filepath.Rel(rootfsPath, path)
-	// 	dest := "/" + rel
-
-	// 	if info.IsDir() {
-	// 		err := fs.Mkdir(dest) // create directory inside FS  [oai_citation:6‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
-	// 		if err != nil {
-	// 			return errors.Errorf("creating directory: %w", err)
-	// 		}
-	// 		return nil
-	// 	}
-	// 	if info.Mode()&os.ModeSymlink != 0 {
-	// 		// Handle symlink
-	// 		target, err := os.Readlink(path)
-	// 		if err != nil {
-	// 			return errors.Errorf("reading symlink: %w", err)
-	// 		}
-	// 		err = fs.Symlink(target, dest) // create symlink inside FS  [oai_citation:7‡Go Packages](https://pkg.go.dev/github.com/diskfs/go-diskfs/filesystem/squashfs)
-	// 		if err != nil {
-	// 			return errors.Errorf("creating symlink: %w", err)
-	// 		}
-	// 		return nil
-	// 	}
-	// 	// Regular file: copy contents
-	// 	srcFile, err := os.Open(path)
-	// 	if err != nil {
-	// 		return errors.Errorf("opening source file: %w", err)
-	// 	}
-
-	// 	outFile, err := fs.OpenFile(dest, os.O_CREATE|os.O_RDWR)
-	// 	if err != nil {
-	// 		return errors.Errorf("opening destination file: %w", err)
-	// 	}
-
-	// 	errgrp.Go(func() error {
-	// 		defer outFile.Close()
-	// 		defer srcFile.Close()
-	// 		if _, err := io.Copy(outFile, srcFile); err != nil {
-	// 			return errors.Errorf("copying file: %w", err)
-	// 		}
-	// 		return nil
-	// 	})
-	// 	return nil
-	// })
-	// if err != nil {
-	// 	return "", errors.Errorf("walking source dir: %w", err)
-	// }
-
-	// if err := errgrp.Wait(); err != nil {
-	// 	return "", errors.Errorf("walking source dir: %w", err)
-	// }
-
-	// optz := squashfs.FinalizeOptions{
-	// 	Compression: &squashfs.CompressorXz{},
-	// }
-	// if err := fs.Finalize(optz); err != nil {
-	// 	return "", errors.Errorf("finalizing squashfs: %w", err)
-	// }
-
-	// if err := fs.Close(); err != nil {
-	// 	return "", errors.Errorf("closing squashfs filesystem: %w", err)
-	// }
-
 	return rootfsDiskPath, nil
 }
 
@@ -482,28 +402,28 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 		return nil, nil, errors.Errorf("unmarshaling cached metadata: %w", err)
 	}
 
-	// Set up mount point if specified
-	if opts.MountPoint != "" {
-		// Create mount point directory
-		if err := os.MkdirAll(opts.MountPoint, 0755); err != nil {
-			return nil, nil, errors.Errorf("creating mount point: %w", err)
-		}
+	// // Set up mount point if specified
+	// if opts.MountPoint != "" {
+	// 	// Create mount point directory
+	// 	if err := os.MkdirAll(opts.MountPoint, 0755); err != nil {
+	// 		return nil, nil, errors.Errorf("creating mount point: %w", err)
+	// 	}
 
-		// Create mount manager for cached rootfs
-		mountMng := NewContainerdMountManager(cacheEntry.RootfsPath, opts.MountPoint, opts.ReadOnly, opts.ImageRef)
+	// 	// Create mount manager for cached rootfs
+	// 	mountMng := NewContainerdMountManager(cacheEntry.RootfsPath, opts.MountPoint, opts.ReadOnly, opts.ImageRef)
 
-		// Mount the cached filesystem
-		if err := mountMng.Mount(ctx); err != nil {
-			return nil, nil, errors.Errorf("mounting cached filesystem: %w", err)
-		}
+	// 	// Mount the cached filesystem
+	// 	if err := mountMng.Mount(ctx); err != nil {
+	// 		return nil, nil, errors.Errorf("mounting cached filesystem: %w", err)
+	// 	}
 
-		return &CachedContainer{
-			ImageRef:         opts.ImageRef,
-			Platform:         opts.Platform,
-			ReadonlyFSPath:   opts.MountPoint,
-			ReadonlyExt4Path: cacheEntry.RootfsDiskPath,
-		}, &metadata, nil
-	}
+	// 	return &CachedContainer{
+	// 		ImageRef:         opts.ImageRef,
+	// 		Platform:         opts.Platform,
+	// 		ReadonlyFSPath:   opts.MountPoint,
+	// 		ReadonlyExt4Path: cacheEntry.RootfsDiskPath,
+	// 	}, &metadata, nil
+	// }
 
 	slog.InfoContext(ctx, "successfully loaded container from cache",
 		"image", opts.ImageRef,
@@ -519,24 +439,24 @@ func loadFromCache(ctx context.Context, cacheEntry *CacheEntry, opts ContainerTo
 	}, &metadata, nil
 }
 
-// getPlatformString converts a SystemContext to a string representation
-func getPlatformString(platform *types.SystemContext) string {
-	if platform == nil {
-		return "linux-amd64"
-	}
+// // getPlatformString converts a SystemContext to a string representation
+// func getPlatformString(platform *types.SystemContext) string {
+// 	if platform == nil {
+// 		return "linux-amd64"
+// 	}
 
-	os := platform.OSChoice
-	if os == "" {
-		os = "linux"
-	}
+// 	os := platform.OSChoice
+// 	if os == "" {
+// 		os = "linux"
+// 	}
 
-	arch := platform.ArchitectureChoice
-	if arch == "" {
-		arch = "amd64"
-	}
+// 	arch := platform.ArchitectureChoice
+// 	if arch == "" {
+// 		arch = "amd64"
+// 	}
 
-	return fmt.Sprintf("%s-%s", os, arch)
-}
+// 	return fmt.Sprintf("%s-%s", os, arch)
+// }
 
 // ClearCache removes all cached OCI images
 func ClearCache(ctx context.Context) error {

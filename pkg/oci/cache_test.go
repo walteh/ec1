@@ -3,13 +3,13 @@ package oci
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/containers/image/v5/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/walteh/ec1/pkg/units"
 )
 
 func TestContainerToVirtioDeviceCached(t *testing.T) {
@@ -24,19 +24,20 @@ func TestContainerToVirtioDeviceCached(t *testing.T) {
 
 	// Test with a small Alpine Linux image
 	opts := ContainerToVirtioOptions{
-		ImageRef:   "docker.io/library/alpine:latest",
-		OutputDir:  tempDir,
-		MountPoint: filepath.Join(tempDir, "mount"),
-		Platform: &types.SystemContext{
-			OSChoice:           "linux",
-			ArchitectureChoice: "arm64",
-		},
-		ReadOnly: true,
+		ImageRef: "docker.io/library/alpine:latest",
+		Platform: units.PlatformLinuxARM64,
+		// OutputDir:  tempDir,
+		// MountPoint: filepath.Join(tempDir, "mount"),
+		// Platform: &types.SystemContext{
+		// 	OSChoice:           "linux",
+		// 	ArchitectureChoice: "arm64",
+		// },
+		// ReadOnly: true,
 	}
 
 	// First call should download and cache
 	t.Logf("First call - should download and cache")
-	device1, metadata1, err := ContainerToVirtioDeviceCached(ctx, opts)
+	device1, metadata1, err := LoadCachedContainer(ctx, opts)
 	require.NoError(t, err, "Failed to convert container to virtio device (cached)")
 	require.NotNil(t, device1, "Expected non-nil virtio device")
 	require.NotNil(t, metadata1, "Expected non-nil container metadata")
@@ -51,7 +52,7 @@ func TestContainerToVirtioDeviceCached(t *testing.T) {
 
 	// Second call should use cache
 	t.Logf("Second call - should use cache")
-	device2, metadata2, err := ContainerToVirtioDeviceCached(ctx, opts)
+	device2, metadata2, err := LoadCachedContainer(ctx, opts)
 	require.NoError(t, err, "Failed to convert container to virtio device (from cache)")
 	require.NotNil(t, device2, "Expected non-nil virtio device from cache")
 	require.NotNil(t, metadata2, "Expected non-nil container metadata from cache")
@@ -66,7 +67,7 @@ func TestCacheExpiration(t *testing.T) {
 	// Create a cache entry that's already expired
 	cacheEntry := &CacheEntry{
 		ImageRef:     "docker.io/library/alpine:latest",
-		Platform:     "linux-arm64",
+		Platform:     units.PlatformLinuxARM64,
 		CachedAt:     time.Now().Add(-25 * time.Hour), // 25 hours ago
 		ExpiresAt:    time.Now().Add(-1 * time.Hour),  // 1 hour ago (expired)
 		RootfsPath:   "/tmp/fake/rootfs",
@@ -80,7 +81,7 @@ func TestCacheExpiration(t *testing.T) {
 	// Create a cache entry that's still valid
 	validCacheEntry := &CacheEntry{
 		ImageRef:     "docker.io/library/alpine:latest",
-		Platform:     "linux-arm64",
+		Platform:     units.PlatformLinuxARM64,
 		CachedAt:     time.Now().Add(-1 * time.Hour), // 1 hour ago
 		ExpiresAt:    time.Now().Add(23 * time.Hour), // 23 hours from now
 		RootfsPath:   "/tmp/fake/rootfs",
@@ -93,27 +94,19 @@ func TestCacheExpiration(t *testing.T) {
 }
 
 func TestGetCacheDirForImage(t *testing.T) {
-	platform := &types.SystemContext{
-		OSChoice:           "linux",
-		ArchitectureChoice: "arm64",
-	}
 
-	cacheDir1, err := getCacheDirForImage("docker.io/library/alpine:latest", platform)
+	cacheDir1, err := GetCacheDirForImage("docker.io/library/alpine:latest", units.PlatformLinuxARM64)
 	require.NoError(t, err, "Failed to get cache dir")
 
-	cacheDir2, err := getCacheDirForImage("docker.io/library/alpine:latest", platform)
+	cacheDir2, err := GetCacheDirForImage("docker.io/library/alpine:latest", units.PlatformLinuxARM64)
 	require.NoError(t, err, "Failed to get cache dir")
 
 	// Same image and platform should produce same cache directory
 	assert.Equal(t, cacheDir1, cacheDir2, "Same image and platform should produce same cache directory")
 
 	// Different platform should produce different cache directory
-	differentPlatform := &types.SystemContext{
-		OSChoice:           "linux",
-		ArchitectureChoice: "amd64",
-	}
 
-	cacheDir3, err := getCacheDirForImage("docker.io/library/alpine:latest", differentPlatform)
+	cacheDir3, err := GetCacheDirForImage("docker.io/library/alpine:latest", units.PlatformLinuxAMD64)
 	require.NoError(t, err, "Failed to get cache dir")
 
 	assert.NotEqual(t, cacheDir1, cacheDir3, "Different platforms should produce different cache directories")
@@ -121,51 +114,6 @@ func TestGetCacheDirForImage(t *testing.T) {
 	t.Logf("Cache directories:")
 	t.Logf("  arm64: %s", cacheDir1)
 	t.Logf("  amd64: %s", cacheDir3)
-}
-
-func TestGetPlatformString(t *testing.T) {
-	tests := []struct {
-		name     string
-		platform *types.SystemContext
-		expected string
-	}{
-		{
-			name:     "nil platform",
-			platform: nil,
-			expected: "linux-amd64",
-		},
-		{
-			name: "linux arm64",
-			platform: &types.SystemContext{
-				OSChoice:           "linux",
-				ArchitectureChoice: "arm64",
-			},
-			expected: "linux-arm64",
-		},
-		{
-			name: "empty fields",
-			platform: &types.SystemContext{
-				OSChoice:           "",
-				ArchitectureChoice: "",
-			},
-			expected: "linux-amd64",
-		},
-		{
-			name: "only os specified",
-			platform: &types.SystemContext{
-				OSChoice:           "linux",
-				ArchitectureChoice: "",
-			},
-			expected: "linux-amd64",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := getPlatformString(tt.platform)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestListCachedImages(t *testing.T) {
