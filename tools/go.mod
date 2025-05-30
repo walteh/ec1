@@ -45,7 +45,7 @@ require (
 	gitlab.com/tozd/go/errors v0.10.0
 )
 
-require github.com/lmittmann/tint v1.1.0
+require github.com/lmittmann/tint v1.1.1
 
 require (
 	github.com/STARRY-S/zip v0.2.2 // indirect
@@ -201,7 +201,7 @@ require (
 	github.com/breml/errchkjson v0.4.0 // indirect
 	github.com/briandowns/spinner v1.16.0 // indirect
 	github.com/bufbuild/buf v1.54.0 // indirect
-	github.com/bufbuild/plugins v0.0.0-20250523153656-bab1fd3db101 // indirect
+	github.com/bufbuild/plugins v0.0.0-20250530001413-2c4962398f14 // indirect
 	github.com/bufbuild/protocompile v0.14.2-0.20250407233408-f0b329b35310 // indirect
 	github.com/bufbuild/protoplugin v0.0.0-20250218205857-750e09ce93e1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -414,7 +414,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/julz/importas v0.2.0 // indirect
 	github.com/karamaru-alpha/copyloopvar v1.2.1 // indirect
-	github.com/kazhuravlev/options-gen v0.52.0 // indirect
+	github.com/kazhuravlev/options-gen v0.52.1 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
