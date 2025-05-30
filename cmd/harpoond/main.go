@@ -85,10 +85,13 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		return errors.Errorf("loading manifest: %w", err)
 	}
 
-	err = bindMountsToChroot(ctx)
-	if err != nil {
-		return errors.Errorf("binding mounts to chroot: %w", err)
-	}
+	go func() {
+		err := bindMountsToChroot(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "binding mounts to chroot", "error", err)
+			os.Exit(1)
+		}
+	}()
 
 	tranport := transport.NewVSockTransport(0, uint32(port))
 	executor := executor.NewStreamingExecutorWithCommandCreationFunc(1024, func(ctx context.Context, command string) *exec.Cmd {

@@ -1,10 +1,7 @@
 package harpoon_vmlinux_arm64
 
-import (
-	_ "embed"
-
-	"github.com/walteh/ec1/pkg/binembed"
-)
+import _ "embed"
+import "github.com/walteh/ec1/pkg/binembed"
 
 //go:embed vmlinux.xz
 var BinaryXZ []byte

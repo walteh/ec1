@@ -13,7 +13,7 @@ type VSockManagerState string
 
 const (
 	// DefaultRetryInterval is the default time to wait between retry attempts
-	DefaultRetryInterval = 5 * time.Millisecond // Much more aggressive: 5ms instead of 100ms
+	DefaultRetryInterval = 1 * time.Millisecond // Much more aggressive: 5ms instead of 100ms
 	// DefaultMaxRetries is the default maximum number of retry attempts
 	DefaultMaxRetries = 4000 // Keep total time reasonable: 20 seconds max
 
@@ -72,6 +72,7 @@ func (m *VSockManager) Dial(ctx context.Context) (io.ReadWriteCloser, error) {
 
 	var lastErr error
 	attempts := 0
+	startTime := time.Now()
 
 	for {
 		select {
@@ -88,12 +89,12 @@ func (m *VSockManager) Dial(ctx context.Context) (io.ReadWriteCloser, error) {
 			// Try to connect
 			conn, err := m.ConnectFunc(ctx)
 			if err == nil {
-				slog.DebugContext(ctx, "vsock connection successful", "attempts", attempts)
+				slog.DebugContext(ctx, "vsock connection successful", "attempts", attempts, "duration", time.Since(startTime))
 				m.conn = NewManagedConnectionChild(conn, m)
 				return m.conn, nil
 			}
 
-			slog.ErrorContext(ctx, "vsock connection failed", "error", err)
+			// slog.ErrorContext(ctx, "vsock connection failed", "error", err)
 
 			lastErr = err
 			attempts++

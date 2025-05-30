@@ -6,7 +6,7 @@ import "github.com/walteh/ec1/pkg/binembed"
 //go:embed vmlinux.xz
 var BinaryXZ []byte
 
-const BinaryXZChecksum = "4005e0547c31bd7618520c57890fa25617c51e0b642ea88c4860c115080a201a"
+const BinaryXZChecksum = "29d79a62b749c939e3eff2d20ab97dbed33a842739b7adfeefea412962cba9d6"
 
 const Version = "6.15-rc7"
 
@@ -14,7 +14,7 @@ const Version = "6.15-rc7"
 
 var Config []byte
 
-const ConfigChecksum = "a9827286aa935b058fc9afe3452e6ebab71bdb8fa93f79604face7d3ab675188"
+const ConfigChecksum = "d0e00f55ba4159d115d7b19cfc3f507569b05d0295896d2dbcb8c645f7887bc5"
 
 func init() {
 	binembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)
