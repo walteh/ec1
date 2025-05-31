@@ -12,39 +12,135 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/containers/image/v5/copy"
+	"github.com/containers/image/v5/docker"
+	"github.com/containers/image/v5/oci/layout"
+	"github.com/containers/image/v5/signature"
+	"github.com/containers/image/v5/types"
 	"github.com/mholt/archives"
+	"github.com/opencontainers/go-digest"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/units"
 )
 
 var (
-	_ ImageFetcher = &SkopeoImageFetcher{}
+	_ ImageFetcher = &RemoteImageFetcher{}
+	_ ImageFetcher = &ExecImageFetcher{}
 	_ ImageFetcher = &MemoryMapFetcher{}
 	_ ImageFetcher = &CachedFetcher{}
 )
 
 // SkopeoImageFetcher implements ImageFetcher using skopeo for production use
-type SkopeoImageFetcher struct {
-	TempDir string // Optional: custom temp directory for fetches
+type RemoteImageFetcher struct {
+	CacheDir string // Optional: custom temp directory for fetches
 }
 
 // FetchImage fetches an image using skopeo and returns the OCI layout path
-func (f *SkopeoImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef string) (string, error) {
+func (f *RemoteImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef string) (string, error) {
 	slog.InfoContext(ctx, "fetching image with skopeo", "image", imageRef)
 
-	// Create temp directory for this fetch
-	tempDir := f.TempDir
-	if tempDir == "" {
-		tempDir = os.TempDir()
+	// Create policy context (allow all for now - in production this should be more restrictive)
+	policyContext, err := signature.NewPolicyContext(&signature.Policy{
+		Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()},
+	})
+	if err != nil {
+		return "", errors.Errorf("creating policy context: %w", err)
+	}
+	defer policyContext.Destroy()
+
+	// Parse source image reference
+	srcRef, err := docker.ParseReference("//" + imageRef)
+	if err != nil {
+		return "", errors.Errorf("parsing source reference: %w", err)
 	}
 
-	ociLayoutPath := filepath.Join(tempDir, ociLayoutDirFromImageRef(imageRef))
+	// get image index manifest
+	srcImg, err := srcRef.NewImage(ctx, &types.SystemContext{})
+	if err != nil {
+		return "", errors.Errorf("creating source image: %w", err)
+	}
+	defer srcImg.Close()
 
-	// Use skopeo to copy the image to OCI layout format
-	cmd := exec.CommandContext(ctx, "skopeo", "copy",
+	bdig, _, err := srcImg.Manifest(ctx)
+	if err != nil {
+		return "", errors.Errorf("getting manifest: %w", err)
+	}
+
+	dig := digest.FromBytes(bdig)
+	destDir := filepath.Join(f.CacheDir, dig.String())
+
+	// Create OCI layout destination
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", errors.Errorf("creating destination directory: %w", err)
+	}
+
+	destRef, err := layout.NewReference(destDir, imageRef)
+	if err != nil {
+		return "", errors.Errorf("creating oci layout reference: %w", err)
+	}
+
+	// Create system context with platform information
+	sysCtx := &types.SystemContext{}
+
+	// Copy image from source to OCI layout
+	_, err = copy.Image(ctx, policyContext, destRef, srcRef, &copy.Options{
+		SourceCtx:      sysCtx,
+		DestinationCtx: sysCtx,
+		ReportWriter:   os.Stdout,
+		// Instances:      digests,
+	})
+	if err != nil {
+		return "", errors.Errorf("copying image: %w", err)
+	}
+
+	slog.InfoContext(ctx, "successfully fetched image", "image", imageRef, "oci_layout", destDir)
+
+	return destDir, nil
+}
+
+// NewRemoteImageFetcher creates a new skopeo-based image fetcher
+func NewRemoteImageFetcher() *RemoteImageFetcher {
+	return &RemoteImageFetcher{}
+}
+
+// NewRemoteImageFetcherWithCacheDir creates a new skopeo-based image fetcher with custom temp directory
+func NewRemoteImageFetcherWithCacheDir(cacheDir string) *RemoteImageFetcher {
+	return &RemoteImageFetcher{
+		CacheDir: cacheDir,
+	}
+}
+
+type ExecImageFetcherFunc func(ctx context.Context, imageRef string, ociLayoutPath string) *exec.Cmd
+
+// SkopeoImageFetcher implements ImageFetcher using skopeo for production use
+type ExecImageFetcher struct {
+	RootDir     string // Optional: custom temp directory for fetches
+	CommandFunc ExecImageFetcherFunc
+}
+
+// NewSkopeoImageFetcherWithTempDir creates a new skopeo-based image fetcher with custom temp directory
+func NewExecImageFetcherWithTempDir(tempDir string, commandFunc ExecImageFetcherFunc) *ExecImageFetcher {
+	return &ExecImageFetcher{
+		RootDir:     tempDir,
+		CommandFunc: commandFunc,
+	}
+}
+
+func SkopeoCommandFunc(ctx context.Context, imageRef string, ociLayoutPath string) *exec.Cmd {
+	return exec.CommandContext(ctx, "skopeo", "copy",
 		"docker://"+imageRef,
 		"oci:"+ociLayoutPath)
+}
+
+// FetchImage fetches an image using skopeo and returns the OCI layout path
+func (f *ExecImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef string) (string, error) {
+	slog.InfoContext(ctx, "fetching image with skopeo", "image", imageRef)
+
+	ociLayoutPath := filepath.Join(f.RootDir, ociLayoutDirFromImageRef(imageRef))
+
+	// Use skopeo to copy the image to OCI layout format
+	cmd := f.CommandFunc(ctx, imageRef, ociLayoutPath)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -58,18 +154,6 @@ func (f *SkopeoImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef
 	slog.InfoContext(ctx, "successfully fetched image", "image", imageRef, "oci_layout", ociLayoutPath)
 
 	return ociLayoutPath, nil
-}
-
-// NewSkopeoImageFetcher creates a new skopeo-based image fetcher
-func NewSkopeoImageFetcher() *SkopeoImageFetcher {
-	return &SkopeoImageFetcher{}
-}
-
-// NewSkopeoImageFetcherWithTempDir creates a new skopeo-based image fetcher with custom temp directory
-func NewSkopeoImageFetcherWithTempDir(tempDir string) *SkopeoImageFetcher {
-	return &SkopeoImageFetcher{
-		TempDir: tempDir,
-	}
 }
 
 type MemoryMapFetcher struct {
@@ -127,40 +211,6 @@ func NewCachedFetcher(cacheDir string, realFetcher ImageFetcher) *CachedFetcher 
 		resultCache: make(map[string]string),
 		realFetcher: realFetcher,
 	}
-
-	// errs := make(chan error, len(mapper))
-
-	// for key, value := range mapper {
-	// 	go func() {
-
-	// 		tmpDir, err := os.MkdirTemp(os.TempDir(), "oci-layout-*")
-	// 		if err != nil {
-	// 			errs <- errors.Errorf("creating temp directory: %w", err)
-	// 			return
-	// 		}
-
-	// 		fch.mutex.Lock()
-	// 		fch.rootfsCache[string(key)] = tmpDir
-	// 		fch.compressedInput[string(key)] = value
-	// 		fch.mutex.Unlock()
-
-	// 		errs <- nil
-	// 	}()
-	// }
-
-	// grp := sync.WaitGroup{}
-	// grp.Add(len(mapper))
-	// go func() {
-	// 	grp.Wait()
-	// 	close(errs)
-	// }()
-
-	// for err := range errs {
-	// 	grp.Done()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
 
 	return fch
 }

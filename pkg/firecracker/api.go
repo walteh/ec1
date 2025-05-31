@@ -55,7 +55,7 @@ type apiConfig struct {
 
 // NewFirecrackerMicroVM creates a new Firecracker API implementation
 // that leverages the hypervisors package for VM operations for a single microVM.
-func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], cache *oci.SimpleCache, vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
+func NewFirecrackerMicroVM[V vmm.VirtualMachine](ctx context.Context, hpv vmm.Hypervisor[V], cache oci.ImageFetchConverter, vmi vmm.VMIProvider) (*FirecrackerMicroVM[V], error) {
 	id := "mvm-" + xid.New().String()
 
 	// lvmi, ok := vmi.(vmm.LinuxVMIProvider)

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/containers/image/v5/image"
@@ -34,7 +35,7 @@ func NewOCIFilesystemConverter() *OCIFilesystemConverter {
 	return &OCIFilesystemConverter{}
 }
 
-func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*ConvertedOCI, error) {
+func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*Image, error) {
 	destDir := convertedDirPath(ociLayoutPath, platform)
 
 	slog.InfoContext(ctx, "converting image from OCI layout to filesystem",
@@ -120,11 +121,19 @@ func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Con
 		"cmd", ociConfig.Config.Cmd,
 		"platform", ociConfig.Platform)
 
-	return &ConvertedOCI{
+	image := &Image{
 		RootfsPath: rootfsPath,
 		Ext4Path:   ext4Path,
 		Metadata:   ociConfig,
-	}, nil
+		Platform:   platform,
+		CachedAt:   time.Now(),
+	}
+
+	if err := SaveImageToCache(ctx, metadataPath, image); err != nil {
+		return nil, errors.Errorf("saving image to cache: %w", err)
+	}
+
+	return image, nil
 }
 
 // ensureCleanIndex checks for and fixes duplicate manifest entries in index.json
@@ -349,13 +358,13 @@ func (c *OCIFilesystemConverter) createExt4FromRootfs(ctx context.Context, rootf
 
 type CachedConverter struct {
 	cacheDir      string
-	resultCache   map[string]*ConvertedOCI
+	resultCache   map[string]*Image
 	realConverter FilesystemConverter
 }
 
 func NewCachedConverter(realConverter FilesystemConverter) *CachedConverter {
 	return &CachedConverter{
-		resultCache:   make(map[string]*ConvertedOCI),
+		resultCache:   make(map[string]*Image),
 		realConverter: realConverter,
 	}
 }
@@ -368,7 +377,7 @@ func convertedDirPath(ociLayoutPath string, platform units.Platform) string {
 	return filepath.Join(ociLayoutPath, "converted", platform.OS()+"_"+platform.Arch())
 }
 
-func (c *CachedConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*ConvertedOCI, error) {
+func (c *CachedConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*Image, error) {
 	hash := c.reqHash(ociLayoutPath, platform)
 
 	if _, ok := c.resultCache[hash]; ok {
@@ -377,30 +386,10 @@ func (c *CachedConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, o
 
 	destDir := convertedDirPath(ociLayoutPath, platform)
 
-	if _, err := os.Stat(destDir); err != nil {
-		if _, err := os.Stat(filepath.Join(destDir, CacheRootfsDir)); err == nil {
-			if _, err := os.Stat(filepath.Join(destDir, CacheExt4File)); err == nil {
-				if _, err := os.Stat(filepath.Join(destDir, CacheMetadataFile)); err == nil {
-					metadataBytes, err := os.ReadFile(filepath.Join(destDir, CacheMetadataFile))
-					if err != nil {
-						return nil, errors.Errorf("reading metadata: %w", err)
-					}
-
-					var metadata v1.Image
-					if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-						return nil, errors.Errorf("unmarshaling metadata: %w", err)
-					}
-
-					c.resultCache[hash] = &ConvertedOCI{
-						RootfsPath: filepath.Join(destDir, CacheRootfsDir),
-						Ext4Path:   filepath.Join(destDir, CacheExt4File),
-						Metadata:   &metadata,
-					}
-
-					return c.resultCache[hash], nil
-				}
-			}
-		}
+	metadataPath := filepath.Join(destDir, CacheImagePath)
+	image, err := LoadImageFromCache(ctx, metadataPath)
+	if err == nil {
+		return image, nil
 	}
 
 	converted, err := c.realConverter.ConvertOCILayoutToRootfsAndExt4(ctx, ociLayoutPath, platform)

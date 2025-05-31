@@ -2,6 +2,8 @@ package oci
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"time"
 
 	"gitlab.com/tozd/go/errors"
@@ -20,6 +22,7 @@ const (
 	CacheMetadataFile = "metadata.json"
 	CacheRootfsDir    = "rootfs"
 	CacheExt4File     = "rootfs.ext4"
+	CacheImagePath    = "image.json"
 
 	// Default cache expiration
 	DefaultCacheExpiration = 24 * time.Hour
@@ -46,7 +49,7 @@ type ImageFetchConverter interface {
 	FilesystemConverter
 }
 
-func FetchAndConvertImage(ctx context.Context, fetcher ImageFetchConverter, imageRef string, platform units.Platform) (*ConvertedOCI, error) {
+func FetchAndConvertImage(ctx context.Context, fetcher ImageFetchConverter, imageRef string, platform units.Platform) (*Image, error) {
 	ociLayoutPath, err := fetcher.FetchImageToOCILayout(ctx, imageRef)
 	if err != nil {
 		return nil, errors.Errorf("fetching image to OCI layout: %w", err)
@@ -60,12 +63,6 @@ func FetchAndConvertImage(ctx context.Context, fetcher ImageFetchConverter, imag
 	return converted, nil
 }
 
-type ConvertedOCI struct {
-	RootfsPath string
-	Ext4Path   string
-	Metadata   *v1.Image
-}
-
 // FilesystemConverter converts OCI layout directories to VM-ready filesystems
 // This interface abstracts the conversion process from OCI to rootfs/ext4
 type FilesystemConverter interface {
@@ -74,7 +71,7 @@ type FilesystemConverter interface {
 	// platform: target platform (e.g., "linux/amd64")
 	// destDir: destination directory where rootfs and ext4 will be created
 	// Returns: metadata about the converted image
-	ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*ConvertedOCI, error)
+	ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*Image, error)
 }
 
 // ImageCache manages cached container images for fast VM creation
@@ -85,32 +82,30 @@ type ImageCache interface {
 }
 
 // CachedImage represents a cached container image ready for VM use
-type CachedImage struct {
-	ImageRef   string
-	Platform   units.Platform
-	RootfsPath string
-	Ext4Path   string
-	Metadata   *v1.Image
-	CachedAt   time.Time
+type Image struct {
+	Platform   units.Platform `json:"platform"`
+	RootfsPath string         `json:"rootfs_path"`
+	Ext4Path   string         `json:"ext4_path"`
+	Metadata   *v1.Image      `json:"metadata"`
+	CachedAt   time.Time      `json:"cached_at"`
 }
 
-// ContainerInfo represents a container created from a cached image
-type ContainerInfo struct {
-	ID         string
-	ImageRef   string
-	Platform   units.Platform
-	RootfsPath string
-	Ext4Path   string
-	Metadata   *v1.Image
-	CreatedAt  time.Time
+func SaveImageToCache(ctx context.Context, file string, i *Image) error {
+	metadataBytes, err := json.Marshal(i)
+	if err != nil {
+		return errors.Errorf("marshaling metadata: %w", err)
+	}
+	return os.WriteFile(file, metadataBytes, CacheFilePerm)
 }
 
-// CacheEntry represents the JSON structure stored in cache metadata
-type CacheEntry struct {
-	ImageRef    string    `json:"image_ref"`
-	Platform    string    `json:"platform"`
-	RootfsPath  string    `json:"rootfs_path"`
-	Ext4Path    string    `json:"ext4_path"`
-	CachedAt    time.Time `json:"cached_at"`
-	MetadataRaw []byte    `json:"metadata_raw"`
+func LoadImageFromCache(ctx context.Context, file string) (*Image, error) {
+	metadataBytes, err := os.ReadFile(file)
+	if err != nil {
+		return nil, errors.Errorf("reading metadata: %w", err)
+	}
+	var i Image
+	if err := json.Unmarshal(metadataBytes, &i); err != nil {
+		return nil, errors.Errorf("unmarshaling metadata: %w", err)
+	}
+	return &i, nil
 }
