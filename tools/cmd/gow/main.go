@@ -312,12 +312,12 @@ func (cfg *GowConfig) handleTest(args []string) error {
 					if len(parts) == 2 {
 						testFunc := parts[0]
 						subtest := parts[1]
-						
+
 						// Remove leading ^ if present
 						if strings.HasPrefix(testFunc, "^") {
 							testFunc = testFunc[1:]
 						}
-						
+
 						// Create a more precise pattern that ensures exact test function match
 						// Pattern: ^TestFunc$/^subtest$ ensures TestFunc is matched exactly, not as prefix
 						fixedPattern := "^" + testFunc + "$/" + subtest
@@ -455,6 +455,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		if codesignForce {
 			execArgs = append(execArgs, "-force")
 		}
+
+		execArgs = append(execArgs, "-quiet")
 
 		execArgs = append(execArgs, "--")
 

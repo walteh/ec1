@@ -482,12 +482,14 @@ tasks:
 
     oci:cache:
         desc: pulls all oci images and archives them
+        vars:
+            DIRECTORY: 'gen/oci-image-cache'
         cmds:
-          - cmd: mkdir -p gen/oci-image-cache
+          - cmd: mkdir -p {{.DIRECTORY}}
           - cmd: |-
-                echo -e "package oci_image_cache\n\n type OCICachedImage string\n\n" > gen/oci-image-cache/oci_image_cache.gen.go
-                echo -e "var Registry = map[OCICachedImage][]byte{}\n" >> gen/oci-image-cache/oci_image_cache.gen.go
-                echo -e "func (me OCICachedImage) String() string {\n\treturn string(me)\n}\n" >> gen/oci-image-cache/oci_image_cache.gen.go
+                echo -e "package oci_image_cache\n\n type OCICachedImage string\n\n" > {{.DIRECTORY}}/oci_image_cache.gen.go
+                echo -e "var Registry = map[OCICachedImage][]byte{}\n" >> {{.DIRECTORY}}/oci_image_cache.gen.go
+                echo -e "func (me OCICachedImage) String() string {\n\treturn string(me)\n}\n" >> {{.DIRECTORY}}/oci_image_cache.gen.go
           - task: oci:cache:docker.io/library/alpine:latest
           - task: oci:cache:docker.io/oven/bun:alpine
           - task: oci:cache:docker.io/alpine/socat:latest

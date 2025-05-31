@@ -6,6 +6,8 @@ go 1.24.3
 // - google.golang.org/grpc ./stats/opentelemetry
 exclude google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a
 
+replace github.com/containerd/ttrpc => ../../ttrpc
+
 tool (
 	github.com/walteh/ec1/tools/cmd/codesign
 	github.com/walteh/ec1/tools/cmd/gow
@@ -18,6 +20,7 @@ tool (
 	github.com/atombender/go-jsonschema
 	github.com/bufbuild/buf/cmd/buf
 	github.com/bufbuild/plugins/cmd/download-plugins
+	github.com/containerd/ttrpc/cmd/protoc-gen-go-ttrpc
 	github.com/cweill/gotests/gotests
 	github.com/go-delve/delve/cmd/dlv
 	github.com/go-swagger/go-swagger/cmd/swagger
@@ -53,6 +56,7 @@ require (
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/sevenzip v1.6.0 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
+	github.com/containerd/ttrpc v1.2.7 // indirect
 	github.com/cweill/gotests v1.6.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/jm33-m0/arc/v2 v2.0.1 // indirect

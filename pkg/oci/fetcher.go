@@ -33,12 +33,13 @@ var (
 
 // SkopeoImageFetcher implements ImageFetcher using skopeo for production use
 type RemoteImageFetcher struct {
-	CacheDir string // Optional: custom temp directory for fetches
+	CacheDir      string // Optional: custom temp directory for fetches
+	SkipTLSVerify bool   // Skip TLS verification for remote registries
 }
 
 // FetchImage fetches an image using skopeo and returns the OCI layout path
 func (f *RemoteImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef string) (string, error) {
-	slog.InfoContext(ctx, "fetching image with skopeo", "image", imageRef)
+	slog.InfoContext(ctx, "fetching image from remote registry", "image", imageRef)
 
 	// Create policy context (allow all for now - in production this should be more restrictive)
 	policyContext, err := signature.NewPolicyContext(&signature.Policy{
@@ -49,14 +50,23 @@ func (f *RemoteImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef
 	}
 	defer policyContext.Destroy()
 
-	// Parse source image reference
-	srcRef, err := docker.ParseReference("//" + imageRef)
+	srcRef, err := docker.ParseReference(imageRef)
 	if err != nil {
 		return "", errors.Errorf("parsing source reference: %w", err)
 	}
 
+	sysCtx := &types.SystemContext{
+		
+	}
+
+	if f.SkipTLSVerify {
+		sysCtx.OCIInsecureSkipTLSVerify = true
+		sysCtx.DockerInsecureSkipTLSVerify = types.OptionalBoolTrue
+		sysCtx.DockerDaemonInsecureSkipTLSVerify = true
+	}
+
 	// get image index manifest
-	srcImg, err := srcRef.NewImage(ctx, &types.SystemContext{})
+	srcImg, err := srcRef.NewImage(ctx, sysCtx)
 	if err != nil {
 		return "", errors.Errorf("creating source image: %w", err)
 	}
@@ -80,15 +90,12 @@ func (f *RemoteImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef
 		return "", errors.Errorf("creating oci layout reference: %w", err)
 	}
 
-	// Create system context with platform information
-	sysCtx := &types.SystemContext{}
-
 	// Copy image from source to OCI layout
 	_, err = copy.Image(ctx, policyContext, destRef, srcRef, &copy.Options{
-		SourceCtx:      sysCtx,
-		DestinationCtx: sysCtx,
+		SourceCtx: sysCtx,
+		// we are the destination, so we don't need to verify the TLS certificate
+		DestinationCtx: &types.SystemContext{},
 		ReportWriter:   os.Stdout,
-		// Instances:      digests,
 	})
 	if err != nil {
 		return "", errors.Errorf("copying image: %w", err)
@@ -190,7 +197,7 @@ func (fch *MemoryMapFetcher) FetchImageToOCILayout(ctx context.Context, imageRef
 		return "", errors.Errorf("creating temp directory: %w", err)
 	}
 
-	err = extractCompressedOCI(ctx, input, destDir)
+	err = ExtractCompressedOCI(ctx, input, destDir)
 	if err != nil {
 		return "", errors.Errorf("extracting compressed OCI layout to filesystem: %w", err)
 	}
@@ -236,7 +243,7 @@ func (fch *CachedFetcher) FetchImageToOCILayout(ctx context.Context, imageRef st
 	return tempDir, nil
 }
 
-func extractCompressedOCI(ctx context.Context, data []byte, destDir string) error {
+func ExtractCompressedOCI(ctx context.Context, data []byte, destDir string) error {
 	// Create a reader from the embedded data
 	reader := bytes.NewReader(data)
 

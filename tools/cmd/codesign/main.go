@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/lmittmann/tint"
 	"gitlab.com/tozd/go/errors"
@@ -39,6 +40,7 @@ type Config struct {
 	Force        bool
 	Verbose      bool
 	DryRun       bool
+	Quiet        bool
 	// For exec mode
 	ExecArgs []string
 }
@@ -58,6 +60,7 @@ func main() {
 	flag.BoolVar(&config.Verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&config.DryRun, "dry-run", false, "Show what would be done without executing")
 	flag.BoolVar(&showEntitlements, "list-entitlements", false, "List common entitlements and exit")
+	flag.BoolVar(&config.Quiet, "quiet", false, "Quiet output")
 	flag.Parse()
 
 	config.Entitlements = entitlementsFlag
@@ -67,6 +70,9 @@ func main() {
 	level := slog.LevelInfo
 	if config.Verbose {
 		level = slog.LevelDebug
+	}
+	if config.Quiet {
+		level = slog.LevelError
 	}
 
 	tintHandler := tint.NewHandler(os.Stderr, &tint.Options{
@@ -184,12 +190,7 @@ func execMode(ctx context.Context, config *Config) error {
 		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if err := cmd.Run(); err != nil {
+	if err := syscall.Exec(binary, args, os.Environ()); err != nil {
 		return errors.Errorf("executing signed binary: %w", err)
 	}
 
@@ -223,15 +224,8 @@ func testMode(ctx context.Context, config *Config) error {
 		return errors.Errorf("signing binary before execution: %w", err)
 	}
 
-	// Run go test with our exec wrapper
-	cmd := exec.CommandContext(ctx, binary, args...)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if err := cmd.Run(); err != nil {
-		return errors.Errorf("running go test with code signing: %w", err)
+	if err := syscall.Exec(binary, args, os.Environ()); err != nil {
+		return errors.Errorf("executing signed binary: %w", err)
 	}
 
 	return nil

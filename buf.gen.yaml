@@ -33,4 +33,11 @@ plugins:
     include_imports: true
     opt:
       - paths=source_relative
-    #   - buf_validate_file=ec1/validate/validate.proto
+      - prefix=GRPC
+      #   - buf_validate_file=ec1/validate/validate.proto
+
+  - out: gen/proto/golang
+    local: ["go", "tool", "github.com/containerd/ttrpc/cmd/protoc-gen-go-ttrpc"]
+    opt:
+      - paths=source_relative
+      - prefix=TTRPC

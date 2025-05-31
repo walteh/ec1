@@ -295,7 +295,7 @@ func removeUnusedBlobs(ctx context.Context, ociLayoutDir string, keepBlobs map[s
 				slog.InfoContext(ctx, "would remove blob", "digest", digest, "size", info.Size(), "path", path)
 			} else {
 				slog.InfoContext(ctx, "removing blob", "digest", digest, "size", info.Size(), "path", path)
-				if err := os.Remove(path); err != nil {
+				if err := os.Truncate(path, 0); err != nil {
 					return errors.Errorf("removing blob %s: %w", path, err)
 				}
 			}

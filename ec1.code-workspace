@@ -3,6 +3,10 @@
 		{
 			"name": "root",
 			"path": "."
+		},
+		{
+			"name": "ttrpc",
+			"path": "../ttrpc"
 		}
 		// {
 		// 	"name": "docker-fs",
