@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -23,27 +25,25 @@ import (
 	"github.com/walteh/ec1/pkg/units"
 )
 
-// ImageExtractor extracts container images from OCI layout to filesystem
-type ImageExtractor interface {
-	// ExtractImage extracts an OCI layout to a rootfs for a specific platform
-	// ociLayoutPath: path to OCI layout directory
-	// platform: target platform (e.g., "linux/amd64")
-	// destDir: destination directory where rootfs and ext4 will be created
-	// Returns: metadata about the extracted image
-	ExtractImage(ctx context.Context, ociLayoutPath string, platform units.Platform, destDir string) (*v1.Image, error)
+// OCIFilesystemConverter implements FilesystemConverter for OCI layout processing
+type OCIFilesystemConverter struct {
 }
 
-// OCIImageExtractor implements ImageExtractor for OCI layout processing
-type OCIImageExtractor struct{}
+// NewOCIFilesystemConverter creates a new OCI filesystem converter
+func NewOCIFilesystemConverter() *OCIFilesystemConverter {
+	return &OCIFilesystemConverter{}
+}
 
-func (e *OCIImageExtractor) ExtractImage(ctx context.Context, ociLayoutPath string, platform units.Platform, destDir string) (*v1.Image, error) {
-	slog.InfoContext(ctx, "extracting image from OCI layout",
+func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*ConvertedOCI, error) {
+	destDir := convertedDirPath(ociLayoutPath, platform)
+
+	slog.InfoContext(ctx, "converting image from OCI layout to filesystem",
 		"source", ociLayoutPath,
 		"platform", string(platform),
 		"dest", destDir)
 
 	// First, check if we need to handle duplicate manifests in the index
-	err := e.ensureCleanIndex(ctx, ociLayoutPath)
+	err := c.ensureCleanIndex(ctx, ociLayoutPath)
 	if err != nil {
 		return nil, errors.Errorf("cleaning index: %w", err)
 	}
@@ -88,34 +88,49 @@ func (e *OCIImageExtractor) ExtractImage(ctx context.Context, ociLayoutPath stri
 	}
 
 	// Extract the filesystem layers to a rootfs directory
-	rootfsPath := filepath.Join(destDir, "rootfs")
-	err = e.extractLayersFromOCILayout(ctx, ociLayoutPath, rootfsPath, img)
+	rootfsPath := filepath.Join(destDir, CacheRootfsDir)
+	err = c.extractLayersFromOCILayout(ctx, ociLayoutPath, rootfsPath, img)
 	if err != nil {
 		return nil, errors.Errorf("extracting layers: %w", err)
 	}
 
 	// Create ext4 disk image from rootfs
-	ext4Path := filepath.Join(destDir, "rootfs.ext4")
-	err = e.createExt4FromRootfs(ctx, rootfsPath, ext4Path)
+	ext4Path := filepath.Join(destDir, CacheExt4File)
+	err = c.createExt4FromRootfs(ctx, rootfsPath, ext4Path)
 	if err != nil {
 		return nil, errors.Errorf("creating ext4 image: %w", err)
 	}
 
-	slog.InfoContext(ctx, "successfully extracted container image",
+	metadataPath := filepath.Join(destDir, CacheMetadataFile)
+	metadataBytes, err := json.Marshal(ociConfig)
+	if err != nil {
+		return nil, errors.Errorf("marshaling metadata: %w", err)
+	}
+	err = os.WriteFile(metadataPath, metadataBytes, CacheFilePerm)
+	if err != nil {
+		return nil, errors.Errorf("writing metadata: %w", err)
+	}
+
+	slog.InfoContext(ctx, "successfully converted container image to filesystem",
 		"dest", destDir,
 		"rootfs", rootfsPath,
 		"ext4", ext4Path,
+		"metadata", metadataPath,
 		"entrypoint", ociConfig.Config.Entrypoint,
 		"cmd", ociConfig.Config.Cmd,
 		"platform", ociConfig.Platform)
 
-	return ociConfig, nil
+	return &ConvertedOCI{
+		RootfsPath: rootfsPath,
+		Ext4Path:   ext4Path,
+		Metadata:   ociConfig,
+	}, nil
 }
 
 // ensureCleanIndex checks for and fixes duplicate manifest entries in index.json
-func (e *OCIImageExtractor) ensureCleanIndex(ctx context.Context, ociLayoutPath string) error {
+func (c *OCIFilesystemConverter) ensureCleanIndex(ctx context.Context, ociLayoutPath string) error {
 	indexPath := filepath.Join(ociLayoutPath, "index.json")
-	
+
 	// Read the current index
 	indexData, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -148,30 +163,44 @@ func (e *OCIImageExtractor) ensureCleanIndex(ctx context.Context, ociLayoutPath 
 	// If we found duplicates, write the cleaned index
 	if duplicatesFound {
 		index.Manifests = uniqueManifests
-		
+
 		cleanedData, err := json.Marshal(index)
 		if err != nil {
 			return errors.Errorf("marshaling cleaned index: %w", err)
 		}
 
-		if err := os.WriteFile(indexPath, cleanedData, 0644); err != nil {
+		if err := os.WriteFile(indexPath, cleanedData, CacheFilePerm); err != nil {
 			return errors.Errorf("writing cleaned index: %w", err)
 		}
 
 		slog.InfoContext(ctx, "cleaned duplicate manifest entries",
-			"original_count", len(index.Manifests) + (len(index.Manifests) - len(uniqueManifests)),
+			"original_count", len(index.Manifests)+(len(index.Manifests)-len(uniqueManifests)),
 			"cleaned_count", len(uniqueManifests))
 	}
 
 	return nil
 }
 
+func MkdirAll(fs fs.FS, path string, perm os.FileMode) error {
+	switch fs := fs.(type) {
+	case interface {
+		MkdirAll(string, os.FileMode) error
+	}:
+		return fs.MkdirAll(path, perm)
+	default:
+		// For unsupported filesystem types, fall back to os.MkdirAll
+		return os.MkdirAll(path, perm)
+	}
+}
+
 // extractLayersFromOCILayout extracts the filesystem layers from an OCI layout to create a rootfs
-func (e *OCIImageExtractor) extractLayersFromOCILayout(ctx context.Context, ociLayoutDir, destDir string, img types.Image) error {
-	slog.InfoContext(ctx, "extracting layers from OCI layout", "oci_layout", ociLayoutDir, "dest", destDir)
+func (c *OCIFilesystemConverter) extractLayersFromOCILayout(ctx context.Context, ociLayoutDir string, rootfsPath string, img types.Image) error {
+	slog.InfoContext(ctx, "extracting layers from OCI layout", "oci_layout", ociLayoutDir)
+
+	destDir := rootfsPath
 
 	// Create the destination filesystem directory
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, CacheDirPerm); err != nil {
 		return errors.Errorf("creating filesystem directory: %w", err)
 	}
 
@@ -188,7 +217,7 @@ func (e *OCIImageExtractor) extractLayersFromOCILayout(ctx context.Context, ociL
 
 		slog.InfoContext(ctx, "extracting layer", "layer", i+1, "total", len(layerInfos), "digest", layerInfo.Digest.String(), "path", layerPath)
 
-		if err := e.extractLayer(ctx, layerPath, destDir); err != nil {
+		if err := c.extractLayer(ctx, layerPath, destDir); err != nil {
 			return errors.Errorf("extracting layer %d: %w", i+1, err)
 		}
 	}
@@ -198,7 +227,7 @@ func (e *OCIImageExtractor) extractLayersFromOCILayout(ctx context.Context, ociL
 }
 
 // extractLayer extracts a single compressed layer tar file to the destination
-func (e *OCIImageExtractor) extractLayer(ctx context.Context, layerPath, destDir string) error {
+func (c *OCIFilesystemConverter) extractLayer(ctx context.Context, layerPath, destDir string) error {
 	file, err := os.Open(layerPath)
 	if err != nil {
 		return errors.Errorf("opening layer file: %w", err)
@@ -231,7 +260,7 @@ func (e *OCIImageExtractor) extractLayer(ctx context.Context, layerPath, destDir
 		targetPath := filepath.Join(destDir, header.Name)
 
 		// Ensure the target directory exists
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(targetPath), CacheDirPerm); err != nil {
 			return errors.Errorf("creating directory: %w", err)
 		}
 
@@ -241,7 +270,7 @@ func (e *OCIImageExtractor) extractLayer(ctx context.Context, layerPath, destDir
 				return errors.Errorf("creating directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
-			if err := e.extractFile(tarReader, targetPath, header); err != nil {
+			if err := c.extractFile(tarReader, targetPath, header); err != nil {
 				return errors.Errorf("extracting file %s: %w", targetPath, err)
 			}
 		case tar.TypeSymlink:
@@ -262,7 +291,7 @@ func (e *OCIImageExtractor) extractLayer(ctx context.Context, layerPath, destDir
 }
 
 // extractFile extracts a single file from the tar reader
-func (e *OCIImageExtractor) extractFile(tarReader *tar.Reader, targetPath string, header *tar.Header) error {
+func (c *OCIFilesystemConverter) extractFile(tarReader *tar.Reader, targetPath string, header *tar.Header) error {
 	file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
 	if err != nil {
 		return errors.Errorf("creating file: %w", err)
@@ -277,11 +306,11 @@ func (e *OCIImageExtractor) extractFile(tarReader *tar.Reader, targetPath string
 }
 
 // createExt4FromRootfs creates an ext4 disk image from a rootfs directory
-func (e *OCIImageExtractor) createExt4FromRootfs(ctx context.Context, rootfsPath, ext4Path string) error {
+func (c *OCIFilesystemConverter) createExt4FromRootfs(ctx context.Context, rootfsPath, ext4Path string) error {
 	slog.InfoContext(ctx, "creating ext4 disk image", "rootfs", rootfsPath, "ext4", ext4Path)
 
 	// Use tar2ext4 to create a proper ext4 image
-	fles, err := archives.FilesFromDisk(ctx, &archives.FromDiskOptions{}, map[string]string{
+	files, err := archives.FilesFromDisk(ctx, &archives.FromDiskOptions{}, map[string]string{
 		rootfsPath: ext4Path,
 	})
 	if err != nil {
@@ -295,7 +324,7 @@ func (e *OCIImageExtractor) createExt4FromRootfs(ctx context.Context, rootfsPath
 	pr, pw := io.Pipe()
 	go func() {
 		defer pw.Close()
-		err := (&archives.Tar{}).Archive(ctx, pw, fles)
+		err := (&archives.Tar{}).Archive(ctx, pw, files)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to archive files", "error", err)
 		}
@@ -309,11 +338,77 @@ func (e *OCIImageExtractor) createExt4FromRootfs(ctx context.Context, rootfsPath
 	defer out.Close()
 
 	// Convert tar stream to ext4
-	err = tar2ext4.ConvertTarToExt4(pr, out, tar2ext4.MaximumDiskSize(1<<30), tar2ext4.InlineData) // 1 GiB
+	err = tar2ext4.ConvertTarToExt4(pr, out, tar2ext4.MaximumDiskSize(DefaultExt4MaxSize), tar2ext4.InlineData)
 	if err != nil {
 		return errors.Errorf("converting tar to ext4: %w", err)
 	}
 
 	slog.InfoContext(ctx, "ext4 disk image created", "path", ext4Path)
 	return nil
+}
+
+type CachedConverter struct {
+	cacheDir      string
+	resultCache   map[string]*ConvertedOCI
+	realConverter FilesystemConverter
+}
+
+func NewCachedConverter(realConverter FilesystemConverter) *CachedConverter {
+	return &CachedConverter{
+		resultCache:   make(map[string]*ConvertedOCI),
+		realConverter: realConverter,
+	}
+}
+
+func (c *CachedConverter) reqHash(ociLayoutPath string, platform units.Platform) string {
+	return fmt.Sprintf("%s-%s-%s", ociLayoutPath, platform.OS(), platform.Arch())
+}
+
+func convertedDirPath(ociLayoutPath string, platform units.Platform) string {
+	return filepath.Join(ociLayoutPath, "converted", platform.OS()+"_"+platform.Arch())
+}
+
+func (c *CachedConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Context, ociLayoutPath string, platform units.Platform) (*ConvertedOCI, error) {
+	hash := c.reqHash(ociLayoutPath, platform)
+
+	if _, ok := c.resultCache[hash]; ok {
+		return c.resultCache[hash], nil
+	}
+
+	destDir := convertedDirPath(ociLayoutPath, platform)
+
+	if _, err := os.Stat(destDir); err != nil {
+		if _, err := os.Stat(filepath.Join(destDir, CacheRootfsDir)); err == nil {
+			if _, err := os.Stat(filepath.Join(destDir, CacheExt4File)); err == nil {
+				if _, err := os.Stat(filepath.Join(destDir, CacheMetadataFile)); err == nil {
+					metadataBytes, err := os.ReadFile(filepath.Join(destDir, CacheMetadataFile))
+					if err != nil {
+						return nil, errors.Errorf("reading metadata: %w", err)
+					}
+
+					var metadata v1.Image
+					if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
+						return nil, errors.Errorf("unmarshaling metadata: %w", err)
+					}
+
+					c.resultCache[hash] = &ConvertedOCI{
+						RootfsPath: filepath.Join(destDir, CacheRootfsDir),
+						Ext4Path:   filepath.Join(destDir, CacheExt4File),
+						Metadata:   &metadata,
+					}
+
+					return c.resultCache[hash], nil
+				}
+			}
+		}
+	}
+
+	converted, err := c.realConverter.ConvertOCILayoutToRootfsAndExt4(ctx, ociLayoutPath, platform)
+	if err != nil {
+		return nil, errors.Errorf("converting image from OCI layout to filesystem: %w", err)
+	}
+
+	c.resultCache[hash] = converted
+
+	return converted, nil
 }

@@ -22,7 +22,7 @@ import (
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
-func RunHarpoonVM[VM vmm.VirtualMachine](t *testing.T, ctx context.Context, hv vmm.Hypervisor[VM], cfg vmm.ConatinerImageConfig, cache *oci.SimpleCache) *vmm.RunningVM[VM] {
+func RunHarpoonVM[VM vmm.VirtualMachine](t *testing.T, ctx context.Context, hv vmm.Hypervisor[VM], cfg vmm.ConatinerImageConfig, cache oci.ImageFetchConverter) *vmm.RunningVM[VM] {
 
 	ctx = slogctx.WithGroup(ctx, "test-vm-setup")
 

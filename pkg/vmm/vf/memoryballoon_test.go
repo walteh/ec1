@@ -15,12 +15,16 @@ import (
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
+
+	oci_image_cache "github.com/walteh/ec1/gen/oci-image-cache"
 )
 
 func TestMemoryBalloonDevices(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 
-	cache := toci.TestSimpleCache(t)
+	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{
+		oci_image_cache.ALPINE_LATEST,
+	})
 
 	// // Skip on non-macOS platforms
 	// if virtualizationFramework == 0 {
@@ -55,7 +59,9 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 	// 	t.Skip("Skipping test as Virtualization framework is not available")
 	// }
 
-	cache := toci.TestSimpleCache(t)
+	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{
+		oci_image_cache.ALPINE_LATEST,
+	})
 
 	startingMemory := strongunits.MiB(512)
 	targetMemory := strongunits.MiB(300)

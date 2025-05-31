@@ -44,7 +44,7 @@ type ConatinerImageConfig struct {
 func NewContainerizedVirtualMachine[VM VirtualMachine](
 	ctx context.Context,
 	hpv Hypervisor[VM],
-	cache *oci.SimpleCache,
+	cache oci.ImageFetchConverter,
 	imageConfig ConatinerImageConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 	id := "vm-" + xid.New().String()
@@ -142,7 +142,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 }
 
-func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, cache *oci.SimpleCache, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, cache oci.ImageFetchConverter, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
 
@@ -155,7 +155,7 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 		}
 	}
 
-	diskPath, err := cache.LoadImage(ctx, imageConfig.ImageRef, imageConfig.Platform)
+	diskPath, err := oci.FetchAndConvertImage(ctx, cache, imageConfig.ImageRef, imageConfig.Platform)
 	if err != nil {
 		return nil, errors.Errorf("container to virtio device: %w", err)
 	}

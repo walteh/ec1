@@ -32,14 +32,13 @@ func TestHarpoon(t *testing.T) {
 
 	// Pre-load all images that will be used in the tests
 	// This moves the expensive extraction work to setup time, not test execution time
-	imagesToPreload := []toci.ImagePlatformPair{
-		{ImageRef: oci_image_cache.OVEN_BUN_ALPINE.String(), Platform: units.PlatformLinuxARM64},
-		{ImageRef: oci_image_cache.ALPINE_SOCAT_LATEST.String(), Platform: units.PlatformLinuxARM64},
-		{ImageRef: oci_image_cache.ALPINE_LATEST.String(), Platform: units.PlatformLinuxARM64},
-		{ImageRef: oci_image_cache.BUSYBOX_GLIBC.String(), Platform: units.PlatformLinuxARM64},
-	}
 
-	cache := toci.TestSimpleCacheWithPreload(t, imagesToPreload)
+	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{
+		oci_image_cache.OVEN_BUN_ALPINE,
+		oci_image_cache.ALPINE_SOCAT_LATEST,
+		oci_image_cache.ALPINE_LATEST,
+		oci_image_cache.BUSYBOX_GLIBC,
+	})
 
 	t.Run("bun_version", func(t *testing.T) {
 		ctx := tlog.SetupSlogForTest(t)
