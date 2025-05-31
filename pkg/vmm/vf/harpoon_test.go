@@ -48,7 +48,7 @@ func TestHarpoon(t *testing.T) {
 		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
 			ImageRef: oci_image_cache.OVEN_BUN_ALPINE.String(),
 			Platform: units.PlatformLinuxARM64,
-			Memory:   strongunits.MiB(1024).ToBytes(),
+			Memory:   strongunits.MiB(64).ToBytes(),
 			VCPUs:    1,
 		}, cache)
 
@@ -92,7 +92,7 @@ func TestHarpoon(t *testing.T) {
 		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
 			ImageRef: oci_image_cache.ALPINE_SOCAT_LATEST.String(),
 			Platform: units.PlatformLinuxARM64,
-			Memory:   strongunits.MiB(1024).ToBytes(),
+			Memory:   strongunits.MiB(64).ToBytes(),
 			VCPUs:    1,
 		}, cache)
 
@@ -163,7 +163,7 @@ func TestHarpoon(t *testing.T) {
 		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
 			ImageRef: oci_image_cache.BUSYBOX_GLIBC.String(),
 			Platform: units.PlatformLinuxARM64,
-			Memory:   strongunits.MiB(1024).ToBytes(),
+			Memory:   strongunits.MiB(64).ToBytes(),
 			VCPUs:    1,
 		}, cache)
 
