@@ -7,8 +7,11 @@ replace (
 	github.com/containerd/containerd/api => ../containerd/api
 	github.com/containerd/containerd/v2 => ../containerd
 	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
+	github.com/containerd/nerdctl => ../nerdctl
+	github.com/moby/buildkit => ../buildkit
+
 	// github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
-	github.com/lmittmann/tint => ../tint
+	// github.com/lmittmann/tint => ../tint
 )
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840

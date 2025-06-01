@@ -1455,6 +1455,8 @@ github.com/containernetworking/plugins v1.5.1 h1:T5ji+LPYjjgW0QM+KyrigZbLsZ8jaX+
 github.com/containernetworking/plugins v1.5.1/go.mod h1:MIQfgMayGuHYs0XdNudf31cLLAC+i242hNm6KuDGqCM=
 github.com/containernetworking/plugins v1.6.2 h1:pqP8Mq923TLyef5g97XfJ/xpDeVek4yF8A4mzy9Tc4U=
 github.com/containernetworking/plugins v1.6.2/go.mod h1:SP5UG3jDO9LtmfbBJdP+nl3A1atOtbj2MBOYsnaxy64=
+github.com/containernetworking/plugins v1.7.1 h1:CNAR0jviDj6FS5Vg85NTgKWLDzZPfi/lj+VJfhMDTIs=
+github.com/containernetworking/plugins v1.7.1/go.mod h1:xuMdjuio+a1oVQsHKjr/mgzuZ24leAsqUYRnzGoXHy0=
 github.com/containers/buildah v1.33.7 h1:Y2kNea+hNNyZ74ppYFWmD0cLc/DwZ5A4NEUPQWPj5Zw=
 github.com/containers/buildah v1.33.7/go.mod h1:pphfdjrwtTWkuIy1aDyZMEVyMfmm0DsbvxLGxxEU1cM=
 github.com/containers/conmon v2.0.20+incompatible h1:YbCVSFSCqFjjVwHTPINGdMX1F6JXHGTUje2ZYobNrkg=
@@ -1534,6 +1536,7 @@ github.com/crc-org/crc/v2 v2.49.0/go.mod h1:uAWz+FS48HtNov/jLTUVQhBLacgZ+Gbv0IyR
 github.com/crc-org/machine v0.0.0-20240926103419-a943b47fd48b h1:5577tKzQcPfd/i0dCekY32R9DUi677sNfhVLYKulBGM=
 github.com/crc-org/machine v0.0.0-20240926103419-a943b47fd48b/go.mod h1:trWeQimjfE3dJ8qWOxI4ePtYm13aecK42bf01s6h/Nc=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
+github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/creack/pty v1.1.11/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/creack/pty v1.1.18/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr4O4=
 github.com/creasty/defaults v1.7.0/go.mod h1:iGzKe6pbEHnpMPtfDXZEr0NVxWnPTjb1bbDy08fPzYM=
@@ -2639,6 +2642,7 @@ github.com/pin/tftp v2.1.0+incompatible h1:Yng4J7jv6lOc6IF4XoB5mnd3P7ZrF60XQq+my
 github.com/pin/tftp v2.1.0+incompatible/go.mod h1:xVpZOMCXTy+A5QMjEVN0Glwa1sUvaJhFXbr/aAxuxGY=
 github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8/go.mod h1:HKlIX3XHQyzLZPlr7++PzdhaXEj94dEiJgZDTsxEqUI=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e h1:aoZm08cpOy4WuID//EZDgcC4zIxODThtZNPirFr42+A=
+github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.1-0.20170910134614-2b3a18b5f0fb/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1-0.20171018195549-f15c970de5b7/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/profile v1.7.0 h1:hnbDkaNWPCLMO9wGLdBFTIZvzDrDfBM2072E1S9gJkA=
@@ -2738,6 +2742,7 @@ github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6So
 github.com/rogpeppe/fastuuid v1.1.0 h1:INyGLmTCMGFr6OVIb977ghJvABML2CMVjPoRfNDdYDo=
 github.com/rogpeppe/fastuuid v1.2.0 h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
+github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.10.0/go.mod h1:UQnix2H7Ngw/k4C5ijL5+65zddjncjaFoBhdsK/akog=
 github.com/rogpeppe/go-internal v1.11.0/go.mod h1:ddIwULY96R17DhadqLgMfk9H9tvdUzkipdSkR5nkCZA=
 github.com/rogpeppe/go-internal v1.12.0/go.mod h1:E+RYuTGaKKdloAfM02xzb0FW3Paa99yedzYV+kq4uf4=
@@ -2989,8 +2994,12 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 h1:6fotK7
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75/go.mod h1:KO6IkyS8Y3j8OdNO85qEYBsRPuteD+YciPomcXdrMnk=
 github.com/tonistiigi/dchapes-mode v0.0.0-20241001053921-ca0759fec205 h1:eUk79E1w8yMtXeHSzjKorxuC8qJOnyXQnLaJehxpJaI=
 github.com/tonistiigi/dchapes-mode v0.0.0-20241001053921-ca0759fec205/go.mod h1:3Iuxbr0P7D3zUzBMAZB+ois3h/et0shEz0qApgHYGpY=
+github.com/tonistiigi/dchapes-mode v0.0.0-20250318174251-73d941a28323 h1:r0p7fK56l8WPequOaR3i9LBqfPtEdXIQbUTzT55iqT4=
+github.com/tonistiigi/dchapes-mode v0.0.0-20250318174251-73d941a28323/go.mod h1:3Iuxbr0P7D3zUzBMAZB+ois3h/et0shEz0qApgHYGpY=
 github.com/tonistiigi/fsutil v0.0.0-20250113203817-b14e27f4135a h1:EfGw4G0x/8qXWgtcZ6KVaPS+wpWOQMaypczzP8ojkMY=
 github.com/tonistiigi/fsutil v0.0.0-20250113203817-b14e27f4135a/go.mod h1:Dl/9oEjK7IqnjAm21Okx/XIxUCFJzvh+XdVHUlBwXTw=
+github.com/tonistiigi/fsutil v0.0.0-20250417144416-3f76f8130144 h1:k9tdF32oJYwtjzMx+D26M6eYiCaAPdJ7tyN7tF1oU5Q=
+github.com/tonistiigi/fsutil v0.0.0-20250417144416-3f76f8130144/go.mod h1:BKdcez7BiVtBvIcef90ZPc6ebqIWr4JWD7+EvLm6J98=
 github.com/tonistiigi/go-actions-cache v0.0.0-20250228231703-3e9a6642607f h1:q/SWz3Bz0KtAsqaBo73CHVXjaz5O8PDnmD2JHVhgYnE=
 github.com/tonistiigi/go-actions-cache v0.0.0-20250228231703-3e9a6642607f/go.mod h1:h0oRlVs3NoFIHysRQ4rU1+RG4QmU0M2JVSwTYrB4igk=
 github.com/tonistiigi/go-archvariant v1.0.0 h1:5LC1eDWiBNflnTF1prCiX09yfNHIxDC/aukdhCdTyb0=
@@ -3057,6 +3066,8 @@ github.com/vishvananda/netlink v1.3.0 h1:X7l42GfcV4S6E4vHTsw48qbrV+9PVojNfIhZcwQ
 github.com/vishvananda/netlink v1.3.0/go.mod h1:i6NetklAujEcC6fK0JPjT8qSwWyO0HLn4UKG+hGqeJs=
 github.com/vishvananda/netlink v1.3.1-0.20240922070040-084abd93d350 h1:w5OI+kArIBVksl8UGn6ARQshtPCQvDsbuA9NQie3GIg=
 github.com/vishvananda/netlink v1.3.1-0.20240922070040-084abd93d350/go.mod h1:i6NetklAujEcC6fK0JPjT8qSwWyO0HLn4UKG+hGqeJs=
+github.com/vishvananda/netlink v1.3.1-0.20250303224720-0e7078ed04c8 h1:Y4egeTrP7sccowz2GWTJVtHlwkZippgBTpUmMteFUWQ=
+github.com/vishvananda/netlink v1.3.1-0.20250303224720-0e7078ed04c8/go.mod h1:i6NetklAujEcC6fK0JPjT8qSwWyO0HLn4UKG+hGqeJs=
 github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc/go.mod h1:ZjcWmFBXmLKZu9Nxj3WKYEafiSqer2rnvPr0en9UNpI=
 github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df/go.mod h1:JP3t17pCcGlemwknint6hfoeCVQrEMVwxRLRjXpq+BU=
 github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1DwXk04H54A1oHXtwZmA0grkVMdPxx/VGLCah0=
@@ -3562,6 +3573,7 @@ golang.org/x/sys v0.24.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/sys v0.25.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/sys v0.26.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/sys v0.27.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.29.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/sys v0.30.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/sys v0.31.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
 golang.org/x/sys v0.32.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
@@ -3828,6 +3840,7 @@ google.golang.org/grpc v1.69.4/go.mod h1:vyjdE6jLBI76dgpDojsFGNaHlxdjXN9ghpnd2o7
 google.golang.org/grpc v1.70.0/go.mod h1:ofIJqVKDXx/JiXrwr2IG4/zwdH9txy3IlF40RmcJSQw=
 google.golang.org/grpc v1.71.0/go.mod h1:H0GRtasmQOh9LkFoCPDu3ZrwUtD1YGE+b2vYBYd/8Ec=
 google.golang.org/grpc v1.71.1/go.mod h1:H0GRtasmQOh9LkFoCPDu3ZrwUtD1YGE+b2vYBYd/8Ec=
+google.golang.org/grpc v1.72.0/go.mod h1:wH5Aktxcg25y1I3w7H69nHfXdOG3UiadoBtjh3izSDM=
 google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0/go.mod h1:6Kw0yEErY5E/yWrBtf03jp27GLLJujG4z/JK95pnjjw=
 google.golang.org/grpc/examples v0.0.0-20230224211313-3775f633ce20 h1:MLBCGN1O7GzIx+cBiwfYPwtmZ41U3Mn/cotLJciaArI=
 google.golang.org/grpc/examples v0.0.0-20230224211313-3775f633ce20/go.mod h1:Nr5H8+MlGWr5+xX/STzdoEqJrO+YteqFbMyCsrb6mH0=
@@ -4062,5 +4075,7 @@ tags.cncf.io/container-device-interface v1.0.1 h1:KqQDr4vIlxwfYh0Ed/uJGVgX+CHAka
 tags.cncf.io/container-device-interface v1.0.1/go.mod h1:JojJIOeW3hNbcnOH2q0NrWNha/JuHoDZcmYxAZwb2i0=
 tags.cncf.io/container-device-interface/specs-go v0.8.0 h1:QYGFzGxvYK/ZLMrjhvY0RjpUavIn4KcmRmVP/JjdBTA=
 tags.cncf.io/container-device-interface/specs-go v0.8.0/go.mod h1:BhJIkjjPh4qpys+qm4DAYtUyryaTDg9zris+AczXyws=
+tags.cncf.io/container-device-interface/specs-go v1.0.0 h1:8gLw29hH1ZQP9K1YtAzpvkHCjjyIxHZYzBAvlQ+0vD8=
+tags.cncf.io/container-device-interface/specs-go v1.0.0/go.mod h1:u86hoFWqnh3hWz3esofRFKbI261bUlvUfLKGrDhJkgQ=
 xenbits.xenproject.org/git-http/xen.git/tools/golang/xenlight v0.0.0-20240729172045-026c9fa29716 h1:y52AcO4BZop/FrR523z47VCLFViGmMJqY21uL+FxXXI=
 xenbits.xenproject.org/git-http/xen.git/tools/golang/xenlight v0.0.0-20240729172045-026c9fa29716/go.mod h1:tbZ4iMnk8RWkXPxTiCGdAw3hCOa3feShlf3sBh50uIc=

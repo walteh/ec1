@@ -7,7 +7,8 @@
 		{
 			"name": "ttrpc",
 			"path": "../ttrpc"
-		}
+		},
+
 		// {
 		// 	"name": "docker-fs",
 		// 	"path": "../docker-fs"
@@ -32,18 +33,26 @@
 		// 	"name": "gvisor",
 		// 	"path": "../gvisor"
 		// },
-		// {
-		// 	"name": "gvisor-tap-vsock",
-		// 	"path": "../gvisor-tap-vsock"
-		// },
+		{
+			"name": "gvisor-tap-vsock",
+			"path": "../gvisor-tap-vsock"
+		},
 		// {
 		// 	"name": "firecracker",
 		// 	"path": "../firecracker"
 		// },
-		// {
-		// 	"name": "containerd",
-		// 	"path": "../containerd"
-		// },
+		{
+			"name": "containerd",
+			"path": "../containerd"
+		},
+		{
+			"name": "nerdctl",
+			"path": "../nerdctl"
+		},
+		{
+			"name": "buildkit",
+			"path": "../buildkit"
+		}
 		// {
 		// 	"name": "vsock-guest-exec",
 		// 	"path": "../vsock-guest-exec"
