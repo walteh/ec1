@@ -2,29 +2,41 @@ package containerd
 
 import (
 	"context"
-	"github.com/containerd/containerd/api/types/task"
-	"github.com/creack/pty"
-	"github.com/hashicorp/go-multierror"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	"golang.org/x/sys/unix"
-	"io"
+	"fmt"
+	"log/slog"
 	"os"
-	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/containerd/containerd/api/types/task"
+	"github.com/hashicorp/go-multierror"
+	"github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/walteh/ec1/pkg/vmm"
+	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
 type managedProcess struct {
-	spec       *specs.Process
-	io         stdio
-	console    *os.File
-	mu         sync.Mutex
-	cmd        *exec.Cmd
+	spec    *specs.Process
+	io      stdio
+	console *os.File
+	mu      sync.Mutex
+
+	// VM-specific fields
+	vm  *vmm.RunningVM[*vf.VirtualMachine]
+	pid int
+
 	waitblock  chan struct{}
 	status     task.Status
 	exitStatus uint32
 	exitedAt   time.Time
+
+	// For tracking the running command
+	commandCtx    context.Context
+	commandCancel context.CancelFunc
 }
 
 func (p *managedProcess) getConsoleL() *os.File {
@@ -35,8 +47,13 @@ func (p *managedProcess) getConsoleL() *os.File {
 }
 
 func (p *managedProcess) destroy() (retErr error) {
-	// TODO: Do we care about error?
-	_ = p.kill(syscall.SIGKILL)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Cancel any running command
+	if p.commandCancel != nil {
+		p.commandCancel()
+	}
 
 	if err := p.io.Close(); err != nil {
 		retErr = multierror.Append(retErr, err)
@@ -58,10 +75,21 @@ func (p *managedProcess) destroy() (retErr error) {
 }
 
 func (p *managedProcess) kill(signal syscall.Signal) error {
-	if p.cmd != nil {
-		if process := p.cmd.Process; p != nil {
-			return unix.Kill(-process.Pid, signal)
-		}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// For VM-based processes, we need to send the signal via the VM
+	if p.vm != nil && p.pid > 0 {
+		// Execute kill command in the VM
+		ctx := context.Background()
+		killCmd := fmt.Sprintf("kill -%d %d", int(signal), p.pid)
+		_, _, _, err := p.vm.Exec(ctx, killCmd)
+		return err
+	}
+
+	// If we have a command context, cancel it
+	if p.commandCancel != nil {
+		p.commandCancel()
 	}
 
 	return nil
@@ -76,58 +104,86 @@ func (p *managedProcess) setup(ctx context.Context, rootfs string, stdin string,
 	}
 
 	if len(p.spec.Args) <= 0 {
-		// TODO: How to handle this properly?
+		// Default to shell if no args provided
 		p.spec.Args = []string{"/bin/sh"}
-		// return fmt.Errorf("args must not be empty")
-	}
-
-	p.cmd = exec.Command(p.spec.Args[0])
-	p.cmd.Args = p.spec.Args
-	p.cmd.Dir = p.spec.Cwd
-	p.cmd.Env = p.spec.Env
-	p.cmd.SysProcAttr = &syscall.SysProcAttr{
-		Chroot: rootfs,
-		Credential: &syscall.Credential{
-			Uid: p.spec.User.UID,
-			Gid: p.spec.User.GID,
-		},
 	}
 
 	return nil
 }
 
-func (p *managedProcess) start() (err error) {
-	if p.spec.Terminal {
-		// TODO: I'd like to use containerd/console package instead
-		// But see https://github.com/containerd/console/issues/79
-		var consoleSize *pty.Winsize
-		if p.spec.ConsoleSize != nil {
-			consoleSize = &pty.Winsize{
-				Cols: uint16(p.spec.ConsoleSize.Width),
-				Rows: uint16(p.spec.ConsoleSize.Height),
+func (p *managedProcess) start(vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.vm = vm
+
+	// Wait for VM to be ready for exec
+	select {
+	case <-p.vm.WaitOnVMReadyToExec():
+		// VM is ready
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("timeout waiting for VM to be ready for exec")
+	}
+
+	// Build the command to execute
+	var cmdParts []string
+
+	// Handle working directory
+	if p.spec.Cwd != "" {
+		cmdParts = append(cmdParts, "cd", p.spec.Cwd, "&&")
+	}
+
+	// Handle environment variables
+	for _, env := range p.spec.Env {
+		cmdParts = append(cmdParts, "export", env, "&&")
+	}
+
+	// Add the actual command
+	cmdParts = append(cmdParts, p.spec.Args...)
+
+	command := strings.Join(cmdParts, " ")
+
+	// Create context for the command
+	p.commandCtx, p.commandCancel = context.WithCancel(context.Background())
+
+	p.status = task.Status_RUNNING
+
+	// Execute the command in the VM
+	go func() {
+		defer func() {
+			p.mu.Lock()
+			p.status = task.Status_STOPPED
+			p.exitedAt = time.Now()
+			close(p.waitblock)
+			p.mu.Unlock()
+		}()
+
+		stdout, stderr, exitCode, err := p.vm.Exec(p.commandCtx, command)
+
+		// Write output to the configured I/O
+		if len(stdout) > 0 {
+			p.io.stdout.Write(stdout)
+		}
+		if len(stderr) > 0 {
+			p.io.stderr.Write(stderr)
+		}
+
+		// Parse exit code
+		if len(exitCode) > 0 {
+			if code, parseErr := strconv.Atoi(strings.TrimSpace(string(exitCode))); parseErr == nil {
+				p.mu.Lock()
+				p.exitStatus = uint32(code)
+				p.mu.Unlock()
 			}
 		}
 
-		p.console, err = pty.StartWithSize(p.cmd, consoleSize)
 		if err != nil {
-			return err
+			slog.Error("command execution failed", "error", err, "command", command)
+			p.mu.Lock()
+			p.exitStatus = 1
+			p.mu.Unlock()
 		}
-
-		go io.Copy(p.console, p.io.stdin)
-		go io.Copy(p.io.stdout, p.console)
-	} else {
-		p.cmd.SysProcAttr.Setpgid = true
-		p.cmd.Stdin = p.io.stdin
-		p.cmd.Stdout = p.io.stdout
-		p.cmd.Stderr = p.io.stderr
-
-		err = p.cmd.Start()
-		if err != nil {
-			return err
-		}
-	}
-
-	p.status = task.Status_RUNNING
+	}()
 
 	return nil
 }

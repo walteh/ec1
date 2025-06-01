@@ -3,8 +3,14 @@ package containerd
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"path"
+	"path/filepath"
+	"sync"
+	"syscall"
+
 	"github.com/containerd/containerd/api/events"
-	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
 	"github.com/containerd/containerd/api/types"
 	"github.com/containerd/containerd/api/types/task"
 	"github.com/containerd/containerd/v2/core/mount"
@@ -12,7 +18,6 @@ import (
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/containerd/v2/pkg/protobuf"
-	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/containerd/v2/pkg/shutdown"
 	"github.com/containerd/errdefs"
@@ -22,13 +27,15 @@ import (
 	"github.com/containerd/typeurl/v2"
 	"github.com/creack/pty"
 	"github.com/opencontainers/runtime-spec/specs-go"
-	"net"
-	"os"
-	"path"
-	"path/filepath"
-	"sync"
-	"syscall"
-	"time"
+
+	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
+	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
+
+	"github.com/walteh/ec1/pkg/testing/toci"
+	"github.com/walteh/ec1/pkg/units"
+	"github.com/walteh/ec1/pkg/vmm/vf"
+
+	oci_image_cache "github.com/walteh/ec1/gen/oci-image-cache"
 )
 
 func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskAPI.TTRPCTaskService, error) {
@@ -95,10 +102,8 @@ func (s *service) State(ctx context.Context, request *taskAPI.StateRequest) (*ta
 		return nil, err
 	}
 
-	var pid int
-	if process := p.cmd.Process; process != nil {
-		pid = process.Pid
-	}
+	// For VM-based processes, we use the stored pid
+	var pid int = p.pid
 
 	return &taskAPI.StateResponse{
 		ID:         request.ID,
@@ -145,6 +150,8 @@ func (s *service) Create(ctx context.Context, request *taskAPI.CreateTaskRequest
 		bundlePath:    request.Bundle,
 		rootfs:        rootfs,
 		dnsSocketPath: dnsSocketPath,
+		hypervisor:    vf.NewHypervisor(),
+		cache:         toci.PreloadedImageCache(nil, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{}), // TODO: Proper cache
 		primary: managedProcess{
 			spec:      spec.Process,
 			waitblock: make(chan struct{}),
@@ -298,32 +305,9 @@ func (s *service) Start(ctx context.Context, request *taskAPI.StartRequest) (*ta
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if request.ExecID == "" {
-		if err = os.MkdirAll(path.Dir(c.dnsSocketPath), 0o755); err != nil {
-			return nil, err
-		}
-
-		dnsSocket, err := net.ListenUnix("unix", &net.UnixAddr{Name: c.dnsSocketPath, Net: "unix"})
-		if err != nil {
-			return nil, err
-		}
-
-		// TODO: We should stop this somehow?
-		go func() {
-			for {
-				con, err := dnsSocket.AcceptUnix()
-				if err != nil {
-					return
-				}
-
-				pipe, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: "/var/run/mDNSResponder", Net: "unix"})
-				if err != nil {
-					return
-				}
-				go unixSocketCopy(con, pipe)
-				go unixSocketCopy(pipe, con)
-			}
-		}()
+	// Create and start the VM for this container
+	if err := c.createVM(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
 
 	p, err := c.getProcess(request.ExecID)
@@ -331,57 +315,21 @@ func (s *service) Start(ctx context.Context, request *taskAPI.StartRequest) (*ta
 		return nil, err
 	}
 
-	if err = p.start(); err != nil {
+	// Start the process in the VM
+	if err := p.start(c.vm); err != nil {
 		return nil, err
 	}
 
-	go func() {
-		var w *os.ProcessState
+	// Set a fake PID for compatibility (VM processes don't have host PIDs)
+	p.pid = 1
 
-		if request.ExecID == "" {
-			w, _ = wait(p.cmd.Process)
-		} else {
-			w, _ = p.cmd.Process.Wait()
-		}
-
-		p.exitedAt = time.Now()
-		p.exitStatus = uint32(w.ExitCode())
-		p.status = task.Status_STOPPED
-
-		_ = p.io.Close()
-
-		// Madness...
-		id := request.ID
-		if request.ExecID != "" {
-			id = request.ExecID
-		}
-
-		s.events <- &events.TaskExit{
-			ContainerID: request.ID,
-			ID:          id,
-			Pid:         uint32(w.Pid()),
-			ExitedAt:    protobuf.ToTimestamp(p.exitedAt),
-			ExitStatus:  p.exitStatus,
-		}
-
-		close(p.waitblock)
-	}()
-
-	if request.ExecID == "" {
-		s.events <- &events.TaskStart{
-			ContainerID: request.ID,
-			Pid:         uint32(p.cmd.Process.Pid),
-		}
-	} else {
-		s.events <- &events.TaskExecStarted{
-			ContainerID: request.ID,
-			ExecID:      request.ExecID,
-			Pid:         uint32(p.cmd.Process.Pid),
-		}
+	s.events <- &events.TaskStart{
+		ContainerID: request.ID,
+		Pid:         uint32(p.pid),
 	}
 
 	return &taskAPI.StartResponse{
-		Pid: uint32(p.cmd.Process.Pid),
+		Pid: uint32(p.pid),
 	}, nil
 }
 
@@ -423,10 +371,7 @@ func (s *service) Delete(ctx context.Context, request *taskAPI.DeleteRequest) (*
 
 	delete(s.containers, request.ID)
 
-	var pid uint32
-	if p := c.primary.cmd.Process; p != nil {
-		pid = uint32(p.Pid)
-	}
+	var pid uint32 = uint32(c.primary.pid)
 
 	s.events <- &events.TaskDelete{
 		ContainerID: request.ID,
@@ -616,9 +561,7 @@ func (s *service) Connect(ctx context.Context, request *taskAPI.ConnectRequest) 
 
 	var pid int
 	if c, err := s.getContainerL(request.ID); err == nil {
-		if p := c.primary.cmd.Process; p != nil {
-			pid = p.Pid
-		}
+		pid = c.primary.pid
 	}
 
 	return &taskAPI.ConnectResponse{

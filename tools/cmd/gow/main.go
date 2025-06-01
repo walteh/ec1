@@ -250,6 +250,7 @@ func (cfg *GowConfig) runWithGotestsum(ctx context.Context, goArgs []string) err
 func (cfg *GowConfig) handleTest(args []string) error {
 	var functionCoverage bool
 	var force bool
+	var root bool
 	var targetDir string
 	var ide bool
 	var codesign bool
@@ -272,6 +273,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			functionCoverage = true
 		case "-force":
 			force = true
+		case "-root":
+			root = true
 		case "-ide":
 			ide = true
 		case "-codesign":
@@ -338,6 +341,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			goArgs = append(goArgs, arg)
 		}
 		i++
+	}
+
+	if root && os.Geteuid() != 0 {
+		return fmt.Errorf("root is required for -root flag")
 	}
 
 	// For compile-only mode (debugging), skip gow enhancements and pass through directly
@@ -650,7 +657,24 @@ func (cfg *GowConfig) handleDap(args []string) error {
 	newPath := cfg.WorkspaceRoot + ":" + path
 	os.Setenv("PATH", newPath)
 
-	dlvCmd := exec.Command("dlv", append([]string{"dap"}, args[1:]...)...)
+	var root bool
+
+	argz := []string{}
+
+	for _, arg := range args[1:] {
+		if arg == "-root" {
+			root = true
+		} else {
+			argz = append(argz, arg)
+		}
+	}
+
+	if root && os.Geteuid() != 0 {
+		fmt.Println("debug: root is required for -root flag")
+		return fmt.Errorf("root is required for -root flag")
+	}
+
+	dlvCmd := exec.Command("dlv", append([]string{"dap"}, argz...)...)
 	dlvCmd.Stdout = stdout
 	dlvCmd.Stderr = stderr
 	dlvCmd.Stdin = stdin

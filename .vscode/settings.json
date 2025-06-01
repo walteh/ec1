@@ -1,6 +1,6 @@
 {
 	"go.delveConfig": {
-		"dlvFlags": []
+		"dlvFlags": ["-root"]
 	},
 	"go.toolsEnvVars": {
 		"CGO_ENABLED": "1"
