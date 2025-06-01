@@ -6,6 +6,8 @@ go 1.24.3
 // - google.golang.org/grpc ./stats/opentelemetry
 exclude google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a
 
+exclude github.com/containerd/nerdctl/mod/tigron v0.0.0
+
 replace github.com/containerd/ttrpc => ../../ttrpc
 
 tool (

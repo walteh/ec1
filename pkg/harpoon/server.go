@@ -23,10 +23,45 @@ func NewAgentService() *AgentService {
 	return &AgentService{}
 }
 
-func newExecResponse(f func(*harpoonv1.ExecResponse_builder)) *harpoonv1.ExecResponse {
-	builder := &harpoonv1.ExecResponse_builder{}
-	f(builder)
-	return builder.Build()
+// streamOutput handles reading from a source and streaming it to the client
+func streamOutput(
+	reader io.Reader,
+	server harpoonv1.TTRPCGuestService_ExecServer,
+	responseBuilder func(func(*harpoonv1.Bytestream_builder)) (*harpoonv1.ExecResponse, error),
+	errch chan<- error,
+	done chan<- struct{},
+	streamType string,
+) {
+	defer close(done)
+	for {
+		buf := make([]byte, 1024)
+		n, err := reader.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			errch <- errors.Errorf("reading %s from command: %w", streamType, err)
+			return
+		}
+
+		resp, err := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
+			b.Data = buf[:n]
+			b.Done = ptr(false)
+		})
+		if err != nil {
+			errch <- errors.Errorf("building %s response: %w", streamType, err)
+			return
+		}
+
+		err = server.Send(resp)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			errch <- errors.Errorf("sending %s to client: %w", streamType, err)
+			return
+		}
+	}
 }
 
 func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) error {
@@ -99,85 +134,25 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	cmd.Stderr = stderr
 	cmd.Stdin = stdin
 
-	go func() {
-		defer close(stdoutDone)
-		for {
-			buf := make([]byte, 1024)
-			n, err := stdout.Read(buf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return
-				}
-				errch <- errors.Errorf("reading stdout from command: %w", err)
-				return
-			}
+	// Start stdout streaming
+	go streamOutput(
+		stdout,
+		server,
+		harpoonv1.NewValidatedExecResponse_WithStdout,
+		errch,
+		stdoutDone,
+		"stdout",
+	)
 
-			resp := (&harpoonv1.ExecResponse_builder{
-				Stdout: (&harpoonv1.Bytestream_builder{
-					Data: buf[:n],
-					Done: ptr(false),
-				}).Build(),
-			}).Build()
-			err = server.Send(resp)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					close(stdoutDone)
-					return
-				}
-				errch <- errors.Errorf("sending stdout to client: %w", err)
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer close(stderrDone)
-		for {
-			buf := make([]byte, 1024)
-			n, err := stderr.Read(buf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					close(stderrDone)
-					return
-				}
-				errch <- errors.Errorf("sending stderr to client: %w", err)
-				return
-			}
-			b, err := buildAndValidate(func() *harpoonv1.Bytestream_builder {
-				return &harpoonv1.Bytestream_builder{
-					Data: buf[:n],
-					Done: ptr(false),
-				}
-			})
-			if err != nil {
-				return nil, err
-			}
-			resd, err := buildAndValidate(func() (*harpoonv1.ExecResponse_builder, error) {
-
-				return &harpoonv1.ExecResponse_builder{
-					Stderr: b,
-				}, nil
-			})
-			if err != nil {
-				errch <- errors.Errorf("building stderr response: %w", err)
-				return
-			}
-			err = server.Send(resd)
-			// err = server.Send(newExecResponse(func(b *harpoonv1.ExecResponse_builder) {
-			// 	b.Stderr = newBytestream(func(b *harpoonv1.Bytestream_builder) {
-			// 		b.Data = buf[:n]
-			// 		b.Done = ptr(false)
-			// 	})
-			// }))
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return
-				}
-				errch <- errors.Errorf("sending stderr to client: %w", err)
-				return
-			}
-		}
-	}()
+	// Start stderr streaming
+	go streamOutput(
+		stderr,
+		server,
+		harpoonv1.NewValidatedExecResponse_WithStderr,
+		errch,
+		stderrDone,
+		"stderr",
+	)
 
 	go func() {
 		defer close(cmdDone)
@@ -186,23 +161,20 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) {
 				c := int32(exitErr.ExitCode())
-				resd, err := buildAndValidate(func(b *harpoonv1.ExecResponse_builder) error {
-					b.Exit, err = buildAndValidate(func(b *harpoonv1.ExecResponse_Exit_builder) error {
-						b.ExitCode = &c
-						return nil
-					})
-					return err
+				ec, err := harpoonv1.NewValidatedExecResponse_WithExit(func(b *harpoonv1.ExecResponse_Exit_builder) {
+					b.ExitCode = &c
 				})
 				if err != nil {
 					errch <- errors.Errorf("building exit response: %w", err)
 					return
 				}
-				err = server.Send(resd)
-				// err = server.Send(newExecResponse(func(b *harpoonv1.ExecResponse_builder) {
-				// 	b.Exit = (&harpoonv1.ExecResponse_Exit_builder{
-				// 		ExitCode: &c,
-				// 	}).Build()
-				// }))
+
+				err = server.Send(ec)
+				if err != nil {
+					errch <- errors.Errorf("sending exit response: %w", err)
+					return
+				}
+
 			} else {
 				errch <- errors.Errorf("running command - non-exit error: %w", err)
 			}
@@ -214,9 +186,14 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	go func() {
 		for err := range errch {
 			errs = append(errs, err)
-			err = server.Send(&harpoonv1.ExecResponse{
-				Error: ptr(err.Error()),
+			er, err := harpoonv1.NewValidatedExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
+				b.Error = ptr(err.Error())
 			})
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			err = server.Send(er)
 			if err != nil {
 				return
 			}
@@ -231,13 +208,6 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	close(errch)
 
 	allerrs := errors.Join(errs...)
-
-	err = server.Send(&harpoonv1.ExecResponse{
-		StreamDone: ptr(true),
-	})
-	if err != nil {
-		return err
-	}
 
 	return allerrs
 }
