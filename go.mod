@@ -18,7 +18,7 @@ require (
 	github.com/apex/log v1.9.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/containerd/containerd/api v1.9.0
-	github.com/containerd/containerd/v2 v2.0.4
+	github.com/containerd/containerd/v2 v2.0.5
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/errdefs/pkg v0.3.0
 	github.com/containerd/fifo v1.1.0
