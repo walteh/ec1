@@ -100,31 +100,6 @@
 		"go.testExplorer.showOutput": true,
 		// "go.gopath": "${workspaceFolder}/go",
 
-		"go.delveConfig": {
-			// "substitutePath": [
-			// 	{
-			// 		"from": "go",
-			// 		"to": "${workspaceFolder}/go"
-			// 	}
-			// ],
-			"dlvFlags": []
-		},
-		"go.toolsEnvVars": {
-			"CGO_ENABLED": "1"
-		},
-		"gopls": {
-			"formatting.local": "github.com/walteh/ec1",
-			"build.buildFlags": ["-tags=cgo,libkrun,vmnet_helper"]
-		},
-		"go.buildTags": "cgo,libkrun,vmnet_helper",
-		"go.formatFlags": ["retab"],
-		"go.formatTool": "custom",
-		"go.alternateTools": {
-			"go": "${workspaceFolder}/gow",
-			"dlv": "${workspaceFolder}/gow",
-			"customFormatter": "${workspaceFolder}/gow"
-		},
-		"go.testFlags": ["-ide", "-codesign", "-v"],
 		"editor.formatOnSave": true,
 		"editor.detectIndentation": false,
 		"files.associations": {

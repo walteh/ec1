@@ -7,10 +7,11 @@
 package harpoonv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	_ "google.golang.org/protobuf/types/gofeaturespb"
 	reflect "reflect"
-	sync "sync"
 	unsafe "unsafe"
 )
 
@@ -21,22 +22,125 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Bytestream struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Data        []byte                 `protobuf:"bytes,1,opt,name=data"`
+	xxx_hidden_Done        bool                   `protobuf:"varint,2,opt,name=done"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *Bytestream) Reset() {
+	*x = Bytestream{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Bytestream) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Bytestream) ProtoMessage() {}
+
+func (x *Bytestream) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *Bytestream) GetData() []byte {
+	if x != nil {
+		return x.xxx_hidden_Data
+	}
+	return nil
+}
+
+func (x *Bytestream) GetDone() bool {
+	if x != nil {
+		return x.xxx_hidden_Done
+	}
+	return false
+}
+
+func (x *Bytestream) SetData(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_Data = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *Bytestream) SetDone(v bool) {
+	x.xxx_hidden_Done = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+}
+
+func (x *Bytestream) HasData() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *Bytestream) HasDone() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *Bytestream) ClearData() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Data = nil
+}
+
+func (x *Bytestream) ClearDone() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Done = false
+}
+
+type Bytestream_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// the data to send
+	Data []byte
+	Done *bool
+}
+
+func (b0 Bytestream_builder) Build() *Bytestream {
+	m0 := &Bytestream{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Data != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_Data = b.Data
+	}
+	if b.Done != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_Done = *b.Done
+	}
+	return m0
+}
+
 type ExecRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Argc          *string                `protobuf:"bytes,1,opt,name=argc" json:"argc,omitempty"`
-	Argv          []string               `protobuf:"bytes,2,rep,name=argv" json:"argv,omitempty"`
-	EnvVars       map[string]string      `protobuf:"bytes,3,rep,name=env_vars,json=envVars" json:"env_vars,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	UseEntrypoint *bool                  `protobuf:"varint,4,opt,name=use_entrypoint,json=useEntrypoint" json:"use_entrypoint,omitempty"`
-	Stdin         []byte                 `protobuf:"bytes,5,opt,name=stdin" json:"stdin,omitempty"`
-	StreamDone    *bool                  `protobuf:"varint,6,opt,name=stream_done,json=streamDone" json:"stream_done,omitempty"`
-	Error         *string                `protobuf:"bytes,7,opt,name=error" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Request isExecRequest_Request  `protobuf_oneof:"request"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ExecRequest) Reset() {
 	*x = ExecRequest{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[0]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +152,7 @@ func (x *ExecRequest) String() string {
 func (*ExecRequest) ProtoMessage() {}
 
 func (x *ExecRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[0]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,74 +163,201 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
-func (*ExecRequest) Descriptor() ([]byte, []int) {
-	return file_harpoon_v1_harpoon_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *ExecRequest) GetArgc() string {
-	if x != nil && x.Argc != nil {
-		return *x.Argc
-	}
-	return ""
-}
-
-func (x *ExecRequest) GetArgv() []string {
+func (x *ExecRequest) GetStart() *ExecRequest_Start {
 	if x != nil {
-		return x.Argv
+		if x, ok := x.xxx_hidden_Request.(*execRequest_Start_); ok {
+			return x.Start
+		}
 	}
 	return nil
 }
 
-func (x *ExecRequest) GetEnvVars() map[string]string {
+func (x *ExecRequest) GetStdin() *Bytestream {
 	if x != nil {
-		return x.EnvVars
+		if x, ok := x.xxx_hidden_Request.(*execRequest_Stdin); ok {
+			return x.Stdin
+		}
 	}
 	return nil
 }
 
-func (x *ExecRequest) GetUseEntrypoint() bool {
-	if x != nil && x.UseEntrypoint != nil {
-		return *x.UseEntrypoint
-	}
-	return false
-}
-
-func (x *ExecRequest) GetStdin() []byte {
+func (x *ExecRequest) GetTerminate() *ExecRequest_Terminate {
 	if x != nil {
-		return x.Stdin
+		if x, ok := x.xxx_hidden_Request.(*execRequest_Terminate_); ok {
+			return x.Terminate
+		}
 	}
 	return nil
 }
 
-func (x *ExecRequest) GetStreamDone() bool {
-	if x != nil && x.StreamDone != nil {
-		return *x.StreamDone
+func (x *ExecRequest) SetStart(v *ExecRequest_Start) {
+	if v == nil {
+		x.xxx_hidden_Request = nil
+		return
 	}
-	return false
+	x.xxx_hidden_Request = &execRequest_Start_{v}
 }
 
-func (x *ExecRequest) GetError() string {
-	if x != nil && x.Error != nil {
-		return *x.Error
+func (x *ExecRequest) SetStdin(v *Bytestream) {
+	if v == nil {
+		x.xxx_hidden_Request = nil
+		return
 	}
-	return ""
+	x.xxx_hidden_Request = &execRequest_Stdin{v}
 }
+
+func (x *ExecRequest) SetTerminate(v *ExecRequest_Terminate) {
+	if v == nil {
+		x.xxx_hidden_Request = nil
+		return
+	}
+	x.xxx_hidden_Request = &execRequest_Terminate_{v}
+}
+
+func (x *ExecRequest) HasRequest() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Request != nil
+}
+
+func (x *ExecRequest) HasStart() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Request.(*execRequest_Start_)
+	return ok
+}
+
+func (x *ExecRequest) HasStdin() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Request.(*execRequest_Stdin)
+	return ok
+}
+
+func (x *ExecRequest) HasTerminate() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Request.(*execRequest_Terminate_)
+	return ok
+}
+
+func (x *ExecRequest) ClearRequest() {
+	x.xxx_hidden_Request = nil
+}
+
+func (x *ExecRequest) ClearStart() {
+	if _, ok := x.xxx_hidden_Request.(*execRequest_Start_); ok {
+		x.xxx_hidden_Request = nil
+	}
+}
+
+func (x *ExecRequest) ClearStdin() {
+	if _, ok := x.xxx_hidden_Request.(*execRequest_Stdin); ok {
+		x.xxx_hidden_Request = nil
+	}
+}
+
+func (x *ExecRequest) ClearTerminate() {
+	if _, ok := x.xxx_hidden_Request.(*execRequest_Terminate_); ok {
+		x.xxx_hidden_Request = nil
+	}
+}
+
+const ExecRequest_Request_not_set_case case_ExecRequest_Request = 0
+const ExecRequest_Start_case case_ExecRequest_Request = 1
+const ExecRequest_Stdin_case case_ExecRequest_Request = 2
+const ExecRequest_Terminate_case case_ExecRequest_Request = 3
+
+func (x *ExecRequest) WhichRequest() case_ExecRequest_Request {
+	if x == nil {
+		return ExecRequest_Request_not_set_case
+	}
+	switch x.xxx_hidden_Request.(type) {
+	case *execRequest_Start_:
+		return ExecRequest_Start_case
+	case *execRequest_Stdin:
+		return ExecRequest_Stdin_case
+	case *execRequest_Terminate_:
+		return ExecRequest_Terminate_case
+	default:
+		return ExecRequest_Request_not_set_case
+	}
+}
+
+type ExecRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// Fields of oneof xxx_hidden_Request:
+	// the start request
+	Start     *ExecRequest_Start
+	Stdin     *Bytestream
+	Terminate *ExecRequest_Terminate
+	// -- end of xxx_hidden_Request
+}
+
+func (b0 ExecRequest_builder) Build() *ExecRequest {
+	m0 := &ExecRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Start != nil {
+		x.xxx_hidden_Request = &execRequest_Start_{b.Start}
+	}
+	if b.Stdin != nil {
+		x.xxx_hidden_Request = &execRequest_Stdin{b.Stdin}
+	}
+	if b.Terminate != nil {
+		x.xxx_hidden_Request = &execRequest_Terminate_{b.Terminate}
+	}
+	return m0
+}
+
+type case_ExecRequest_Request protoreflect.FieldNumber
+
+func (x case_ExecRequest_Request) String() string {
+	md := file_harpoon_v1_harpoon_proto_msgTypes[1].Descriptor()
+	if x == 0 {
+		return "not set"
+	}
+	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
+}
+
+type isExecRequest_Request interface {
+	isExecRequest_Request()
+}
+
+type execRequest_Start_ struct {
+	// the start request
+	Start *ExecRequest_Start `protobuf:"bytes,1,opt,name=start,oneof"`
+}
+
+type execRequest_Stdin struct {
+	Stdin *Bytestream `protobuf:"bytes,2,opt,name=stdin,oneof"`
+}
+
+type execRequest_Terminate_ struct {
+	Terminate *ExecRequest_Terminate `protobuf:"bytes,3,opt,name=terminate,oneof"`
+}
+
+func (*execRequest_Start_) isExecRequest_Request() {}
+
+func (*execRequest_Stdin) isExecRequest_Request() {}
+
+func (*execRequest_Terminate_) isExecRequest_Request() {}
 
 type ExecResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Stdout        []byte                 `protobuf:"bytes,1,opt,name=stdout" json:"stdout,omitempty"`
-	Stderr        []byte                 `protobuf:"bytes,2,opt,name=stderr" json:"stderr,omitempty"`
-	ExitCode      *int32                 `protobuf:"varint,3,opt,name=exit_code,json=exitCode" json:"exit_code,omitempty"`
-	StreamDone    *bool                  `protobuf:"varint,4,opt,name=stream_done,json=streamDone" json:"stream_done,omitempty"`
-	Error         *string                `protobuf:"bytes,5,opt,name=error" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState  `protogen:"opaque.v1"`
+	xxx_hidden_Response isExecResponse_Response `protobuf_oneof:"response"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ExecResponse) Reset() {
 	*x = ExecResponse{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[1]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -138,7 +369,7 @@ func (x *ExecResponse) String() string {
 func (*ExecResponse) ProtoMessage() {}
 
 func (x *ExecResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[1]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -149,44 +380,631 @@ func (x *ExecResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecResponse.ProtoReflect.Descriptor instead.
-func (*ExecResponse) Descriptor() ([]byte, []int) {
-	return file_harpoon_v1_harpoon_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *ExecResponse) GetStdout() []byte {
+func (x *ExecResponse) GetStdout() *Bytestream {
 	if x != nil {
-		return x.Stdout
+		if x, ok := x.xxx_hidden_Response.(*execResponse_Stdout); ok {
+			return x.Stdout
+		}
 	}
 	return nil
 }
 
-func (x *ExecResponse) GetStderr() []byte {
+func (x *ExecResponse) GetStderr() *Bytestream {
 	if x != nil {
-		return x.Stderr
+		if x, ok := x.xxx_hidden_Response.(*execResponse_Stderr); ok {
+			return x.Stderr
+		}
 	}
 	return nil
 }
 
-func (x *ExecResponse) GetExitCode() int32 {
-	if x != nil && x.ExitCode != nil {
-		return *x.ExitCode
+func (x *ExecResponse) GetExit() *ExecResponse_Exit {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Response.(*execResponse_Exit_); ok {
+			return x.Exit
+		}
 	}
-	return 0
+	return nil
 }
 
-func (x *ExecResponse) GetStreamDone() bool {
-	if x != nil && x.StreamDone != nil {
-		return *x.StreamDone
+func (x *ExecResponse) GetError() *ExecResponse_Error {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Response.(*execResponse_Error_); ok {
+			return x.Error
+		}
+	}
+	return nil
+}
+
+func (x *ExecResponse) SetStdout(v *Bytestream) {
+	if v == nil {
+		x.xxx_hidden_Response = nil
+		return
+	}
+	x.xxx_hidden_Response = &execResponse_Stdout{v}
+}
+
+func (x *ExecResponse) SetStderr(v *Bytestream) {
+	if v == nil {
+		x.xxx_hidden_Response = nil
+		return
+	}
+	x.xxx_hidden_Response = &execResponse_Stderr{v}
+}
+
+func (x *ExecResponse) SetExit(v *ExecResponse_Exit) {
+	if v == nil {
+		x.xxx_hidden_Response = nil
+		return
+	}
+	x.xxx_hidden_Response = &execResponse_Exit_{v}
+}
+
+func (x *ExecResponse) SetError(v *ExecResponse_Error) {
+	if v == nil {
+		x.xxx_hidden_Response = nil
+		return
+	}
+	x.xxx_hidden_Response = &execResponse_Error_{v}
+}
+
+func (x *ExecResponse) HasResponse() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Response != nil
+}
+
+func (x *ExecResponse) HasStdout() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Response.(*execResponse_Stdout)
+	return ok
+}
+
+func (x *ExecResponse) HasStderr() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Response.(*execResponse_Stderr)
+	return ok
+}
+
+func (x *ExecResponse) HasExit() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Response.(*execResponse_Exit_)
+	return ok
+}
+
+func (x *ExecResponse) HasError() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Response.(*execResponse_Error_)
+	return ok
+}
+
+func (x *ExecResponse) ClearResponse() {
+	x.xxx_hidden_Response = nil
+}
+
+func (x *ExecResponse) ClearStdout() {
+	if _, ok := x.xxx_hidden_Response.(*execResponse_Stdout); ok {
+		x.xxx_hidden_Response = nil
+	}
+}
+
+func (x *ExecResponse) ClearStderr() {
+	if _, ok := x.xxx_hidden_Response.(*execResponse_Stderr); ok {
+		x.xxx_hidden_Response = nil
+	}
+}
+
+func (x *ExecResponse) ClearExit() {
+	if _, ok := x.xxx_hidden_Response.(*execResponse_Exit_); ok {
+		x.xxx_hidden_Response = nil
+	}
+}
+
+func (x *ExecResponse) ClearError() {
+	if _, ok := x.xxx_hidden_Response.(*execResponse_Error_); ok {
+		x.xxx_hidden_Response = nil
+	}
+}
+
+const ExecResponse_Response_not_set_case case_ExecResponse_Response = 0
+const ExecResponse_Stdout_case case_ExecResponse_Response = 1
+const ExecResponse_Stderr_case case_ExecResponse_Response = 2
+const ExecResponse_Exit_case case_ExecResponse_Response = 3
+const ExecResponse_Error_case case_ExecResponse_Response = 4
+
+func (x *ExecResponse) WhichResponse() case_ExecResponse_Response {
+	if x == nil {
+		return ExecResponse_Response_not_set_case
+	}
+	switch x.xxx_hidden_Response.(type) {
+	case *execResponse_Stdout:
+		return ExecResponse_Stdout_case
+	case *execResponse_Stderr:
+		return ExecResponse_Stderr_case
+	case *execResponse_Exit_:
+		return ExecResponse_Exit_case
+	case *execResponse_Error_:
+		return ExecResponse_Error_case
+	default:
+		return ExecResponse_Response_not_set_case
+	}
+}
+
+type ExecResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// Fields of oneof xxx_hidden_Response:
+	Stdout *Bytestream
+	Stderr *Bytestream
+	Exit   *ExecResponse_Exit
+	Error  *ExecResponse_Error
+	// -- end of xxx_hidden_Response
+}
+
+func (b0 ExecResponse_builder) Build() *ExecResponse {
+	m0 := &ExecResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Stdout != nil {
+		x.xxx_hidden_Response = &execResponse_Stdout{b.Stdout}
+	}
+	if b.Stderr != nil {
+		x.xxx_hidden_Response = &execResponse_Stderr{b.Stderr}
+	}
+	if b.Exit != nil {
+		x.xxx_hidden_Response = &execResponse_Exit_{b.Exit}
+	}
+	if b.Error != nil {
+		x.xxx_hidden_Response = &execResponse_Error_{b.Error}
+	}
+	return m0
+}
+
+type case_ExecResponse_Response protoreflect.FieldNumber
+
+func (x case_ExecResponse_Response) String() string {
+	md := file_harpoon_v1_harpoon_proto_msgTypes[2].Descriptor()
+	if x == 0 {
+		return "not set"
+	}
+	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
+}
+
+type isExecResponse_Response interface {
+	isExecResponse_Response()
+}
+
+type execResponse_Stdout struct {
+	Stdout *Bytestream `protobuf:"bytes,1,opt,name=stdout,oneof"`
+}
+
+type execResponse_Stderr struct {
+	Stderr *Bytestream `protobuf:"bytes,2,opt,name=stderr,oneof"`
+}
+
+type execResponse_Exit_ struct {
+	Exit *ExecResponse_Exit `protobuf:"bytes,3,opt,name=exit,oneof"`
+}
+
+type execResponse_Error_ struct {
+	Error *ExecResponse_Error `protobuf:"bytes,4,opt,name=error,oneof"`
+}
+
+func (*execResponse_Stdout) isExecResponse_Response() {}
+
+func (*execResponse_Stderr) isExecResponse_Response() {}
+
+func (*execResponse_Exit_) isExecResponse_Response() {}
+
+func (*execResponse_Error_) isExecResponse_Response() {}
+
+type ExecRequest_Start struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Argc          *string                `protobuf:"bytes,1,opt,name=argc"`
+	xxx_hidden_Argv          []string               `protobuf:"bytes,2,rep,name=argv"`
+	xxx_hidden_EnvVars       map[string]string      `protobuf:"bytes,3,rep,name=env_vars,json=envVars" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	xxx_hidden_UseEntrypoint bool                   `protobuf:"varint,4,opt,name=use_entrypoint,json=useEntrypoint"`
+	xxx_hidden_Stdin         bool                   `protobuf:"varint,5,opt,name=stdin"`
+	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
+	XXX_presence             [1]uint32
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *ExecRequest_Start) Reset() {
+	*x = ExecRequest_Start{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecRequest_Start) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecRequest_Start) ProtoMessage() {}
+
+func (x *ExecRequest_Start) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ExecRequest_Start) GetArgc() string {
+	if x != nil {
+		if x.xxx_hidden_Argc != nil {
+			return *x.xxx_hidden_Argc
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ExecRequest_Start) GetArgv() []string {
+	if x != nil {
+		return x.xxx_hidden_Argv
+	}
+	return nil
+}
+
+func (x *ExecRequest_Start) GetEnvVars() map[string]string {
+	if x != nil {
+		return x.xxx_hidden_EnvVars
+	}
+	return nil
+}
+
+func (x *ExecRequest_Start) GetUseEntrypoint() bool {
+	if x != nil {
+		return x.xxx_hidden_UseEntrypoint
 	}
 	return false
 }
 
-func (x *ExecResponse) GetError() string {
-	if x != nil && x.Error != nil {
-		return *x.Error
+func (x *ExecRequest_Start) GetStdin() bool {
+	if x != nil {
+		return x.xxx_hidden_Stdin
+	}
+	return false
+}
+
+func (x *ExecRequest_Start) SetArgc(v string) {
+	x.xxx_hidden_Argc = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 5)
+}
+
+func (x *ExecRequest_Start) SetArgv(v []string) {
+	x.xxx_hidden_Argv = v
+}
+
+func (x *ExecRequest_Start) SetEnvVars(v map[string]string) {
+	x.xxx_hidden_EnvVars = v
+}
+
+func (x *ExecRequest_Start) SetUseEntrypoint(v bool) {
+	x.xxx_hidden_UseEntrypoint = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *ExecRequest_Start) SetStdin(v bool) {
+	x.xxx_hidden_Stdin = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+}
+
+func (x *ExecRequest_Start) HasArgc() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ExecRequest_Start) HasUseEntrypoint() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *ExecRequest_Start) HasStdin() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *ExecRequest_Start) ClearArgc() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Argc = nil
+}
+
+func (x *ExecRequest_Start) ClearUseEntrypoint() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_UseEntrypoint = false
+}
+
+func (x *ExecRequest_Start) ClearStdin() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_Stdin = false
+}
+
+type ExecRequest_Start_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// the executable to run
+	Argc *string
+	// the arguments to pass to the executable
+	Argv []string
+	// the environment variables to set for the executable
+	EnvVars map[string]string
+	// whether to append the entrypoint to argc
+	UseEntrypoint *bool
+	// whether to read stdin from the client
+	Stdin *bool
+}
+
+func (b0 ExecRequest_Start_builder) Build() *ExecRequest_Start {
+	m0 := &ExecRequest_Start{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Argc != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 5)
+		x.xxx_hidden_Argc = b.Argc
+	}
+	x.xxx_hidden_Argv = b.Argv
+	x.xxx_hidden_EnvVars = b.EnvVars
+	if b.UseEntrypoint != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		x.xxx_hidden_UseEntrypoint = *b.UseEntrypoint
+	}
+	if b.Stdin != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		x.xxx_hidden_Stdin = *b.Stdin
+	}
+	return m0
+}
+
+type ExecRequest_Terminate struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Force       bool                   `protobuf:"varint,1,opt,name=force"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ExecRequest_Terminate) Reset() {
+	*x = ExecRequest_Terminate{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecRequest_Terminate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecRequest_Terminate) ProtoMessage() {}
+
+func (x *ExecRequest_Terminate) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ExecRequest_Terminate) GetForce() bool {
+	if x != nil {
+		return x.xxx_hidden_Force
+	}
+	return false
+}
+
+func (x *ExecRequest_Terminate) SetForce(v bool) {
+	x.xxx_hidden_Force = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *ExecRequest_Terminate) HasForce() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ExecRequest_Terminate) ClearForce() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Force = false
+}
+
+type ExecRequest_Terminate_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// whether to force the termination
+	Force *bool
+}
+
+func (b0 ExecRequest_Terminate_builder) Build() *ExecRequest_Terminate {
+	m0 := &ExecRequest_Terminate{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Force != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_Force = *b.Force
+	}
+	return m0
+}
+
+type ExecResponse_Exit struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_ExitCode    int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ExecResponse_Exit) Reset() {
+	*x = ExecResponse_Exit{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecResponse_Exit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecResponse_Exit) ProtoMessage() {}
+
+func (x *ExecResponse_Exit) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ExecResponse_Exit) GetExitCode() int32 {
+	if x != nil {
+		return x.xxx_hidden_ExitCode
+	}
+	return 0
+}
+
+func (x *ExecResponse_Exit) SetExitCode(v int32) {
+	x.xxx_hidden_ExitCode = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *ExecResponse_Exit) HasExitCode() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ExecResponse_Exit) ClearExitCode() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_ExitCode = 0
+}
+
+type ExecResponse_Exit_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	ExitCode *int32
+}
+
+func (b0 ExecResponse_Exit_builder) Build() *ExecResponse_Exit {
+	m0 := &ExecResponse_Exit{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.ExitCode != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_ExitCode = *b.ExitCode
+	}
+	return m0
+}
+
+type ExecResponse_Error struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Error       *string                `protobuf:"bytes,1,opt,name=error"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ExecResponse_Error) Reset() {
+	*x = ExecResponse_Error{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecResponse_Error) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecResponse_Error) ProtoMessage() {}
+
+func (x *ExecResponse_Error) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ExecResponse_Error) GetError() string {
+	if x != nil {
+		if x.xxx_hidden_Error != nil {
+			return *x.xxx_hidden_Error
+		}
+		return ""
 	}
 	return ""
+}
+
+func (x *ExecResponse_Error) SetError(v string) {
+	x.xxx_hidden_Error = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *ExecResponse_Error) HasError() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ExecResponse_Error) ClearError() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Error = nil
+}
+
+type ExecResponse_Error_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Error *string
+}
+
+func (b0 ExecResponse_Error_builder) Build() *ExecResponse_Error {
+	m0 := &ExecResponse_Error{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Error != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_Error = b.Error
+	}
+	return m0
 }
 
 var File_harpoon_v1_harpoon_proto protoreflect.FileDescriptor
@@ -194,59 +1012,71 @@ var File_harpoon_v1_harpoon_proto protoreflect.FileDescriptor
 const file_harpoon_v1_harpoon_proto_rawDesc = "" +
 	"\n" +
 	"\x18harpoon/v1/harpoon.proto\x12\n" +
-	"harpoon.v1\"\xa6\x02\n" +
-	"\vExecRequest\x12\x12\n" +
-	"\x04argc\x18\x01 \x01(\tR\x04argc\x12\x12\n" +
-	"\x04argv\x18\x02 \x03(\tR\x04argv\x12?\n" +
-	"\benv_vars\x18\x03 \x03(\v2$.harpoon.v1.ExecRequest.EnvVarsEntryR\aenvVars\x12%\n" +
-	"\x0euse_entrypoint\x18\x04 \x01(\bR\ruseEntrypoint\x12\x14\n" +
-	"\x05stdin\x18\x05 \x01(\fR\x05stdin\x12\x1f\n" +
-	"\vstream_done\x18\x06 \x01(\bR\n" +
-	"streamDone\x12\x14\n" +
-	"\x05error\x18\a \x01(\tR\x05error\x1a:\n" +
+	"harpoon.v1\x1a\x1bbuf/validate/validate.proto\x1a!google/protobuf/go_features.proto\"D\n" +
+	"\n" +
+	"Bytestream\x12\x1a\n" +
+	"\x04data\x18\x01 \x01(\fB\x06\xbaH\x03\xc8\x01\x01R\x04data\x12\x1a\n" +
+	"\x04done\x18\x02 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x04done\"\x87\x04\n" +
+	"\vExecRequest\x125\n" +
+	"\x05start\x18\x01 \x01(\v2\x1d.harpoon.v1.ExecRequest.StartH\x00R\x05start\x12.\n" +
+	"\x05stdin\x18\x02 \x01(\v2\x16.harpoon.v1.BytestreamH\x00R\x05stdin\x12A\n" +
+	"\tterminate\x18\x03 \x01(\v2!.harpoon.v1.ExecRequest.TerminateH\x00R\tterminate\x1a\x97\x02\n" +
+	"\x05Start\x12\x1a\n" +
+	"\x04argc\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04argc\x12\x1a\n" +
+	"\x04argv\x18\x02 \x03(\tB\x06\xbaH\x03\xc8\x01\x01R\x04argv\x12M\n" +
+	"\benv_vars\x18\x03 \x03(\v2*.harpoon.v1.ExecRequest.Start.EnvVarsEntryB\x06\xbaH\x03\xc8\x01\x01R\aenvVars\x12-\n" +
+	"\x0euse_entrypoint\x18\x04 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\ruseEntrypoint\x12\x1c\n" +
+	"\x05stdin\x18\x05 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x05stdin\x1a:\n" +
 	"\fEnvVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\x01\n" +
-	"\fExecResponse\x12\x16\n" +
-	"\x06stdout\x18\x01 \x01(\fR\x06stdout\x12\x16\n" +
-	"\x06stderr\x18\x02 \x01(\fR\x06stderr\x12\x1b\n" +
-	"\texit_code\x18\x03 \x01(\x05R\bexitCode\x12\x1f\n" +
-	"\vstream_done\x18\x04 \x01(\bR\n" +
-	"streamDone\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error2M\n" +
-	"\fAgentService\x12=\n" +
-	"\x04Exec\x12\x17.harpoon.v1.ExecRequest\x1a\x18.harpoon.v1.ExecResponse(\x010\x01B\xa4\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a)\n" +
+	"\tTerminate\x12\x1c\n" +
+	"\x05force\x18\x01 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x05forceB\t\n" +
+	"\arequest\"\xaf\x02\n" +
+	"\fExecResponse\x120\n" +
+	"\x06stdout\x18\x01 \x01(\v2\x16.harpoon.v1.BytestreamH\x00R\x06stdout\x120\n" +
+	"\x06stderr\x18\x02 \x01(\v2\x16.harpoon.v1.BytestreamH\x00R\x06stderr\x123\n" +
+	"\x04exit\x18\x03 \x01(\v2\x1d.harpoon.v1.ExecResponse.ExitH\x00R\x04exit\x126\n" +
+	"\x05error\x18\x04 \x01(\v2\x1e.harpoon.v1.ExecResponse.ErrorH\x00R\x05error\x1a#\n" +
+	"\x04Exit\x12\x1b\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x1a\x1d\n" +
+	"\x05Error\x12\x14\n" +
+	"\x05error\x18\x01 \x01(\tR\x05errorB\n" +
+	"\n" +
+	"\bresponse2M\n" +
+	"\fGuestService\x12=\n" +
+	"\x04Exec\x12\x17.harpoon.v1.ExecRequest\x1a\x18.harpoon.v1.ExecResponse(\x010\x01B\xac\x01\n" +
 	"\x0ecom.harpoon.v1B\fHarpoonProtoP\x01Z;github.com/walteh/ec1/gen/proto/golang/harpoon/v1;harpoonv1\xa2\x02\x03HXX\xaa\x02\n" +
 	"Harpoon.V1\xca\x02\n" +
-	"Harpoon\\V1\xe2\x02\x16Harpoon\\V1\\GPBMetadata\xea\x02\vHarpoon::V1b\beditionsp\xe8\a"
+	"Harpoon\\V1\xe2\x02\x16Harpoon\\V1\\GPBMetadata\xea\x02\vHarpoon::V1\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
-var (
-	file_harpoon_v1_harpoon_proto_rawDescOnce sync.Once
-	file_harpoon_v1_harpoon_proto_rawDescData []byte
-)
-
-func file_harpoon_v1_harpoon_proto_rawDescGZIP() []byte {
-	file_harpoon_v1_harpoon_proto_rawDescOnce.Do(func() {
-		file_harpoon_v1_harpoon_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_harpoon_v1_harpoon_proto_rawDesc), len(file_harpoon_v1_harpoon_proto_rawDesc)))
-	})
-	return file_harpoon_v1_harpoon_proto_rawDescData
-}
-
-var file_harpoon_v1_harpoon_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_harpoon_v1_harpoon_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_harpoon_v1_harpoon_proto_goTypes = []any{
-	(*ExecRequest)(nil),  // 0: harpoon.v1.ExecRequest
-	(*ExecResponse)(nil), // 1: harpoon.v1.ExecResponse
-	nil,                  // 2: harpoon.v1.ExecRequest.EnvVarsEntry
+	(*Bytestream)(nil),            // 0: harpoon.v1.Bytestream
+	(*ExecRequest)(nil),           // 1: harpoon.v1.ExecRequest
+	(*ExecResponse)(nil),          // 2: harpoon.v1.ExecResponse
+	(*ExecRequest_Start)(nil),     // 3: harpoon.v1.ExecRequest.Start
+	(*ExecRequest_Terminate)(nil), // 4: harpoon.v1.ExecRequest.Terminate
+	nil,                           // 5: harpoon.v1.ExecRequest.Start.EnvVarsEntry
+	(*ExecResponse_Exit)(nil),     // 6: harpoon.v1.ExecResponse.Exit
+	(*ExecResponse_Error)(nil),    // 7: harpoon.v1.ExecResponse.Error
 }
 var file_harpoon_v1_harpoon_proto_depIdxs = []int32{
-	2, // 0: harpoon.v1.ExecRequest.env_vars:type_name -> harpoon.v1.ExecRequest.EnvVarsEntry
-	0, // 1: harpoon.v1.AgentService.Exec:input_type -> harpoon.v1.ExecRequest
-	1, // 2: harpoon.v1.AgentService.Exec:output_type -> harpoon.v1.ExecResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 0: harpoon.v1.ExecRequest.start:type_name -> harpoon.v1.ExecRequest.Start
+	0, // 1: harpoon.v1.ExecRequest.stdin:type_name -> harpoon.v1.Bytestream
+	4, // 2: harpoon.v1.ExecRequest.terminate:type_name -> harpoon.v1.ExecRequest.Terminate
+	0, // 3: harpoon.v1.ExecResponse.stdout:type_name -> harpoon.v1.Bytestream
+	0, // 4: harpoon.v1.ExecResponse.stderr:type_name -> harpoon.v1.Bytestream
+	6, // 5: harpoon.v1.ExecResponse.exit:type_name -> harpoon.v1.ExecResponse.Exit
+	7, // 6: harpoon.v1.ExecResponse.error:type_name -> harpoon.v1.ExecResponse.Error
+	5, // 7: harpoon.v1.ExecRequest.Start.env_vars:type_name -> harpoon.v1.ExecRequest.Start.EnvVarsEntry
+	1, // 8: harpoon.v1.GuestService.Exec:input_type -> harpoon.v1.ExecRequest
+	2, // 9: harpoon.v1.GuestService.Exec:output_type -> harpoon.v1.ExecResponse
+	9, // [9:10] is the sub-list for method output_type
+	8, // [8:9] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_harpoon_v1_harpoon_proto_init() }
@@ -254,13 +1084,24 @@ func file_harpoon_v1_harpoon_proto_init() {
 	if File_harpoon_v1_harpoon_proto != nil {
 		return
 	}
+	file_harpoon_v1_harpoon_proto_msgTypes[1].OneofWrappers = []any{
+		(*execRequest_Start_)(nil),
+		(*execRequest_Stdin)(nil),
+		(*execRequest_Terminate_)(nil),
+	}
+	file_harpoon_v1_harpoon_proto_msgTypes[2].OneofWrappers = []any{
+		(*execResponse_Stdout)(nil),
+		(*execResponse_Stderr)(nil),
+		(*execResponse_Exit_)(nil),
+		(*execResponse_Error_)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_harpoon_v1_harpoon_proto_rawDesc), len(file_harpoon_v1_harpoon_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

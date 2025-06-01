@@ -19,27 +19,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_Exec_FullMethodName = "/harpoon.v1.AgentService/Exec"
+	GuestService_Exec_FullMethodName = "/harpoon.v1.GuestService/Exec"
 )
 
-// AgentServiceClient is the client API for AgentService service.
+// GuestServiceClient is the client API for GuestService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type AgentServiceClient interface {
+type GuestServiceClient interface {
 	Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error)
 }
 
-type agentServiceClient struct {
+type guestServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAgentServiceClient(cc grpc.ClientConnInterface) AgentServiceClient {
-	return &agentServiceClient{cc}
+func NewGuestServiceClient(cc grpc.ClientConnInterface) GuestServiceClient {
+	return &guestServiceClient{cc}
 }
 
-func (c *agentServiceClient) Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error) {
+func (c *guestServiceClient) Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], AgentService_Exec_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &GuestService_ServiceDesc.Streams[0], GuestService_Exec_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -48,65 +48,65 @@ func (c *agentServiceClient) Exec(ctx context.Context, opts ...grpc.CallOption) 
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_ExecClient = grpc.BidiStreamingClient[ExecRequest, ExecResponse]
+type GuestService_ExecClient = grpc.BidiStreamingClient[ExecRequest, ExecResponse]
 
-// AgentServiceServer is the server API for AgentService service.
-// All implementations must embed UnimplementedAgentServiceServer
+// GuestServiceServer is the server API for GuestService service.
+// All implementations must embed UnimplementedGuestServiceServer
 // for forward compatibility.
-type AgentServiceServer interface {
+type GuestServiceServer interface {
 	Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error
-	mustEmbedUnimplementedAgentServiceServer()
+	mustEmbedUnimplementedGuestServiceServer()
 }
 
-// UnimplementedAgentServiceServer must be embedded to have
+// UnimplementedGuestServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedAgentServiceServer struct{}
+type UnimplementedGuestServiceServer struct{}
 
-func (UnimplementedAgentServiceServer) Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error {
+func (UnimplementedGuestServiceServer) Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Exec not implemented")
 }
-func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
-func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
+func (UnimplementedGuestServiceServer) mustEmbedUnimplementedGuestServiceServer() {}
+func (UnimplementedGuestServiceServer) testEmbeddedByValue()                      {}
 
-// UnsafeAgentServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AgentServiceServer will
+// UnsafeGuestServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to GuestServiceServer will
 // result in compilation errors.
-type UnsafeAgentServiceServer interface {
-	mustEmbedUnimplementedAgentServiceServer()
+type UnsafeGuestServiceServer interface {
+	mustEmbedUnimplementedGuestServiceServer()
 }
 
-func RegisterAgentServiceServer(s grpc.ServiceRegistrar, srv AgentServiceServer) {
-	// If the following call pancis, it indicates UnimplementedAgentServiceServer was
+func RegisterGuestServiceServer(s grpc.ServiceRegistrar, srv GuestServiceServer) {
+	// If the following call pancis, it indicates UnimplementedGuestServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&AgentService_ServiceDesc, srv)
+	s.RegisterService(&GuestService_ServiceDesc, srv)
 }
 
-func _AgentService_Exec_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(AgentServiceServer).Exec(&grpc.GenericServerStream[ExecRequest, ExecResponse]{ServerStream: stream})
+func _GuestService_Exec_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GuestServiceServer).Exec(&grpc.GenericServerStream[ExecRequest, ExecResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AgentService_ExecServer = grpc.BidiStreamingServer[ExecRequest, ExecResponse]
+type GuestService_ExecServer = grpc.BidiStreamingServer[ExecRequest, ExecResponse]
 
-// AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
+// GuestService_ServiceDesc is the grpc.ServiceDesc for GuestService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AgentService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "harpoon.v1.AgentService",
-	HandlerType: (*AgentServiceServer)(nil),
+var GuestService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "harpoon.v1.GuestService",
+	HandlerType: (*GuestServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Exec",
-			Handler:       _AgentService_Exec_Handler,
+			Handler:       _GuestService_Exec_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

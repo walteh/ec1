@@ -7,25 +7,25 @@ import (
 	ttrpc "github.com/containerd/ttrpc"
 )
 
-type TTRPCAgentServiceService interface {
-	Exec(context.Context, TTRPCAgentService_ExecServer) error
+type TTRPCGuestServiceService interface {
+	Exec(context.Context, TTRPCGuestService_ExecServer) error
 }
 
-type TTRPCAgentService_ExecServer interface {
+type TTRPCGuestService_ExecServer interface {
 	Send(*ExecResponse) error
 	Recv() (*ExecRequest, error)
 	ttrpc.StreamServer
 }
 
-type ttrpcagentserviceExecServer struct {
+type ttrpcguestserviceExecServer struct {
 	ttrpc.StreamServer
 }
 
-func (x *ttrpcagentserviceExecServer) Send(m *ExecResponse) error {
+func (x *ttrpcguestserviceExecServer) Send(m *ExecResponse) error {
 	return x.StreamServer.SendMsg(m)
 }
 
-func (x *ttrpcagentserviceExecServer) Recv() (*ExecRequest, error) {
+func (x *ttrpcguestserviceExecServer) Recv() (*ExecRequest, error) {
 	m := new(ExecRequest)
 	if err := x.StreamServer.RecvMsg(m); err != nil {
 		return nil, err
@@ -33,12 +33,12 @@ func (x *ttrpcagentserviceExecServer) Recv() (*ExecRequest, error) {
 	return m, nil
 }
 
-func RegisterTTRPCAgentServiceService(srv *ttrpc.Server, svc TTRPCAgentServiceService) {
-	srv.RegisterService("harpoon.v1.AgentService", &ttrpc.ServiceDesc{
+func RegisterTTRPCGuestServiceService(srv *ttrpc.Server, svc TTRPCGuestServiceService) {
+	srv.RegisterService("harpoon.v1.GuestService", &ttrpc.ServiceDesc{
 		Streams: map[string]ttrpc.Stream{
 			"Exec": {
 				Handler: func(ctx context.Context, stream ttrpc.StreamServer) (interface{}, error) {
-					return nil, svc.Exec(ctx, &ttrpcagentserviceExecServer{stream})
+					return nil, svc.Exec(ctx, &ttrpcguestserviceExecServer{stream})
 				},
 				StreamingClient: true,
 				StreamingServer: true,
@@ -47,47 +47,47 @@ func RegisterTTRPCAgentServiceService(srv *ttrpc.Server, svc TTRPCAgentServiceSe
 	})
 }
 
-type TTRPCAgentServiceClient interface {
-	Exec(context.Context) (TTRPCAgentService_ExecClient, error)
+type TTRPCGuestServiceClient interface {
+	Exec(context.Context) (TTRPCGuestService_ExecClient, error)
 }
 
-type ttrpcagentserviceClient struct {
+type ttrpcguestserviceClient struct {
 	client *ttrpc.Client
 }
 
-func NewTTRPCAgentServiceClient(client *ttrpc.Client) TTRPCAgentServiceClient {
-	return &ttrpcagentserviceClient{
+func NewTTRPCGuestServiceClient(client *ttrpc.Client) TTRPCGuestServiceClient {
+	return &ttrpcguestserviceClient{
 		client: client,
 	}
 }
 
-func (c *ttrpcagentserviceClient) Exec(ctx context.Context) (TTRPCAgentService_ExecClient, error) {
+func (c *ttrpcguestserviceClient) Exec(ctx context.Context) (TTRPCGuestService_ExecClient, error) {
 	stream, err := c.client.NewStream(ctx, &ttrpc.StreamDesc{
 		StreamingClient: true,
 		StreamingServer: true,
-	}, "harpoon.v1.AgentService", "Exec", nil)
+	}, "harpoon.v1.GuestService", "Exec", nil)
 	if err != nil {
 		return nil, err
 	}
-	x := &ttrpcagentserviceExecClient{stream}
+	x := &ttrpcguestserviceExecClient{stream}
 	return x, nil
 }
 
-type TTRPCAgentService_ExecClient interface {
+type TTRPCGuestService_ExecClient interface {
 	Send(*ExecRequest) error
 	Recv() (*ExecResponse, error)
 	ttrpc.ClientStream
 }
 
-type ttrpcagentserviceExecClient struct {
+type ttrpcguestserviceExecClient struct {
 	ttrpc.ClientStream
 }
 
-func (x *ttrpcagentserviceExecClient) Send(m *ExecRequest) error {
+func (x *ttrpcguestserviceExecClient) Send(m *ExecRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *ttrpcagentserviceExecClient) Recv() (*ExecResponse, error) {
+func (x *ttrpcguestserviceExecClient) Recv() (*ExecResponse, error) {
 	m := new(ExecResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err

@@ -3,7 +3,7 @@ modules:
   - name: github.com/walteh/ec1
     path: proto
 deps:
-  #   - "buf.build/bufbuild/protovalidate"
+  - "buf.build/bufbuild/protovalidate"
   - "buf.build/googleapis/googleapis"
 breaking:
     use:

@@ -6,6 +6,9 @@ managed:
     override:
       - file_option: go_package_prefix
         value: github.com/walteh/ec1/gen/proto/golang
+    disable:
+      - module: buf.build/bufbuild/protovalidate
+        file_option: go_package
 
 clean: true
 
@@ -13,7 +16,7 @@ plugins:
 
   - out: gen/proto/golang
     local: ["go", "tool", "google.golang.org/protobuf/cmd/protoc-gen-go"]
-    include_imports: true
+    include_imports: false
     strategy: all
     opt:
       - paths=source_relative
@@ -29,15 +32,21 @@ plugins:
       - paths=source_relative
 
   - out: gen/proto/golang
-    local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate"]
-    include_imports: true
-    opt:
-      - paths=source_relative
-      - prefix=GRPC
-      #   - buf_validate_file=ec1/validate/validate.proto
-
-  - out: gen/proto/golang
     local: ["go", "tool", "github.com/containerd/ttrpc/cmd/protoc-gen-go-ttrpc"]
     opt:
       - paths=source_relative
       - prefix=TTRPC
+
+    # TO ENABLE CUSTOM VALIDATION GENERATION:
+    # 1. comment the following to buf.yaml:
+    #   - "buf.build/bufbuild/protovalidate"
+    # 2. add the following to buf.gen.yaml:
+    #   - out: gen/proto/golang
+    #     local: ["go", "tool", "github.com/walteh/protoc-gen-protovalidate"]
+    #     include_imports: true
+    #     opt:
+    #       - paths=source_relative
+    #       - prefix=GRPC
+    #       #   - buf_validate_file=ec1/validate/validate.proto
+    # 3. comment out the managed.disable section in buf.gen.yaml
+    # 4. in buf.gen.yaml, make sure protoc-gen-go -> include_imports is TRUE

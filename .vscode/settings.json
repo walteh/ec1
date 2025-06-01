@@ -1,42 +1,21 @@
 {
-	"editor.formatOnSave": true,
-	"editor.detectIndentation": false,
-	"files.associations": {
-		"tsconfig.*json": "jsonc",
-		"*.css": "tailwindcss",
-		"Dockerfile": "dockerfile",
-		".copyrc": "hcl",
-		".vscode/settings.json": "jsonc"
+	"go.delveConfig": {
+		"dlvFlags": []
 	},
-	"explorer.sortOrder": "type",
-	"explorer.sortOrderLexicographicOptions": "upper",
-	"yaml.format.enable": false,
-	"[protobuf]": {
-		"editor.defaultFormatter": "walteh.retab-vscode"
+	"go.toolsEnvVars": {
+		"CGO_ENABLED": "1"
 	},
-	"material-icon-theme.folders.associations": {
-		"dynamo": "database",
-		"mw": "middleware"
+	"gopls": {
+		"formatting.local": "github.com/walteh/ec1",
+		"build.buildFlags": ["-tags=cgo,libkrun,vmnet_helper"]
 	},
-	"[json]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	"go.buildTags": "cgo,libkrun,vmnet_helper",
+	"go.formatFlags": ["retab"],
+	"go.formatTool": "custom",
+	"go.alternateTools": {
+		"go": "${workspaceFolder}/gow",
+		"dlv": "${workspaceFolder}/gow",
+		"customFormatter": "${workspaceFolder}/gow"
 	},
-	"[jsonc]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
-	},
-	"[dotenv]": {
-		"editor.defaultFormatter": "foxundermoon.shell-format"
-	},
-	"[go]": {
-		"editor.defaultFormatter": "golang.go"
-	},
-	"[ignore]": {
-		"editor.defaultFormatter": "foxundermoon.shell-format"
-	},
-	"[typescript]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
-	},
-	"[typescriptreact]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
-	}
+	"go.testFlags": ["-ide", "-codesign", "-v"]
 }

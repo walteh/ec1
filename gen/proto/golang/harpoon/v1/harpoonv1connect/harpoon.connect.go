@@ -21,8 +21,8 @@ import (
 const _ = connect.IsAtLeastVersion1_13_0
 
 const (
-	// AgentServiceName is the fully-qualified name of the AgentService service.
-	AgentServiceName = "harpoon.v1.AgentService"
+	// GuestServiceName is the fully-qualified name of the GuestService service.
+	GuestServiceName = "harpoon.v1.GuestService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -33,76 +33,76 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// AgentServiceExecProcedure is the fully-qualified name of the AgentService's Exec RPC.
-	AgentServiceExecProcedure = "/harpoon.v1.AgentService/Exec"
+	// GuestServiceExecProcedure is the fully-qualified name of the GuestService's Exec RPC.
+	GuestServiceExecProcedure = "/harpoon.v1.GuestService/Exec"
 )
 
-// AgentServiceClient is a client for the harpoon.v1.AgentService service.
-type AgentServiceClient interface {
+// GuestServiceClient is a client for the harpoon.v1.GuestService service.
+type GuestServiceClient interface {
 	Exec(context.Context) *connect.BidiStreamForClient[v1.ExecRequest, v1.ExecResponse]
 }
 
-// NewAgentServiceClient constructs a client for the harpoon.v1.AgentService service. By default, it
+// NewGuestServiceClient constructs a client for the harpoon.v1.GuestService service. By default, it
 // uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
 // uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
 // connect.WithGRPCWeb() options.
 //
 // The URL supplied here should be the base URL for the Connect or gRPC server (for example,
 // http://api.acme.com or https://acme.com/grpc).
-func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) AgentServiceClient {
+func NewGuestServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) GuestServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
-	agentServiceMethods := v1.File_harpoon_v1_harpoon_proto.Services().ByName("AgentService").Methods()
-	return &agentServiceClient{
+	guestServiceMethods := v1.File_harpoon_v1_harpoon_proto.Services().ByName("GuestService").Methods()
+	return &guestServiceClient{
 		exec: connect.NewClient[v1.ExecRequest, v1.ExecResponse](
 			httpClient,
-			baseURL+AgentServiceExecProcedure,
-			connect.WithSchema(agentServiceMethods.ByName("Exec")),
+			baseURL+GuestServiceExecProcedure,
+			connect.WithSchema(guestServiceMethods.ByName("Exec")),
 			connect.WithClientOptions(opts...),
 		),
 	}
 }
 
-// agentServiceClient implements AgentServiceClient.
-type agentServiceClient struct {
+// guestServiceClient implements GuestServiceClient.
+type guestServiceClient struct {
 	exec *connect.Client[v1.ExecRequest, v1.ExecResponse]
 }
 
-// Exec calls harpoon.v1.AgentService.Exec.
-func (c *agentServiceClient) Exec(ctx context.Context) *connect.BidiStreamForClient[v1.ExecRequest, v1.ExecResponse] {
+// Exec calls harpoon.v1.GuestService.Exec.
+func (c *guestServiceClient) Exec(ctx context.Context) *connect.BidiStreamForClient[v1.ExecRequest, v1.ExecResponse] {
 	return c.exec.CallBidiStream(ctx)
 }
 
-// AgentServiceHandler is an implementation of the harpoon.v1.AgentService service.
-type AgentServiceHandler interface {
+// GuestServiceHandler is an implementation of the harpoon.v1.GuestService service.
+type GuestServiceHandler interface {
 	Exec(context.Context, *connect.BidiStream[v1.ExecRequest, v1.ExecResponse]) error
 }
 
-// NewAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
+// NewGuestServiceHandler builds an HTTP handler from the service implementation. It returns the
 // path on which to mount the handler and the handler itself.
 //
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
-func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	agentServiceMethods := v1.File_harpoon_v1_harpoon_proto.Services().ByName("AgentService").Methods()
-	agentServiceExecHandler := connect.NewBidiStreamHandler(
-		AgentServiceExecProcedure,
+func NewGuestServiceHandler(svc GuestServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	guestServiceMethods := v1.File_harpoon_v1_harpoon_proto.Services().ByName("GuestService").Methods()
+	guestServiceExecHandler := connect.NewBidiStreamHandler(
+		GuestServiceExecProcedure,
 		svc.Exec,
-		connect.WithSchema(agentServiceMethods.ByName("Exec")),
+		connect.WithSchema(guestServiceMethods.ByName("Exec")),
 		connect.WithHandlerOptions(opts...),
 	)
-	return "/harpoon.v1.AgentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return "/harpoon.v1.GuestService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case AgentServiceExecProcedure:
-			agentServiceExecHandler.ServeHTTP(w, r)
+		case GuestServiceExecProcedure:
+			guestServiceExecHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
 	})
 }
 
-// UnimplementedAgentServiceHandler returns CodeUnimplemented from all methods.
-type UnimplementedAgentServiceHandler struct{}
+// UnimplementedGuestServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedGuestServiceHandler struct{}
 
-func (UnimplementedAgentServiceHandler) Exec(context.Context, *connect.BidiStream[v1.ExecRequest, v1.ExecResponse]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("harpoon.v1.AgentService.Exec is not implemented"))
+func (UnimplementedGuestServiceHandler) Exec(context.Context, *connect.BidiStream[v1.ExecRequest, v1.ExecResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("harpoon.v1.GuestService.Exec is not implemented"))
 }

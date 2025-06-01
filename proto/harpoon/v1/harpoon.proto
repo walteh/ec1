@@ -2,24 +2,82 @@ edition = "2023";
 
 package harpoon.v1;
 
-service AgentService {
+import "buf/validate/validate.proto";
+import "google/protobuf/go_features.proto";
+
+option features.(pb.go).api_level = API_OPAQUE;
+
+service GuestService {
 	rpc Exec(stream ExecRequest) returns (stream ExecResponse);
 }
 
+message Bytestream {
+	// the data to send
+	bytes data = 1 [
+		(buf.validate.field).required = true
+	];
+
+	bool done = 2 [
+		(buf.validate.field).required = true
+	];
+}
+
 message ExecRequest {
-	string              argc           = 1;
-	repeated string     argv           = 2;
-	map<string, string> env_vars       = 3;
-	bool                use_entrypoint = 4;
-	bytes               stdin          = 5;
-	bool                stream_done    = 6;
-	string              error          = 7;
+	message Start {
+		// the executable to run
+		string argc = 1 [
+			(buf.validate.field).required = true
+		];
+
+		// the arguments to pass to the executable
+		repeated string argv = 2 [
+			(buf.validate.field).required = true
+		];
+
+		// the environment variables to set for the executable
+		map<string, string> env_vars = 3 [
+			(buf.validate.field).required = true
+		];
+
+		// whether to append the entrypoint to argc
+		bool use_entrypoint = 4 [
+			(buf.validate.field).required = true
+		];
+
+		// whether to read stdin from the client
+		bool stdin = 5 [
+			(buf.validate.field).required = true
+		];
+	}
+
+	message Terminate {
+		// whether to force the termination
+		bool force = 1 [
+			(buf.validate.field).required = true
+		];
+	}
+
+	oneof request {
+		// the start request
+		Start      start     = 1;
+		Bytestream stdin     = 2;
+		Terminate  terminate = 3;
+	}
 }
 
 message ExecResponse {
-	bytes  stdout      = 1;
-	bytes  stderr      = 2;
-	int32  exit_code   = 3;
-	bool   stream_done = 4;
-	string error       = 5;
+	message Exit {
+		int32 exit_code = 1;
+	}
+
+	message Error {
+		string error = 1;
+	}
+
+	oneof response {
+		Bytestream stdout = 1;
+		Bytestream stderr = 2;
+		Exit       exit   = 3;
+		Error      error  = 4;
+	}
 }
