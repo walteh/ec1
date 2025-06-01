@@ -4,10 +4,18 @@
 			"name": "root",
 			"path": "."
 		},
-		{
-			"name": "ttrpc",
-			"path": "../ttrpc"
-		},
+		// {
+		// 	"name": "ttrpc",
+		// 	"path": "../ttrpc"
+		// },
+		// {
+		// 	"name": "firecracker-containerd",
+		// 	"path": "../firecracker-containerd"
+		// },
+		// {
+		// 	"name": "stargz-snapshotter",
+		// 	"path": "../stargz-snapshotter"
+		// },
 
 		// {
 		// 	"name": "docker-fs",
@@ -52,15 +60,15 @@
 		{
 			"name": "buildkit",
 			"path": "../buildkit"
-		}
+		},
 		// {
 		// 	"name": "vsock-guest-exec",
 		// 	"path": "../vsock-guest-exec"
 		// },
-		// {
-		// 	"name": "ignition",
-		// 	"path": "../ignition"
-		// },
+		{
+			"name": "rund",
+			"path": "../rund"
+		}
 		// {
 		// 	"name": "wrk",
 		// 	"path": "../../../tmp/ksa2/wrk"

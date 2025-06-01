@@ -5,14 +5,14 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 
-	"github.com/walteh/ec1/pkg/bootloader"
+	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func NewMacPlatformConfiguration(_, _, _ string) (vz.PlatformConfiguration, error) {
 	return nil, fmt.Errorf("running macOS guests is only supported on ARM devices")
 }
 
-func toVzMacOSBootloader(_ *bootloader.MacOSBootloader) (vz.BootLoader, error) {
+func toVzMacOSBootloader(_ *vmm.MacOSBootloader) (vz.BootLoader, error) {
 	return nil, fmt.Errorf("running macOS guests is only supported on ARM devices")
 }
 

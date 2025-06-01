@@ -6,12 +6,12 @@ replace (
 	github.com/Code-Hex/vz/v3 => ../vz
 	github.com/containerd/containerd/api => ../containerd/api
 	github.com/containerd/containerd/v2 => ../containerd
-	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 	github.com/containerd/nerdctl => ../nerdctl
+	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 	github.com/moby/buildkit => ../buildkit
 
-	// github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
-	// github.com/lmittmann/tint => ../tint
+// github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
+// github.com/lmittmann/tint => ../tint
 )
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
@@ -26,22 +26,32 @@ require (
 	github.com/Microsoft/hcsshim v0.13.0
 	github.com/apex/log v1.9.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/containerd/containerd/api v1.9.0-rc.0
+	github.com/containerd/containerd/v2 v2.0.4
+	github.com/containerd/errdefs v1.0.0
+	github.com/containerd/errdefs/pkg v0.3.0
+	github.com/containerd/fifo v1.1.0
+	github.com/containerd/log v0.1.0
+	github.com/containerd/plugin v1.0.0
 	github.com/containerd/ttrpc v1.2.7
+	github.com/containerd/typeurl/v2 v2.2.3
 	github.com/containers/common v0.63.0
 	github.com/containers/gvisor-tap-vsock v0.8.6
 	github.com/containers/image/v5 v5.35.0
 	github.com/coreos/ignition/v2 v2.21.0
 	github.com/crc-org/vfkit v0.6.2-0.20250415145558-4b7cae94e86a
+	github.com/creack/pty v1.1.21
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/gin-gonic/gin v1.10.1
-	github.com/kdomanski/iso9660 v0.4.0
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/lima-vm/go-qcow2reader v0.6.0
 	github.com/lmittmann/tint v1.1.1
 	github.com/mdlayher/vsock v1.2.1
 	github.com/mholt/archives v0.1.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
+	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/pkg/term v1.1.0
 	github.com/prashantgupta24/mac-sleep-notifier v1.0.1
 	github.com/prometheus/procfs v0.16.1
@@ -50,7 +60,6 @@ require (
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
 	github.com/superblocksteam/run v0.0.7
-	github.com/u-root/u-root v0.14.0
 	github.com/veqryn/slog-context v0.8.0
 	github.com/walteh/retab/v2 v2.10.2
 	github.com/walteh/run v0.0.0-20250510150917-6f8074766f03
@@ -88,7 +97,10 @@ require (
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/containerd/cgroups/v3 v3.0.5 // indirect
-	github.com/containerd/log v0.1.0 // indirect
+	github.com/containerd/console v1.0.4 // indirect
+	github.com/containerd/continuity v0.4.5 // indirect
+	github.com/containerd/go-runc v1.1.0 // indirect
+	github.com/containerd/platforms v1.0.0-rc.1 // indirect
 	github.com/containers/libtrust v0.0.0-20230121012942-c1716e8a8d01 // indirect
 	github.com/containers/ocicrypt v1.2.1 // indirect
 	github.com/containers/storage v1.58.0 // indirect
@@ -122,6 +134,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.21.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
@@ -132,7 +145,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -156,17 +168,16 @@ require (
 	github.com/moby/sys/capability v0.4.0 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
+	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/opencontainers/runtime-spec v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/proglottis/gpgme v0.1.4 // indirect
-	github.com/prometheus/client_golang v1.22.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.9.0 // indirect
