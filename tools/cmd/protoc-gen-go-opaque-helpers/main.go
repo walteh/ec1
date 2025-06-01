@@ -53,6 +53,7 @@ func generateFile(gen *protogen.Plugin, file *protogen.File, enableValidation bo
 		for _, message := range messages {
 			if shouldGenerateHelpers(message) {
 				generateMessageHelpers(g, message, enableValidation)
+				generateOneofHelpers(g, message, enableValidation)
 				if enableValidation {
 					hasValidationHelpers = true
 				}
@@ -107,7 +108,7 @@ func shouldGenerateHelpers(message *protogen.Message) bool {
 func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message, enableValidation bool) {
 	messageName := message.GoIdent.GoName
 	builderName := messageName + "_builder"
-
+	
 	// Generate New helper
 	g.P("// New", messageName, " creates a new ", messageName, " using the builder pattern")
 	g.P("func New", messageName, "(f func(*", builderName, ")) *", messageName, " {")
@@ -116,13 +117,13 @@ func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message
 	g.P("	return b.Build()")
 	g.P("}")
 	g.P()
-
+	
 	if enableValidation {
 		validateIdent := g.QualifiedGoIdent(protogen.GoIdent{
 			GoName:       "Validate",
 			GoImportPath: "buf.build/go/protovalidate",
 		})
-
+		
 		// Generate NewValidated helper
 		g.P("// NewValidated", messageName, " creates a new ", messageName, " using the builder pattern with validation")
 		g.P("func NewValidated", messageName, "(f func(*", builderName, ")) (*", messageName, ", error) {")
@@ -133,5 +134,68 @@ func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message
 		g.P("	return m, nil")
 		g.P("}")
 		g.P()
+	}
+}
+
+func generateOneofHelpers(g *protogen.GeneratedFile, message *protogen.Message, enableValidation bool) {
+	messageName := message.GoIdent.GoName
+	builderName := messageName + "_builder"
+	
+	// Iterate through all fields to find oneof fields
+	for _, field := range message.Fields {
+		if field.Oneof == nil {
+			continue // Skip non-oneof fields
+		}
+		
+		// Get the field type for the oneof
+		fieldName := field.GoName
+		var fieldTypeName string
+		var fieldBuilderName string
+		
+		// Determine the type name and builder name based on the field type
+		if field.Message != nil {
+			// Field is a message type
+			fieldTypeName = field.Message.GoIdent.GoName
+			fieldBuilderName = fieldTypeName + "_builder"
+		} else {
+			// Field is a scalar type - skip for now as they don't have builders
+			continue
+		}
+		
+		// Generate combined helper: NewMessage_WithField
+		funcName := "New" + messageName + "_With" + fieldName
+		g.P("// ", funcName, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern")
+		g.P("func ", funcName, "(f func(*", fieldBuilderName, ")) *", messageName, " {")
+		g.P("	inner := New", fieldTypeName, "(f)")
+		g.P("	return New", messageName, "(func(b *", builderName, ") {")
+		g.P("		b.", fieldName, " = inner")
+		g.P("	})")
+		g.P("}")
+		g.P()
+		
+		if enableValidation {
+			validateIdent := g.QualifiedGoIdent(protogen.GoIdent{
+				GoName:       "Validate",
+				GoImportPath: "buf.build/go/protovalidate",
+			})
+			
+			// Generate validated combined helper: NewValidatedMessage_WithField
+			validatedFuncName := "NewValidated" + messageName + "_With" + fieldName
+			g.P("// ", validatedFuncName, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern with validation")
+			g.P("func ", validatedFuncName, "(f func(*", fieldBuilderName, ")) (*", messageName, ", error) {")
+			g.P("	inner, err := NewValidated", fieldTypeName, "(f)")
+			g.P("	if err != nil {")
+			g.P("		return nil, err")
+			g.P("	}")
+			g.P("	m := New", messageName, "(func(b *", builderName, ") {")
+			g.P("		b.", fieldName, " = inner")
+			g.P("	})")
+			g.P("	if err := ", validateIdent, "(m); err != nil {")
+			g.P("		return nil, err")
+			g.P("	}")
+			g.P("	return m, nil")
+			g.P("}")
+			g.P()
+		}
 	}
 }

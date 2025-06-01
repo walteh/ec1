@@ -42,6 +42,75 @@ func NewValidatedExecRequest(f func(*ExecRequest_builder)) (*ExecRequest, error)
 	return m, nil
 }
 
+// NewExecRequest_WithStart creates a new ExecRequest with the Start field set using the builder pattern
+func NewExecRequest_WithStart(f func(*ExecRequest_Start_builder)) *ExecRequest {
+	inner := NewExecRequest_Start(f)
+	return NewExecRequest(func(b *ExecRequest_builder) {
+		b.Start = inner
+	})
+}
+
+// NewValidatedExecRequest_WithStart creates a new ExecRequest with the Start field set using the builder pattern with validation
+func NewValidatedExecRequest_WithStart(f func(*ExecRequest_Start_builder)) (*ExecRequest, error) {
+	inner, err := NewValidatedExecRequest_Start(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecRequest(func(b *ExecRequest_builder) {
+		b.Start = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecRequest_WithStdin creates a new ExecRequest with the Stdin field set using the builder pattern
+func NewExecRequest_WithStdin(f func(*Bytestream_builder)) *ExecRequest {
+	inner := NewBytestream(f)
+	return NewExecRequest(func(b *ExecRequest_builder) {
+		b.Stdin = inner
+	})
+}
+
+// NewValidatedExecRequest_WithStdin creates a new ExecRequest with the Stdin field set using the builder pattern with validation
+func NewValidatedExecRequest_WithStdin(f func(*Bytestream_builder)) (*ExecRequest, error) {
+	inner, err := NewValidatedBytestream(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecRequest(func(b *ExecRequest_builder) {
+		b.Stdin = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecRequest_WithTerminate creates a new ExecRequest with the Terminate field set using the builder pattern
+func NewExecRequest_WithTerminate(f func(*ExecRequest_Terminate_builder)) *ExecRequest {
+	inner := NewExecRequest_Terminate(f)
+	return NewExecRequest(func(b *ExecRequest_builder) {
+		b.Terminate = inner
+	})
+}
+
+// NewValidatedExecRequest_WithTerminate creates a new ExecRequest with the Terminate field set using the builder pattern with validation
+func NewValidatedExecRequest_WithTerminate(f func(*ExecRequest_Terminate_builder)) (*ExecRequest, error) {
+	inner, err := NewValidatedExecRequest_Terminate(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecRequest(func(b *ExecRequest_builder) {
+		b.Terminate = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // NewExecRequest_Start creates a new ExecRequest_Start using the builder pattern
 func NewExecRequest_Start(f func(*ExecRequest_Start_builder)) *ExecRequest_Start {
 	b := &ExecRequest_Start_builder{}
@@ -84,6 +153,98 @@ func NewExecResponse(f func(*ExecResponse_builder)) *ExecResponse {
 // NewValidatedExecResponse creates a new ExecResponse using the builder pattern with validation
 func NewValidatedExecResponse(f func(*ExecResponse_builder)) (*ExecResponse, error) {
 	m := NewExecResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecResponse_WithStdout creates a new ExecResponse with the Stdout field set using the builder pattern
+func NewExecResponse_WithStdout(f func(*Bytestream_builder)) *ExecResponse {
+	inner := NewBytestream(f)
+	return NewExecResponse(func(b *ExecResponse_builder) {
+		b.Stdout = inner
+	})
+}
+
+// NewValidatedExecResponse_WithStdout creates a new ExecResponse with the Stdout field set using the builder pattern with validation
+func NewValidatedExecResponse_WithStdout(f func(*Bytestream_builder)) (*ExecResponse, error) {
+	inner, err := NewValidatedBytestream(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecResponse(func(b *ExecResponse_builder) {
+		b.Stdout = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecResponse_WithStderr creates a new ExecResponse with the Stderr field set using the builder pattern
+func NewExecResponse_WithStderr(f func(*Bytestream_builder)) *ExecResponse {
+	inner := NewBytestream(f)
+	return NewExecResponse(func(b *ExecResponse_builder) {
+		b.Stderr = inner
+	})
+}
+
+// NewValidatedExecResponse_WithStderr creates a new ExecResponse with the Stderr field set using the builder pattern with validation
+func NewValidatedExecResponse_WithStderr(f func(*Bytestream_builder)) (*ExecResponse, error) {
+	inner, err := NewValidatedBytestream(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecResponse(func(b *ExecResponse_builder) {
+		b.Stderr = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecResponse_WithExit creates a new ExecResponse with the Exit field set using the builder pattern
+func NewExecResponse_WithExit(f func(*ExecResponse_Exit_builder)) *ExecResponse {
+	inner := NewExecResponse_Exit(f)
+	return NewExecResponse(func(b *ExecResponse_builder) {
+		b.Exit = inner
+	})
+}
+
+// NewValidatedExecResponse_WithExit creates a new ExecResponse with the Exit field set using the builder pattern with validation
+func NewValidatedExecResponse_WithExit(f func(*ExecResponse_Exit_builder)) (*ExecResponse, error) {
+	inner, err := NewValidatedExecResponse_Exit(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecResponse(func(b *ExecResponse_builder) {
+		b.Exit = inner
+	})
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewExecResponse_WithError creates a new ExecResponse with the Error field set using the builder pattern
+func NewExecResponse_WithError(f func(*ExecResponse_Error_builder)) *ExecResponse {
+	inner := NewExecResponse_Error(f)
+	return NewExecResponse(func(b *ExecResponse_builder) {
+		b.Error = inner
+	})
+}
+
+// NewValidatedExecResponse_WithError creates a new ExecResponse with the Error field set using the builder pattern with validation
+func NewValidatedExecResponse_WithError(f func(*ExecResponse_Error_builder)) (*ExecResponse, error) {
+	inner, err := NewValidatedExecResponse_Error(f)
+	if err != nil {
+		return nil, err
+	}
+	m := NewExecResponse(func(b *ExecResponse_builder) {
+		b.Error = inner
+	})
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
 	}
