@@ -24,7 +24,6 @@ import (
 	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_amd64"
 	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_arm64"
 	"github.com/walteh/ec1/pkg/binembed"
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
@@ -68,7 +67,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 	}
 	devices = append(devices, ec1Devices...)
 
-	var bootloader bootloader.Bootloader
+	var bootloader Bootloader
 
 	switch imageConfig.Platform.OS() {
 	case "linux":
@@ -201,7 +200,7 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	return devices, nil
 }
 
-func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (bootloader.Bootloader, []virtio.VirtioDevice, error) {
+func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (Bootloader, []virtio.VirtioDevice, error) {
 	targetVmLinuxPath := filepath.Join(wrkdir, "vmlinux")
 	targetInitramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
@@ -252,7 +251,7 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 
 	slog.InfoContext(ctx, "linux boot loader ready", "duration", time.Since(startTime))
 
-	return &bootloader.LinuxBootloader{
+	return &LinuxBootloader{
 		InitrdPath:    targetInitramfsPath,
 		VmlinuzPath:   targetVmLinuxPath,
 		KernelCmdLine: cmdLine,

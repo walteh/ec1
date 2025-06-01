@@ -9,7 +9,6 @@ import (
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/streamexec"
 	"github.com/walteh/ec1/pkg/streamexec/protocol"
 	"github.com/walteh/ec1/pkg/streamexec/transport"
@@ -20,7 +19,7 @@ const (
 )
 
 type Hypervisor[VM VirtualMachine] interface {
-	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl bootloader.Bootloader) (VM, error)
+	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl Bootloader) (VM, error)
 	OnCreate() <-chan VM
 	EncodeLinuxInitramfs(ctx context.Context, initramfs io.Reader) (io.ReadCloser, error)
 	EncodeLinuxKernel(ctx context.Context, kernel io.Reader) (io.ReadCloser, error)

@@ -10,7 +10,6 @@ import (
 	"github.com/mholt/archives"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/ext/archivesx"
 	"github.com/walteh/ec1/pkg/magic"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -31,7 +30,7 @@ type Hypervisor struct {
 	notify chan *VirtualMachine
 }
 
-func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts vmm.NewVMOptions, bl bootloader.Bootloader) (*VirtualMachine, error) {
+func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts vmm.NewVMOptions, bl vmm.Bootloader) (*VirtualMachine, error) {
 	vfConfig, err := NewVirtualMachineConfiguration(ctx, id, &opts, bl)
 	if err != nil {
 		return nil, err

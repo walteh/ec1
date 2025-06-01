@@ -14,7 +14,6 @@ import (
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -33,7 +32,7 @@ func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
 
 type VirtualMachineConfiguration struct {
 	id        string
-	bl        bootloader.Bootloader
+	bl        vmm.Bootloader
 	newVMOpts *vmm.NewVMOptions // go-friendly virtual machine configuration definition
 	wrapper   *vzVitualMachineConfigurationWrapper
 	internal  *vz.VirtualMachineConfiguration
@@ -55,7 +54,7 @@ type vzVitualMachineConfigurationWrapper struct {
 	memoryBalloonDevicesConfiguration    []vz.MemoryBalloonDeviceConfiguration
 }
 
-func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.NewVMOptions, bootLoader bootloader.Bootloader) (*VirtualMachineConfiguration, error) {
+func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.NewVMOptions, bootLoader vmm.Bootloader) (*VirtualMachineConfiguration, error) {
 
 	wrapper := &vzVitualMachineConfigurationWrapper{
 		storageDevicesConfiguration:          make([]vz.StorageDeviceConfiguration, 0),
@@ -85,7 +84,7 @@ func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.Ne
 
 	var platformType string
 
-	if macosBootloader, ok := bootLoader.(*bootloader.MacOSBootloader); ok {
+	if macosBootloader, ok := bootLoader.(*vmm.MacOSBootloader); ok {
 		platformConfig, err := NewMacPlatformConfiguration(macosBootloader.MachineIdentifierPath, macosBootloader.HardwareModelPath, macosBootloader.AuxImagePath)
 		if err != nil {
 			return nil, errors.Errorf("creating macos platform configuration: %w", err)

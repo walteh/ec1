@@ -6,7 +6,6 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/walteh/ec1/pkg/bootloader"
 	"github.com/walteh/ec1/pkg/guest"
 )
 
@@ -32,7 +31,7 @@ type DownloadableVMIProvider interface {
 // }
 
 type MacOSVMIProvider interface {
-	BootLoaderConfig() *bootloader.MacOSBootloader
+	BootLoaderConfig() *MacOSBootloader
 }
 
 type LinuxVMIProvider interface {
