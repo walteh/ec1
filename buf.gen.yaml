@@ -37,6 +37,12 @@ plugins:
       - paths=source_relative
       - prefix=TTRPC
 
+  - out: gen/proto/golang
+    local: ["go", "tool", "github.com/walteh/ec1/tools/cmd/protoc-gen-go-opaque-helpers"]
+    opt:
+      - paths=source_relative
+      - enable_protovalidate=true
+
     # TO ENABLE CUSTOM VALIDATION GENERATION:
     # 1. comment the following to buf.yaml:
     #   - "buf.build/bufbuild/protovalidate"
