@@ -2,17 +2,8 @@ module github.com/walteh/ec1
 
 go 1.24.3
 
-replace (
-	github.com/Code-Hex/vz/v3 => ../vz
-	github.com/containerd/containerd/api => ../containerd/api
-	github.com/containerd/containerd/v2 => ../containerd
-	github.com/containerd/nerdctl => ../nerdctl
-	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
-	github.com/moby/buildkit => ../buildkit
-
 // github.com/kata-containers/kata-containers/src/runtime => ../kata-containers/src/runtime
 // github.com/lmittmann/tint => ../tint
-)
 
 replace gvisor.dev/gvisor => gvisor.dev/gvisor v0.0.0-20250509002459-06cdc4c49840
 
@@ -26,7 +17,7 @@ require (
 	github.com/Microsoft/hcsshim v0.13.0
 	github.com/apex/log v1.9.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
-	github.com/containerd/containerd/api v1.9.0-rc.0
+	github.com/containerd/containerd/api v1.9.0
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/errdefs/pkg v0.3.0
@@ -77,7 +68,6 @@ require (
 
 require (
 	cel.dev/expr v0.24.0 // indirect
-	dario.cat/mergo v1.0.2 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -161,7 +151,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mattn/go-sqlite3 v1.14.27 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
-	github.com/miekg/dns v1.1.65 // indirect
+	github.com/miekg/dns v1.1.66 // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
 	github.com/minio/minlz v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

@@ -4,3 +4,16 @@ use (
 	.
 	./tools
 )
+
+
+// forks
+replace (
+	github.com/Code-Hex/vz/v3 => ../vz
+	github.com/containerd/containerd/api => ../containerd/api
+	github.com/containerd/containerd/v2 => ../containerd
+	github.com/containerd/nerdctl => ../nerdctl
+	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
+	github.com/moby/buildkit => ../buildkit
+	github.com/containerd/ttrpc => ../ttrpc
+)
+
