@@ -194,6 +194,7 @@ func (cfg *GowConfig) execSafeGo(ctx context.Context, args ...string) error {
 	}
 
 	cmd := exec.CommandContext(ctx, goPath, args...)
+	cmd.Env = os.Environ()
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.Stdin = stdin

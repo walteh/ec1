@@ -41,6 +41,7 @@ type Config struct {
 	Verbose      bool
 	DryRun       bool
 	Quiet        bool
+	DapListen    string
 	// For exec mode
 	ExecArgs []string
 }
@@ -60,6 +61,7 @@ func main() {
 	flag.BoolVar(&config.Verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&config.DryRun, "dry-run", false, "Show what would be done without executing")
 	flag.BoolVar(&showEntitlements, "list-entitlements", false, "List common entitlements and exit")
+	flag.StringVar(&config.DapListen, "dap-listen", "", "Listen address for dap mode")
 	flag.BoolVar(&config.Quiet, "quiet", false, "Quiet output")
 	flag.Parse()
 
@@ -223,6 +225,40 @@ func testMode(ctx context.Context, config *Config) error {
 	if err := signBinary(ctx, binary, config.Entitlements, config.Identity, config.Force, config.DryRun); err != nil {
 		return errors.Errorf("signing binary before execution: %w", err)
 	}
+
+	// wrapAddress := os.Getenv("GOW_DAP_WRAP_ADDRESS")
+
+	// if config.DapListen != "" {
+	// 	// create a wrapper script that will
+	// 	tmpDir, err := os.MkdirTemp("", "gow-codesign-dap-test-wrapper-*")
+	// 	if err != nil {
+	// 		return errors.Errorf("creating temp directory: %w", err)
+	// 	}
+	// 	script := `
+	// 	#!/bin/sh
+	// 	# if tmpdir/start still exists, we just run the binary
+	// 	if [ -f %[1]s/start ]; then
+	// 		rm %[1]s/start
+	// 		exec %[2] $@
+	// 	else
+	// 		go tool dap exec -listen=%[3]s %[2] $@
+	// 	fi
+	// 	`
+	// 	err = os.WriteFile(filepath.Join(tmpDir, "run"), []byte(fmt.Sprintf(script, tmpDir, binary, config.DapListen)), 0755)
+	// 	if err != nil {
+	// 		return errors.Errorf("creating wrapper script: %w", err)
+	// 	}
+	// 	err = os.WriteFile(filepath.Join(tmpDir, "start"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+	// 	if err != nil {
+	// 		return errors.Errorf("creating start file: %w", err)
+	// 	}
+
+	// 	binary = filepath.Join(tmpDir, "run")
+
+	// 	// os.RemoveAll(tmpDir)
+
+	// 	return fmt.Errorf("dap wrap address: %s", config.DapListen)
+	// }
 
 	if err := syscall.Exec(binary, args, os.Environ()); err != nil {
 		return errors.Errorf("executing signed binary: %w", err)

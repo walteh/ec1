@@ -40,6 +40,7 @@ require (
 	github.com/lmittmann/tint v1.1.1
 	github.com/mdlayher/vsock v1.2.1
 	github.com/mholt/archives v0.1.2
+	github.com/moby/sys/reexec v0.1.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runtime-spec v1.2.1

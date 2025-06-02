@@ -5,7 +5,6 @@ import (
 
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -21,14 +20,9 @@ import (
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
-	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	reexec "github.com/moby/sys/reexec"
-
-	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v1/containerd"
-	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 )
@@ -41,76 +35,7 @@ const (
 	testRuntime       = "io.containerd.harpoon.v1"
 )
 
-var shimBinary string
-
 const shimName = "containerd-shim-harpoon-v1"
-
-const reexecPath = "/tmp/" + shimName
-
-// --- init ---------------------------------------------------------------
-func init() {
-	// 1. Register shim handler.
-	reexec.Register(reexecPath, shimMain)
-
-	// 2. Dispatch *before* the normal test/daemon code runs.
-	if reexec.Init() {
-		// We are the shim child; shimMain has run.
-		os.Exit(0)
-	}
-}
-
-// --- shim entry ---------------------------------------------------------
-func shimMain() {
-	// flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-
-	userDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("get user home directory: %v", err)
-	}
-
-	// open log file
-	logfile, err := os.OpenFile(filepath.Join(userDir, "Developer/github/walteh/ec1/.logs/shim.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("create shim log file: %v", err)
-	}
-	defer logfile.Close()
-
-	ctx := logging.SetupSlogSimpleToWriter(context.Background(), logfile, false)
-
-	fmt.Fprintf(logfile, "\n\n--------------------------------\n\n")
-	fmt.Fprintf(logfile, "[shim] pid=%d argv=%q\n\n", os.Getpid(), os.Args)
-
-	// log.Printf("[shim] pid=%d argv=%q", os.Getpid(), os.Args)
-	shim.Run(ctx, containerd.NewManager(testRuntime), withoutReaper)
-
-	// os.Exit(0)
-}
-
-// --- test harness -------------------------------------------------------
-var shimLink string
-
-func TestMain(m *testing.M) {
-	// 3.  Symlink current test binary under the shim name.
-	self, _ := os.Executable() // absolute path to the test binary
-
-	// shimLink = filepath.Join(os.TempDir(), shimName)
-	_ = os.RemoveAll(reexecPath) // idempotent
-	if err := os.Symlink(self, reexecPath); err != nil {
-		log.Fatalf("create shim link: %v", err)
-	}
-
-	// Set shimBinary to the symlinked path
-
-	// 4.  (Optional) prepend dir to PATH so containerd can exec it.
-	os.Setenv("PATH", filepath.Dir(reexecPath)+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	// 5.  Run all tests.
-	code := m.Run()
-
-	// 6.  Clean‑up *after* all shims have finished.
-	_ = os.Remove(reexecPath)
-	os.Exit(code)
-}
 
 // TestContainerdShimIntegration is the main integration test that validates
 // the entire containerd shim functionality end-to-end
@@ -309,7 +234,7 @@ state  = "%[2]s"
 		filepath.Join(env.workDir, "state"), // %[2]s
 		env.getContainerdAddress(),          // %[3]s
 		testRuntime,                         // %[4]s
-		shimBinary,                          // %[5]s
+		reexecPath,                          // %[5]s
 	)
 
 	// Create required directories

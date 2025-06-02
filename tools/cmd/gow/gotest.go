@@ -61,10 +61,15 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	var codesignIdentity string
 	var codesignForce bool
 	var isCompileOnly bool
+	// var outputFile string
+
+	isCalledByDap := isNestedBy(CommandDap)
 
 	// Parse only gow-specific flags, pass everything else through
 	var goArgs []string
 	goArgs = append(goArgs, "test")
+
+	var codesignAdditionalArgs []string
 
 	// Skip "test" and process remaining args
 	i := 1
@@ -96,6 +101,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			}
 		case "-codesign-force":
 			codesignForce = true
+		case "-o":
+			// outputFile = args[i+1]
+			// i++ // Skip the exec value
+			goArgs = append(goArgs, arg)
 		case "-c":
 			// Compile test binary only (used by DAP debugging)
 			isCompileOnly = true
@@ -142,6 +151,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		default:
 			// Pass through all other arguments to go test
 			goArgs = append(goArgs, arg)
+			if arg == "-o" {
+				goArgs = append(goArgs, arg)
+				i++ // Skip the exec value
+			}
 		}
 		i++
 	}
@@ -149,6 +162,14 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	if root && os.Geteuid() != 0 {
 		return fmt.Errorf("root is required for -root flag")
 	}
+
+	if isCalledByDap {
+		// codesignAdditionalArgs = append(codesignAdditionalArgs, "-dap-listen="+os.Getenv("GOW_DAP_WRAP_ADDRESS"))
+	}
+
+	// if len(codesignAdditionalArgs) > 0 {
+	// 	return fmt.Errorf("codesign additional args: %v", codesignAdditionalArgs)
+	// }
 
 	// For compile-only mode (debugging), skip gow enhancements and pass through directly
 	if isCompileOnly {
@@ -165,10 +186,12 @@ func (cfg *GowConfig) handleTest(args []string) error {
 				return err
 			}
 
+			var outputFile string
+
 			// Find the output binary and sign it
 			for i, arg := range goArgs {
 				if arg == "-o" && i+1 < len(goArgs) {
-					outputFile := goArgs[i+1]
+					outputFile = goArgs[i+1]
 					if cfg.Verbose {
 						fmt.Printf("🔐 Code signing debug binary: %s\n", outputFile)
 					}
@@ -195,15 +218,89 @@ func (cfg *GowConfig) handleTest(args []string) error {
 						signArgs = append(signArgs, "-force")
 					}
 
+					signArgs = append(signArgs, codesignAdditionalArgs...)
+
 					signCmd := exec.CommandContext(ctx, "go", signArgs...)
 					signCmd.Dir = cfg.WorkspaceRoot
 					signCmd.Stdout = stdout
 					signCmd.Stderr = stderr
 
-					return signCmd.Run()
+					err := signCmd.Run()
+					if err != nil {
+						return fmt.Errorf("signing debug binary: %w", err)
+					}
+
+					return nil
 				}
 			}
+
+			// client := rpc2.NewClient(os.Getenv("GOW_DAP_WRAP_ADDRESS"))
+
+			// client.FollowExec(true, "")
+
+			// 	os.Mkdir("/tmp/test123/", 0755)
+
+			// 	// now, we make a wrapper script that will run the binary
+			// 	// create a wrapper script that will
+			// 	tmpDir, err := os.MkdirTemp("/tmp/test123/", "gow-codesign-dap-test-wrapper-*")
+			// 	if err != nil {
+			// 		return errors.Errorf("creating temp directory: %w", err)
+			// 	}
+
+			// 	// move the binary to the tmpdir
+			// 	err = os.Rename(outputFile, filepath.Join(tmpDir, "binary"))
+			// 	if err != nil {
+			// 		return errors.Errorf("moving binary to temp directory: %w", err)
+			// 	}
+
+			// 	script := fmt.Sprintf(`#!/bin/sh
+			// # if tmpdir/start still exists, we just run the binary
+			// if [ -f %[1]s/start ]; then
+			// 	rm %[1]s/start
+			// 	exec %[1]s/binary $@
+			// else
+			// 	go tool dlv exec --listen=%[2]s %[1]s/binary $@
+			// fi
+			// `, tmpDir, os.Getenv("GOW_DAP_WRAP_ADDRESS"))
+
+			// 	err = os.WriteFile(outputFile, []byte(script), 0755)
+			// 	if err != nil {
+			// 		return errors.Errorf("creating wrapper script: %w", err)
+			// 	}
+
+			// 	// // symlink the binary to the tmpdir/run
+			// 	// err = os.Symlink(filepath.Join(tmpDir, "run"), outputFile)
+			// 	// if err != nil {
+			// 	// 	return errors.Errorf("symlinking binary to temp directory: %w", err)
+			// 	// }
+
+			// 	err = os.WriteFile(filepath.Join(tmpDir, "start"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+			// 	if err != nil {
+			// 		return errors.Errorf("creating start file: %w", err)
+			// 	}
+
+			// 	// make sure outputFile is executable
+			// 	err = os.Chmod(outputFile, 0755)
+			// 	if err != nil {
+			// 		return errors.Errorf("making binary executable: %w", err)
+			// 	}
+
+			// 	// double check that the binary is executable
+			// 	stat, err := os.Stat(outputFile)
+			// 	if err != nil {
+			// 		return errors.Errorf("checking binary executable: %w", err)
+			// 	}
+			// 	if stat.Mode()&0111 == 0 {
+			// 		return errors.Errorf("binary is not executable")
+			// 	}
+
+			// return errors.Errorf("outputFile: %s, tmpDir: %s", outputFile, tmpDir)
+
+			return nil
+			// binary := filepath.Join(tmpDir, "run")
 		}
+
+		// return fmt.Errorf("calling go test -c with args: %v", goArgs)
 
 		return cfg.execSafeGo(ctx, goArgs...)
 	}
@@ -267,6 +364,8 @@ func (cfg *GowConfig) handleTest(args []string) error {
 		}
 
 		execArgs = append(execArgs, "-quiet")
+
+		execArgs = append(execArgs, codesignAdditionalArgs...)
 
 		execArgs = append(execArgs, "--")
 
