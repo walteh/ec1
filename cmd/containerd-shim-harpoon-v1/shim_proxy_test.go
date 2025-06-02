@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -111,10 +113,10 @@ func handleOneShimInternal(ctx context.Context, c net.Conn) error {
 	slog.InfoContext(ctx, "Decoded metadata",
 		"pid", meta.Pid,
 		"argv", meta.Argv,
-		"stdin", meta.Stdin,
-		"stdout", meta.Stdout,
-		"stderr", meta.Stderr,
-		"responseFile", meta.ResponseFile)
+		"stdinPayload", meta.StdinPayload,
+		"stdoutSocket", meta.StdoutSocket,
+		"stderrSocket", meta.StderrSocket,
+		"responseSocket", meta.ResponseSocket)
 
 	slog.InfoContext(ctx, "Calling shimMain()")
 	if err := shimMainWithErrorHandling(ctx, meta); err != nil {
@@ -122,25 +124,11 @@ func handleOneShimInternal(ctx context.Context, c net.Conn) error {
 	}
 	slog.InfoContext(ctx, "shimMain() completed")
 
-	responseConn, err := net.Dial("unix", meta.ResponseFile)
+	responseConn, err := net.Dial("unix", meta.ResponseSocket)
 	if err != nil {
 		return errors.Errorf("dial response file: %w", err)
 	}
 	defer responseConn.Close()
-
-	// returnFile := os.NewFile(uintptr(meta.ResponseFd), "response-return")
-	// defer returnFile.Close()
-
-	// slog.InfoContext(ctx, "Creating response connection", "responseFd", meta.ResponseFd)
-	// responseConn, err := net.FileConn(returnFile)
-	// if err != nil {
-	// 	return errors.Errorf("creating response connection: %w", err)
-	// }
-	// defer func() {
-	// 	if err := responseConn.Close(); err != nil {
-	// 		slog.Error("Failed to close response connection", "error", err)
-	// 	}
-	// }()
 
 	encoder := json.NewEncoder(responseConn)
 
@@ -272,13 +260,19 @@ func shimProxy(ctx context.Context) error {
 	encoder := json.NewEncoder(conn)
 
 	// for stdin, just read and send a payload
+	stdInPayload, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return errors.Errorf("read stdin: %w", err)
+	}
 
-	socks := map[string]int{
+	socks := map[string]*os.File{
 		// "stdin":  int(os.Stdin.Fd()),
-		"stdout": int(os.Stdout.Fd()),
-		"stderr": int(os.Stderr.Fd()),
+		"stdout": os.Stdout,
+		"stderr": os.Stderr,
 	}
 	slog.InfoContext(ctx, "Original file descriptors", "socks", socks)
+
+	socksResponse := map[string]string{}
 
 	// Track file descriptors for cleanup
 	var createdFds []int
@@ -291,66 +285,34 @@ func shimProxy(ctx context.Context) error {
 	}()
 
 	for name, sourceFd := range socks {
-		slog.InfoContext(ctx, "Creating socket proxy", "name", name, "sourceFd", sourceFd)
-		// create a socket proxy
-		targetFd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+		// for these two, open unix sockets and receive the data
+		unixSocket, err := net.Listen("unix", fmt.Sprintf("/tmp/shim-proxy-%s.sock", name))
 		if err != nil {
-			slog.Error("Failed to create socket", "error", err, "name", name)
-			return errors.Errorf("create socket: %w", err)
+			return errors.Errorf("listen on unix socket: %w", err)
 		}
-		createdFds = append(createdFds, targetFd)
+		defer unixSocket.Close()
 
-		err = syscall.Dup2(sourceFd, targetFd)
-		if err != nil {
-			slog.Error("Failed to dup2", "error", err, "sourceFd", sourceFd, "targetFd", targetFd)
-			return errors.Errorf("dup2: %w", err)
-		}
+		go func() {
+			for {
+				conn, err := unixSocket.Accept()
+				if err != nil {
+					if err == net.ErrClosed {
+						return
+					}
+					slog.Error("Failed to accept connection", "error", err)
+					return
+				}
+				io.Copy(conn, sourceFd)
+			}
+		}()
 
-		socks[name] = targetFd
-		slog.InfoContext(ctx, "Socket proxy created", "name", name, "sourceFd", sourceFd, "targetFd", targetFd)
+		socksResponse[name] = unixSocket.Addr().String()
 	}
-
-	// // create a new response socket
-	// slog.InfoContext(ctx, "Creating response socket")
-	// responseFd, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
-	// if err != nil {
-	// 	slog.Error("Failed to create response socket", "error", err)
-	// 	return errors.Errorf("create response socket: %w", err)
-	// }
-	// defer func() {
-	// 	if err := syscall.Close(responseFd[0]); err != nil {
-	// 		slog.Error("Failed to close response socket 0", "error", err)
-	// 	}
-	// 	if err := syscall.Close(responseFd[1]); err != nil {
-	// 		slog.Error("Failed to close response socket 1", "error", err)
-	// 	}
-	// }()
-
-	// responseConnectionFd := responseFd[0]
-	// responseListenerFd := responseFd[1]
-
-	// listenerFile := os.NewFile(uintptr(responseListenerFd), "response")
-	// defer func() {
-	// 	if err := listenerFile.Close(); err != nil {
-	// 		slog.Error("Failed to close listener file", "error", err)
-	// 	}
-	// }()
-
-	// listenerConn, err := net.FileConn(listenerFile)
-	// if err != nil {
-	// 	slog.Error("Failed to create file connection", "error", err, "responseFd", responseFd)
-	// 	return errors.Errorf("create file connection: %w", err)
-	// }
-	// defer func() {
-	// 	if err := listenerConn.Close(); err != nil {
-	// 		slog.Error("Failed to close listener connection", "error", err)
-	// 	}
-	// }()
 
 	slog.InfoContext(ctx, "Response socket created", "responseFile", responseFile)
 
 	// send header
-	header := RequestMetadata{os.Getpid(), os.Args[1:], socks["stdin"], socks["stdout"], socks["stderr"], responseFile}
+	header := RequestMetadata{os.Getpid(), os.Args[1:], string(stdInPayload), socksResponse["stdout"], socksResponse["stderr"], responseFile}
 
 	slog.InfoContext(ctx, "Sending header", "header", header)
 	err = encoder.Encode(header)
@@ -383,6 +345,13 @@ func shimProxy(ctx context.Context) error {
 		return errors.Errorf("decode response: %w", err)
 	}
 	slog.InfoContext(ctx, "Response decoded", "response", meta)
+
+	// read everything from standard output
+	io.Copy(os.Stdout, responseConn)
+
+	// read everything from standard error
+	io.Copy(os.Stderr, responseConn)
+
 	slog.InfoContext(ctx, "shimProxy completed successfully")
 
 	return nil
@@ -391,12 +360,12 @@ func shimProxy(ctx context.Context) error {
 var onlyOnceShimAtATime = sync.Mutex{}
 
 type RequestMetadata struct {
-	Pid          int      `json:"pid"`
-	Argv         []string `json:"argv"`
-	Stdin        int      `json:"stdin"`
-	Stdout       int      `json:"stdout"`
-	Stderr       int      `json:"stderr"`
-	ResponseFile string   `json:"responseFile"`
+	Pid            int      `json:"pid"`
+	Argv           []string `json:"argv"`
+	StdinPayload   string   `json:"stdinPayload"`
+	StdoutSocket   string   `json:"stdoutSocket"`
+	StderrSocket   string   `json:"stderrSocket"`
+	ResponseSocket string   `json:"responseSocket"`
 }
 
 // shimMainWithErrorHandling wraps shimMain with proper error handling
@@ -407,12 +376,11 @@ func shimMainWithErrorHandling(ctx context.Context, meta RequestMetadata) error 
 		}
 	}()
 
-	shimMain(ctx, meta)
-	return nil
+	return shimMain(ctx, meta)
 }
 
 // --- shim entry ---------------------------------------------------------
-func shimMain(ctx context.Context, meta RequestMetadata) {
+func shimMain(ctx context.Context, meta RequestMetadata) error {
 	onlyOnceShimAtATime.Lock()
 	defer onlyOnceShimAtATime.Unlock()
 
@@ -426,12 +394,24 @@ func shimMain(ctx context.Context, meta RequestMetadata) {
 
 	slog.InfoContext(ctx, "Starting shim.Run")
 
+	stdoutConn, err := net.Dial("unix", meta.StdoutSocket)
+	if err != nil {
+		return errors.Errorf("dial stdout socket: %w", err)
+	}
+	defer stdoutConn.Close()
+
+	stderrConn, err := net.Dial("unix", meta.StderrSocket)
+	if err != nil {
+		return errors.Errorf("dial stderr socket: %w", err)
+	}
+	defer stderrConn.Close()
+
 	// Configure shim with proper error handling
 	shim.Run(ctx, mgr, func(config *shim.Config) {
 		config.NoReaper = true
 		config.NoSubreaper = true
-		config.Stdin = os.NewFile(uintptr(meta.Stdin), "stdin")
-		config.Stdout = os.NewFile(uintptr(meta.Stdout), "stdout")
+		config.Stdin = io.NopCloser(strings.NewReader(meta.StdinPayload))
+		config.Stdout = stdoutConn
 		config.ExitFunc = func(code int) {
 			slog.InfoContext(ctx, "Shim exit function called", "code", code)
 			// Don't call os.Exit here as it would terminate the test process
@@ -442,6 +422,8 @@ func shimMain(ctx context.Context, meta RequestMetadata) {
 	})
 
 	slog.InfoContext(ctx, "shim.Run completed")
+
+	return nil
 }
 
 // TestShimProxyErrorHandling tests the error handling and cleanup mechanisms
