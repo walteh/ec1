@@ -73,6 +73,9 @@ func TestMain(m *testing.M) {
 		log.Fatalf("create shim link: %v", err)
 	}
 
+	// Set shimBinary to the symlinked path
+	shimBinary = shimLink
+
 	// 4.  (Optional) prepend dir to PATH so containerd can exec it.
 	os.Setenv("PATH", filepath.Dir(shimLink)+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -246,64 +249,56 @@ func (env *testEnvironment) testStartContainerd(t *testing.T, ctx context.Contex
 }
 
 func (env *testEnvironment) createContainerdConfig(t *testing.T, ctx context.Context) {
-	// Create a minimal containerd config that works without root permissions
+	// Build a containerd v3 config that points to our custom shim
 	configContent := fmt.Sprintf(`
-version = 2
+version = 3
+root   = "%[1]s"
+state  = "%[2]s"
 
-# Use our test directories instead of system directories
-root = "%s"
-state = "%s"
+[grpc]
+  address = "%[3]s"
+
+[ttrpc]
+  address = "%[3]s.ttrpc"
 
 [debug]
   level = "debug"
 
-[grpc]
-  address = "%s"
-  max_recv_message_size = 16777216
-  max_send_message_size = 16777216
+[plugins."io.containerd.runtime.v1.linux"]
+  shim_debug = true
 
-[ttrpc]
-  address = "%s"
-
-# Disable plugins that require root or system access
-disabled_plugins = [
-  "io.containerd.grpc.v1.cri",
-  "io.containerd.internal.v1.restart",
-  "io.containerd.grpc.v1.introspection",
-]
-
-# Configure our harpoon runtime
 [plugins."io.containerd.runtime.v2.task"]
-  [plugins."io.containerd.runtime.v2.task".runtimes]
-    [plugins."io.containerd.runtime.v2.task".runtimes.harpoon]
-      runtime_type = "%s"
-      [plugins."io.containerd.runtime.v2.task".runtimes.harpoon.options]
-        BinaryName = "%s"
+  platforms = ["linux/amd64","linux/arm64"]
 
-# Configure snapshotter to use our directories
-[plugins."io.containerd.snapshotter.v1.overlayfs"]
-  root_path = "%s"
+# --- CRI runtime section (v3) ------------------------------------------
+[plugins."io.containerd.cri.v1.runtime".containerd]
+  default_runtime_name = "%[4]s"
 
-# Configure content store
-[plugins."io.containerd.content.v1.content"]
-  path = "%s"
-
-# Configure metadata store  
-[plugins."io.containerd.metadata.v1.bolt"]
-  content_sharing_policy = "shared"
-
-# Disable stream processors that might cause issues
-stream_processors = {}
+  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+    [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s"]
+      runtime_type = "%[4]s"
+	  runtime_path = "%[5]s"
+      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s".options]
+        binary_name = "%[5]s"
 `,
-		filepath.Join(env.workDir, "root"),      // root
-		filepath.Join(env.workDir, "state"),     // state
-		env.getContainerdAddress(),              // grpc address
-		env.getContainerdAddress(),              // ttrpc address
-		testRuntime,                             // runtime_type
-		shimBinary,                              // BinaryName (this is the shim binary)
-		filepath.Join(env.workDir, "snapshots"), // snapshotter root
-		filepath.Join(env.workDir, "content"),   // content path
+		filepath.Join(env.workDir, "root"),  // %[1]s
+		filepath.Join(env.workDir, "state"), // %[2]s
+		env.getContainerdAddress(),          // %[3]s
+		testRuntime,                         // %[4]s
+		shimBinary,                          // %[5]s
 	)
+
+	// Create required directories
+	dirs := []string{
+		filepath.Join(env.workDir, "root"),
+		filepath.Join(env.workDir, "state"),
+		filepath.Join(env.workDir, "snapshots"),
+		filepath.Join(env.workDir, "content"),
+	}
+	for _, dir := range dirs {
+		err := os.MkdirAll(dir, 0755)
+		require.NoError(t, err, "Failed to create directory: %s", dir)
+	}
 
 	env.configFile = filepath.Join(env.workDir, "containerd.toml")
 	err := os.WriteFile(env.configFile, []byte(configContent), 0644)
