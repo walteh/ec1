@@ -109,12 +109,12 @@
 			"editorInfo.border": "#00AAFF"
 			// "editorInfo.foreground": "#00AAFF",
 		},
+		"go.testExplorer.showOutput": true,
 
 		// "[go]": {
 		// 	"editor.formatOnSave": false
 		// },
-		"go.testExplorer.packageDisplayMode": "nested",
-		"go.testExplorer.showOutput": true,
+
 		// "go.gopath": "${workspaceFolder}/go",
 
 		"editor.formatOnSave": true,

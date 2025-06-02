@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
 
 	"github.com/containerd/containerd/v2/pkg/shim"
 
@@ -15,6 +13,6 @@ func withoutReaper(config *shim.Config) {
 }
 
 func main() {
-	log.Printf("[shim main] pid=%d argv=%q", os.Getpid(), os.Args)
-	shim.Run(context.Background(), containerd.NewManager("io.containerd.rund.v2"), withoutReaper)
+	// log.Printf("[shim main] pid=%d argv=%q", os.Getpid(), os.Args)
+	shim.Run(context.Background(), containerd.NewManager("io.containerd.harpoon.v1"), withoutReaper)
 }

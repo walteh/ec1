@@ -18,6 +18,7 @@ import (
 
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/cmd/containerd/command"
+	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/containerd/v2/pkg/shim"
@@ -27,6 +28,7 @@ import (
 	reexec "github.com/moby/sys/reexec"
 
 	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v1/containerd"
+	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/testing/tctx"
 	"github.com/walteh/ec1/pkg/testing/tlog"
 )
@@ -43,10 +45,12 @@ var shimBinary string
 
 const shimName = "containerd-shim-harpoon-v1"
 
+const reexecPath = "/tmp/" + shimName
+
 // --- init ---------------------------------------------------------------
 func init() {
 	// 1. Register shim handler.
-	reexec.Register(shimName, shimMain)
+	reexec.Register(reexecPath, shimMain)
 
 	// 2. Dispatch *before* the normal test/daemon code runs.
 	if reexec.Init() {
@@ -57,8 +61,29 @@ func init() {
 
 // --- shim entry ---------------------------------------------------------
 func shimMain() {
-	log.Printf("[shim] pid=%d argv=%q", os.Getpid(), os.Args)
-	shim.Run(context.Background(), containerd.NewManager("io.containerd.rund.v2"), withoutReaper)
+	// flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	userDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("get user home directory: %v", err)
+	}
+
+	// open log file
+	logfile, err := os.OpenFile(filepath.Join(userDir, "Developer/github/walteh/ec1/.logs/shim.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("create shim log file: %v", err)
+	}
+	defer logfile.Close()
+
+	ctx := logging.SetupSlogSimpleToWriter(context.Background(), logfile, false)
+
+	fmt.Fprintf(logfile, "\n\n--------------------------------\n\n")
+	fmt.Fprintf(logfile, "[shim] pid=%d argv=%q\n\n", os.Getpid(), os.Args)
+
+	// log.Printf("[shim] pid=%d argv=%q", os.Getpid(), os.Args)
+	shim.Run(ctx, containerd.NewManager(testRuntime), withoutReaper)
+
+	// os.Exit(0)
 }
 
 // --- test harness -------------------------------------------------------
@@ -67,23 +92,23 @@ var shimLink string
 func TestMain(m *testing.M) {
 	// 3.  Symlink current test binary under the shim name.
 	self, _ := os.Executable() // absolute path to the test binary
-	shimLink = filepath.Join(os.TempDir(), shimName)
-	_ = os.RemoveAll(shimLink) // idempotent
-	if err := os.Symlink(self, shimLink); err != nil {
+
+	// shimLink = filepath.Join(os.TempDir(), shimName)
+	_ = os.RemoveAll(reexecPath) // idempotent
+	if err := os.Symlink(self, reexecPath); err != nil {
 		log.Fatalf("create shim link: %v", err)
 	}
 
 	// Set shimBinary to the symlinked path
-	shimBinary = shimLink
 
 	// 4.  (Optional) prepend dir to PATH so containerd can exec it.
-	os.Setenv("PATH", filepath.Dir(shimLink)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	os.Setenv("PATH", filepath.Dir(reexecPath)+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	// 5.  Run all tests.
 	code := m.Run()
 
 	// 6.  Clean‑up *after* all shims have finished.
-	_ = os.Remove(shimLink)
+	_ = os.Remove(reexecPath)
 	os.Exit(code)
 }
 
@@ -277,7 +302,6 @@ state  = "%[2]s"
   [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
     [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s"]
       runtime_type = "%[4]s"
-	  runtime_path = "%[5]s"
       [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s".options]
         binary_name = "%[5]s"
 `,
@@ -358,15 +382,18 @@ func (env *testEnvironment) startContainerdProcess(t *testing.T, ctx context.Con
 
 	}()
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("Context cancelled")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for containerd to start")
+	// Wait until the unix socket appears or we hit the overall timeout.
+	startDeadline := time.Now().Add(containerdTimeout)
+	for {
+		if env.isContainerdReady(ctx) {
+			slog.InfoContext(ctx, "Containerd process started and socket is up")
+			break
+		}
+		if time.Now().After(startDeadline) {
+			t.Fatalf("Timeout (%s) waiting for containerd to start", containerdTimeout)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
-
-	// Give containerd more time to start
-	slog.InfoContext(ctx, "Containerd process started")
 
 	return ctx
 }
@@ -615,7 +642,8 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 		containerID,
 		client.WithImage(image),
 		client.WithNewSnapshot(containerID, image),
-		client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
+		// client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
+		client.WithNewSpec(oci.WithProcessArgs(cmd...)),
 		client.WithRuntime(testRuntime, nil),
 	)
 	require.NoError(t, err, "Failed to create container %s", containerID)
@@ -627,7 +655,8 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 func (env *testEnvironment) startContainer(t *testing.T, ctx context.Context, container client.Container) client.Task {
 	ctx = namespaces.WithNamespace(ctx, testNamespace)
 
-	task, err := container.NewTask(ctx, nil)
+	creator := cio.NewCreator(cio.WithStdio)
+	task, err := container.NewTask(ctx, creator)
 	require.NoError(t, err, "Failed to create task for container %s", container.ID())
 
 	err = task.Start(ctx)

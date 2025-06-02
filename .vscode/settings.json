@@ -17,5 +17,6 @@
 		"dlv": "${workspaceFolder}/gow",
 		"customFormatter": "${workspaceFolder}/gow"
 	},
-	"go.testFlags": ["-ide", "-codesign", "-v"]
+	"go.testFlags": ["-ide", "-codesign", "-v"],
+	"go.testExplorer.packageDisplayMode": "nested"
 }
