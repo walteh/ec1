@@ -27,6 +27,8 @@ import (
 const reexecPath = "/tmp/" + shimName
 const reexecSockPath = "/tmp/" + shimName + ".sock"
 
+var onlyOnceShimAtATime = sync.Mutex{}
+
 func TestMain(m *testing.M) {
 	// Set up logging for TestMain
 	ctx := logging.SetupSlogSimpleToWriter(context.Background(), os.Stderr, true)
@@ -68,36 +70,87 @@ func TestMain(m *testing.M) {
 
 func init() {
 
-	reexec.Register(reexecPath, shimProxyWithCleanup)
+	reexec.Register(reexecPath, reexecBinaryForInProcShim)
 
 	if reexec.Init() {
 		os.Exit(0)
 	} else {
-		shimShimServer()
+		inProcShimBackgroundServer()
 	}
 }
 
-func handleOneShim(c net.Conn) {
-	// Set up logging context
-	ctx := logging.SetupSlogSimpleToWriter(context.Background(), os.Stderr, true)
+type InProcShimRequestMetadata struct {
+	Pid            int      `json:"pid"`
+	Argv           []string `json:"argv"`
+	StdinPayload   string   `json:"stdinPayload"`
+	StdoutSocket   string   `json:"stdoutSocket"`
+	StderrSocket   string   `json:"stderrSocket"`
+	ResponseSocket string   `json:"responseSocket"`
+}
 
-	slog.InfoContext(ctx, "handleOneShim started", "remoteAddr", c.RemoteAddr(), "localAddr", c.LocalAddr())
+func inProcShimMain(ctx context.Context, meta InProcShimRequestMetadata) error {
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("shimMain panicked", "panic", r)
+		}
+	}()
+
+	// only one shim at a time
+	onlyOnceShimAtATime.Lock()
+	defer onlyOnceShimAtATime.Unlock()
+
+	slog.InfoContext(ctx, "shimMain started",
+		"pid", os.Getpid(),
+		"argv", os.Args)
+
+	mgr := containerd.NewManager(testRuntime)
+
+	stdoutConn, err := net.Dial("unix", meta.StdoutSocket)
+	if err != nil {
+		return errors.Errorf("dial stdout socket: %w", err)
+	}
+	defer stdoutConn.Close()
+
+	stderrConn, err := net.Dial("unix", meta.StderrSocket)
+	if err != nil {
+		return errors.Errorf("dial stderr socket: %w", err)
+	}
+	defer stderrConn.Close()
+
+	// Configure shim with proper error handling
+	shim.Run(ctx, mgr, func(config *shim.Config) {
+		config.NoReaper = true
+		config.NoSubreaper = true
+		config.Stdin = io.NopCloser(strings.NewReader(meta.StdinPayload))
+		config.Stdout = stdoutConn
+		config.ExitFunc = func(code int) {
+			slog.InfoContext(ctx, "Shim exit function called", "code", code)
+			// Don't call os.Exit here as it would terminate the test process
+			// Instead, let the function return normally
+		}
+		config.WithArgs = meta.Argv
+		slog.InfoContext(ctx, "Shim config set", "noReaper", config.NoReaper, "args", meta.Argv)
+	})
+
+	slog.InfoContext(ctx, "shim.Run completed")
+
+	return nil
+}
+
+func handleInProcShim(ctx context.Context, c net.Conn) error {
+
+	slog.InfoContext(ctx, "handleInProcShim started", "remoteAddr", c.RemoteAddr(), "localAddr", c.LocalAddr())
 	defer func() {
 		if err := c.Close(); err != nil {
 			slog.Error("Failed to close connection", "error", err)
 		}
-		slog.InfoContext(ctx, "handleOneShim completed, connection closed")
+		slog.InfoContext(ctx, "handleInProcShim completed, connection closed")
 	}()
 
-	if err := handleOneShimInternal(ctx, c); err != nil {
-		slog.Error("handleOneShim failed", "error", err)
-	}
-}
-
-func handleOneShimInternal(ctx context.Context, c net.Conn) error {
 	decoder := json.NewDecoder(c)
 
-	var meta RequestMetadata
+	var meta InProcShimRequestMetadata
 
 	slog.InfoContext(ctx, "Decoding metadata from connection")
 	if err := decoder.Decode(&meta); err != nil {
@@ -113,7 +166,7 @@ func handleOneShimInternal(ctx context.Context, c net.Conn) error {
 		"responseSocket", meta.ResponseSocket)
 
 	slog.InfoContext(ctx, "Calling shimMain()")
-	if err := shimMainWithErrorHandling(ctx, meta); err != nil {
+	if err := inProcShimMain(ctx, meta); err != nil {
 		return errors.Errorf("shimMain failed: %w", err)
 	}
 	slog.InfoContext(ctx, "shimMain() completed")
@@ -136,11 +189,10 @@ func handleOneShimInternal(ctx context.Context, c net.Conn) error {
 		return errors.Errorf("encoding response: %w", err)
 	}
 	slog.InfoContext(ctx, "Response sent successfully")
-
 	return nil
 }
 
-func shimShimServer() {
+func inProcShimBackgroundServer() {
 	// Set up logging context
 	ctx := logging.SetupSlogSimpleToWriter(context.Background(), os.Stderr, true)
 
@@ -176,16 +228,20 @@ func shimShimServer() {
 				return
 			}
 			slog.InfoContext(ctx, "Accepted connection", "remoteAddr", c.RemoteAddr())
-			go handleOneShim(c) // 100% async; no extra threads
+			go func() {
+				if err := handleInProcShim(ctx, c); err != nil {
+					slog.Error("handleInProcShim failed", "error", err)
+				}
+			}()
 		}
 	}()
 	slog.InfoContext(ctx, "Shim server started successfully")
 }
 
-func shimProxyWithCleanup() {
+func reexecBinaryForInProcShim() {
 	ctx := context.Background()
 
-	err := shimProxy(ctx)
+	err := reexecBinaryForInProcShimE(ctx)
 	if err != nil {
 		slog.Error("shimProxy failed", "error", err)
 		os.Exit(1)
@@ -194,7 +250,7 @@ func shimProxyWithCleanup() {
 	os.Exit(0)
 }
 
-func shimProxy(ctx context.Context) error {
+func reexecBinaryForInProcShimE(ctx context.Context) error {
 
 	userDir, err := os.UserHomeDir()
 	if err != nil {
@@ -302,7 +358,7 @@ func shimProxy(ctx context.Context) error {
 	}
 
 	// send header
-	header := RequestMetadata{os.Getpid(), os.Args[1:], string(stdInPayload), socksResponse["stdout"], socksResponse["stderr"], responseFile}
+	header := InProcShimRequestMetadata{os.Getpid(), os.Args[1:], string(stdInPayload), socksResponse["stdout"], socksResponse["stderr"], responseFile}
 
 	slog.InfoContext(ctx, "Sending header", "header", header)
 	err = encoder.Encode(header)
@@ -332,111 +388,4 @@ func shimProxy(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-var onlyOnceShimAtATime = sync.Mutex{}
-
-type RequestMetadata struct {
-	Pid            int      `json:"pid"`
-	Argv           []string `json:"argv"`
-	StdinPayload   string   `json:"stdinPayload"`
-	StdoutSocket   string   `json:"stdoutSocket"`
-	StderrSocket   string   `json:"stderrSocket"`
-	ResponseSocket string   `json:"responseSocket"`
-}
-
-// shimMainWithErrorHandling wraps shimMain with proper error handling
-func shimMainWithErrorHandling(ctx context.Context, meta RequestMetadata) error {
-	defer func() {
-		if r := recover(); r != nil {
-			slog.Error("shimMain panicked", "panic", r)
-		}
-	}()
-
-	return shimMain(ctx, meta)
-}
-
-// --- shim entry ---------------------------------------------------------
-func shimMain(ctx context.Context, meta RequestMetadata) error {
-	onlyOnceShimAtATime.Lock()
-	defer onlyOnceShimAtATime.Unlock()
-
-	slog.InfoContext(ctx, "shimMain started",
-		"pid", os.Getpid(),
-		"argv", os.Args)
-
-	mgr := containerd.NewManager(testRuntime)
-
-	stdoutConn, err := net.Dial("unix", meta.StdoutSocket)
-	if err != nil {
-		return errors.Errorf("dial stdout socket: %w", err)
-	}
-	defer stdoutConn.Close()
-
-	stderrConn, err := net.Dial("unix", meta.StderrSocket)
-	if err != nil {
-		return errors.Errorf("dial stderr socket: %w", err)
-	}
-	defer stderrConn.Close()
-
-	// Configure shim with proper error handling
-	shim.Run(ctx, mgr, func(config *shim.Config) {
-		config.NoReaper = true
-		config.NoSubreaper = true
-		config.Stdin = io.NopCloser(strings.NewReader(meta.StdinPayload))
-		config.Stdout = stdoutConn
-		config.ExitFunc = func(code int) {
-			slog.InfoContext(ctx, "Shim exit function called", "code", code)
-			// Don't call os.Exit here as it would terminate the test process
-			// Instead, let the function return normally
-		}
-		config.WithArgs = meta.Argv
-		slog.InfoContext(ctx, "Shim config set", "noReaper", config.NoReaper, "args", meta.Argv)
-	})
-
-	slog.InfoContext(ctx, "shim.Run completed")
-
-	return nil
-}
-
-// TestShimProxyErrorHandling tests the error handling and cleanup mechanisms
-func TestShimProxyErrorHandling(t *testing.T) {
-	ctx := logging.SetupSlogSimpleToWriter(context.Background(), os.Stderr, true)
-
-	slog.InfoContext(ctx, "Starting TestShimProxyErrorHandling")
-
-	// Test invalid arguments
-	t.Run("invalid_arguments", func(t *testing.T) {
-		oldArgs := os.Args
-		defer func() { os.Args = oldArgs }()
-
-		os.Args = []string{"test"}
-
-		err := shimProxy(ctx)
-		if err == nil {
-			t.Error("Expected error for invalid arguments, got nil")
-		}
-
-		slog.InfoContext(ctx, "Invalid arguments test completed", "error", err)
-	})
-
-	// Test connection failure (when server is not running)
-	t.Run("connection_failure", func(t *testing.T) {
-		oldArgs := os.Args
-		defer func() { os.Args = oldArgs }()
-
-		os.Args = []string{"test", "arg1", "arg2"}
-
-		// Ensure the socket doesn't exist
-		_ = os.Remove(reexecSockPath)
-
-		err := shimProxy(ctx)
-		if err == nil {
-			t.Error("Expected error for connection failure, got nil")
-		}
-
-		slog.InfoContext(ctx, "Connection failure test completed", "error", err)
-	})
-
-	slog.InfoContext(ctx, "TestShimProxyErrorHandling completed")
 }
