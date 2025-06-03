@@ -67,18 +67,12 @@ func TestMain(m *testing.M) {
 }
 
 func init() {
-	ctx := context.Background()
-	// Set up basic logging for init
-	slog.InfoContext(ctx, "init() called", "args", os.Args, "pid", os.Getpid())
 
 	reexec.Register(reexecPath, shimProxyWithCleanup)
-	slog.InfoContext(ctx, "Registered reexec handler", "path", reexecPath)
 
 	if reexec.Init() {
-		slog.InfoContext(ctx, "reexec.Init() returned true, exiting")
 		os.Exit(0)
 	} else {
-		slog.InfoContext(ctx, "reexec.Init() returned false, starting shim server")
 		shimShimServer()
 	}
 }
@@ -227,7 +221,6 @@ func shimProxy(ctx context.Context) error {
 	slog.InfoContext(ctx, "shimProxy started", "args", os.Args, "pid", os.Getpid())
 
 	if len(os.Args) < 2 {
-		slog.Error("Insufficient arguments", "args", os.Args)
 		return fmt.Errorf("usage: shim-shim /path/to/real-shim [args]")
 	}
 
@@ -255,7 +248,6 @@ func shimProxy(ctx context.Context) error {
 			slog.Error("Failed to close connection to shim server", "error", err)
 		}
 	}()
-	slog.InfoContext(ctx, "Connected to shim server")
 
 	encoder := json.NewEncoder(conn)
 
@@ -270,7 +262,6 @@ func shimProxy(ctx context.Context) error {
 		"stdout": os.Stdout,
 		"stderr": os.Stderr,
 	}
-	slog.InfoContext(ctx, "Original file descriptors", "socks", socks)
 
 	socksResponse := map[string]string{}
 
@@ -302,14 +293,13 @@ func shimProxy(ctx context.Context) error {
 					slog.Error("Failed to accept connection", "error", err)
 					return
 				}
-				io.Copy(conn, sourceFd)
+
+				io.Copy(sourceFd, io.TeeReader(conn, logfile))
 			}
 		}()
 
 		socksResponse[name] = unixSocket.Addr().String()
 	}
-
-	slog.InfoContext(ctx, "Response socket created", "responseFile", responseFile)
 
 	// send header
 	header := RequestMetadata{os.Getpid(), os.Args[1:], string(stdInPayload), socksResponse["stdout"], socksResponse["stderr"], responseFile}
@@ -317,14 +307,11 @@ func shimProxy(ctx context.Context) error {
 	slog.InfoContext(ctx, "Sending header", "header", header)
 	err = encoder.Encode(header)
 	if err != nil {
-		slog.Error("Failed to encode header", "error", err, "header", header)
 		return errors.Errorf("encode header: %w", err)
 	}
-	slog.InfoContext(ctx, "Header sent successfully")
 
 	responseConn, err := responseListener.Accept()
 	if err != nil {
-		slog.Error("Failed to accept response connection", "error", err)
 		return errors.Errorf("accept response connection: %w", err)
 	}
 	defer responseConn.Close()
@@ -338,21 +325,11 @@ func shimProxy(ctx context.Context) error {
 		ExitCode int `json:"exitCode"`
 	}
 
-	slog.InfoContext(ctx, "Decoding response")
 	err = decoder.Decode(&meta)
 	if err != nil {
 		slog.Error("Failed to decode response", "error", err)
 		return errors.Errorf("decode response: %w", err)
 	}
-	slog.InfoContext(ctx, "Response decoded", "response", meta)
-
-	// read everything from standard output
-	io.Copy(os.Stdout, responseConn)
-
-	// read everything from standard error
-	io.Copy(os.Stderr, responseConn)
-
-	slog.InfoContext(ctx, "shimProxy completed successfully")
 
 	return nil
 }
@@ -388,11 +365,7 @@ func shimMain(ctx context.Context, meta RequestMetadata) error {
 		"pid", os.Getpid(),
 		"argv", os.Args)
 
-	slog.InfoContext(ctx, "Creating containerd manager")
 	mgr := containerd.NewManager(testRuntime)
-	slog.InfoContext(ctx, "Containerd manager created")
-
-	slog.InfoContext(ctx, "Starting shim.Run")
 
 	stdoutConn, err := net.Dial("unix", meta.StdoutSocket)
 	if err != nil {
