@@ -129,7 +129,14 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		return protocol.NewFramedProtocol(conn)
 	})
 
-	return server.Serve()
+	slog.InfoContext(ctx, "serving vsock", "port", port)
+
+	err = server.Serve()
+	if err != nil {
+		return errors.Errorf("serving vsock: %w", err)
+	}
+
+	return nil
 }
 
 func serveRawVsock(ctx context.Context, port int) error {

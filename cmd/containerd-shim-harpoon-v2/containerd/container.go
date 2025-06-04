@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -15,8 +16,6 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
-
-	ec1oci "github.com/walteh/ec1/pkg/oci"
 
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -111,31 +110,45 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 	return p, nil
 }
 
-// createVM creates and starts a new microVM for this container
+// createVM creates and starts a new microVM for this container using the already-prepared rootfs
 func (c *container) createVM(ctx context.Context) error {
-	// Determine the image reference from the rootfs mounts
-	// For now, we'll use a default image - in a real implementation,
-	// this would be extracted from the container spec or rootfs
-	imageRef := "alpine:latest" // TODO: Extract from container spec
+	// containerd has already prepared the rootfs for us at c.rootfs
+	// We just need to create a VM that uses this existing rootfs directory
 
-	imageConfig := vmm.ConatinerImageConfig{
-		ImageRef: imageRef,
-		Platform: units.PlatformLinuxARM64,       // TODO: Detect from spec
-		Memory:   strongunits.MiB(128).ToBytes(), // TODO: Extract from spec
-		VCPUs:    1,                              // TODO: Extract from spec
+	// Extract configuration from the OCI spec
+	memory := strongunits.MiB(128).ToBytes() // Default, TODO: Extract from spec.Linux.Resources.Memory
+	vcpus := uint64(1)                       // Default, TODO: Extract from spec.Process or other location
+
+	// Determine platform based on the OCI spec content and runtime architecture
+	var platform units.Platform
+	arch := runtime.GOARCH
+
+	// Determine OS based on which platform-specific section is populated
+	var osType string
+	if c.spec.Linux != nil {
+		osType = "linux"
+	} else if c.spec.Windows != nil {
+		osType = "windows"
+	} else {
+		// Default to linux if no platform-specific section is found
+		osType = "linux"
 	}
 
-	// we need to have created a ImageFetchConverter from the information passed via containerd
-	// note the ext4 thing is not used so no need to create that
-
-	var crf ec1oci.ImageFetchConverter
-	if crf == nil {
-		return errors.Errorf("no image fetch converter")
-	}
-
-	vm, err := vmm.NewContainerizedVirtualMachine(ctx, c.hypervisor, crf, imageConfig)
+	// Create platform string and parse it
+	platformStr := osType + "/" + arch
+	platform, err := units.ParsePlatform(platformStr)
 	if err != nil {
-		return err
+		// Fallback to ARM64 Linux if parsing fails
+		platform = units.PlatformLinuxARM64
+	}
+
+	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, c.rootfs, vmm.ContainerVMConfig{
+		Platform: platform,
+		Memory:   memory,
+		VCPUs:    vcpus,
+	})
+	if err != nil {
+		return errors.Errorf("creating VM from rootfs: %w", err)
 	}
 
 	c.vm = vm

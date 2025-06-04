@@ -6,7 +6,7 @@ vars:
 
     GO_ROOT_PKG:
         sh: cat go.mod | grep -oE '^module[^\S]+' | cut -d' ' -f2
-    GO_COMMAND: ./go
+    GO_COMMAND: ./gow
 
 env:
     COMPOSE_BAKE: true
@@ -135,7 +135,7 @@ tasks:
           - cmd: rm -rf {{.OUT_DIR}}
           - cmd: mkdir -p {{.OUT_DIR}}
           - cmd: |-
-                GOOS=linux GOARCH={{.ARCH}} {{.GO_COMMAND}} build -ldflags="-s -w -extldflags=-static" -trimpath -o {{.OUT_DIR}}/{{.BIN}} ./cmd/{{.BIN}}
+                GOOS=linux GOARCH={{.ARCH}} go build -ldflags="-s -w -extldflags=-static" -trimpath -o {{.OUT_DIR}}/{{.BIN}} ./cmd/{{.BIN}}
                 xz -k {{.OUT_DIR}}/{{.BIN}}
                 sha256sum {{.OUT_DIR}}/{{.BIN}}.xz > {{.OUT_DIR}}/{{.BIN}}.xz.sha256
           - cmd: |-

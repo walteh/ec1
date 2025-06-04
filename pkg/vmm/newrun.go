@@ -40,6 +40,12 @@ type ConatinerImageConfig struct {
 	VCPUs    uint64
 }
 
+type ContainerVMConfig struct {
+	Platform units.Platform
+	Memory   strongunits.B
+	VCPUs    uint64
+}
+
 func NewContainerizedVirtualMachine[VM VirtualMachine](
 	ctx context.Context,
 	hpv Hypervisor[VM],
@@ -314,4 +320,170 @@ func runContainerVM[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], 
 
 	return errGroup, bootCancel, nil
 
+}
+
+// NewContainerizedVirtualMachineFromRootfs creates a VM using an already-prepared rootfs directory
+// This is used by container runtimes like containerd that have already prepared the rootfs
+func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
+	ctx context.Context,
+	hpv Hypervisor[VM],
+	rootfsPath string,
+	config ContainerVMConfig,
+	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
+
+	id := "vm-" + xid.New().String()
+	errgrp, ctx := errgroup.WithContext(ctx)
+
+	startTime := time.Now()
+
+	workingDir, err := host.EmphiricalVMCacheDir(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = os.MkdirAll(workingDir, 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating working directory: %w", err)
+	}
+
+	// Create virtio devices using the existing rootfs directory
+	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, rootfsPath, errgrp)
+	if err != nil {
+		return nil, errors.Errorf("creating ec1 block device from rootfs: %w", err)
+	}
+	devices = append(devices, ec1Devices...)
+
+	var bootloader Bootloader
+
+	switch config.Platform.OS() {
+	case "linux":
+		bl, bldevs, err := PrepareHarpoonLinuxBootloader(ctx, workingDir, ConatinerImageConfig{
+			Platform: config.Platform,
+			Memory:   config.Memory,
+			VCPUs:    config.VCPUs,
+		}, errgrp)
+		if err != nil {
+			return nil, errors.Errorf("getting boot loader config: %w", err)
+		}
+		bootloader = bl
+		devices = append(devices, bldevs...)
+	default:
+		return nil, errors.Errorf("unsupported OS: %s", config.Platform.OS())
+	}
+
+	devices = append(devices, &virtio.VirtioSerial{
+		LogFile: filepath.Join(workingDir, "console.log"),
+	})
+
+	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
+	if err != nil {
+		return nil, errors.Errorf("creating net device: %w", err)
+	}
+	devices = append(devices, netdev)
+
+	opts := NewVMOptions{
+		Vcpus:   config.VCPUs,
+		Memory:  config.Memory,
+		Devices: devices,
+	}
+
+	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bootloader)
+	if err != nil {
+		return nil, errors.Errorf("creating virtual machine: %w", err)
+	}
+
+	err = bootContainerVM(ctx, vm)
+	if err != nil {
+		return nil, errors.Errorf("booting virtual machine: %w", err)
+	}
+
+	runErrGroup, runCancel, err := runContainerVM(ctx, hpv, vm)
+	if err != nil {
+		return nil, errors.Errorf("running virtual machine: %w", err)
+	}
+
+	defer func() {
+		runCancel()
+		if err := runErrGroup.Wait(); err != nil {
+			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
+		}
+	}()
+
+	slog.InfoContext(ctx, "waiting for VM to stop")
+
+	errCh := make(chan error, 1)
+	go func() {
+		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
+			errCh <- fmt.Errorf("virtualization error: %v", err)
+		} else {
+			slog.InfoContext(ctx, "VM is stopped")
+			errCh <- nil
+		}
+	}()
+
+	go func() {
+		if err := errgrp.Wait(); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
+		}
+	}()
+
+	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
+}
+
+// PrepareContainerVirtioDevicesFromRootfs creates virtio devices using an existing rootfs directory
+func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string, rootfsPath string, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
+
+	devices := []virtio.VirtioDevice{}
+
+	err := os.MkdirAll(ec1DataPath, 0755)
+	if err != nil {
+		return nil, errors.Errorf("creating block device directory: %w", err)
+	}
+
+	// Create a VirtioFs device pointing to the existing rootfs directory
+	blkDev, err := virtio.VirtioFsNew(rootfsPath, ec1init.RootfsVirtioTag)
+	if err != nil {
+		return nil, errors.Errorf("creating rootfs virtio device: %w", err)
+	}
+
+	devices = append(devices, blkDev)
+
+	// Create minimal container metadata since we don't have full image info
+	// TODO: Extract actual metadata from the OCI spec if needed
+	metadata := map[string]interface{}{
+		"rootfs": map[string]interface{}{
+			"type":     "layers",
+			"diff_ids": []string{}, // Empty since we don't have layer info
+		},
+		"config": map[string]interface{}{
+			"Env": []string{}, // Default empty environment
+		},
+	}
+
+	metadataBytes, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, errors.Errorf("marshalling metadata: %w", err)
+	}
+
+	files := map[string][]byte{
+		ec1init.ContainerManifestFile: metadataBytes,
+	}
+
+	for name, file := range files {
+		filePath := filepath.Join(ec1DataPath, name)
+		err = osx.WriteFileFromReaderAsync(ctx, filePath, bytes.NewReader(file), 0644, wg)
+		if err != nil {
+			return nil, errors.Errorf("writing file to block device: %w", err)
+		}
+	}
+
+	ec1Dev, err := virtio.VirtioFsNew(ec1DataPath, ec1init.Ec1VirtioTag)
+	if err != nil {
+		return nil, errors.Errorf("creating ec1 virtio device: %w", err)
+	}
+
+	devices = append(devices, ec1Dev)
+
+	return devices, nil
 }
