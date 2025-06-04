@@ -29,8 +29,6 @@ const (
 	testImage         = "docker.io/library/alpine:latest"
 	containerdTimeout = 30 * time.Second
 	vmBootTimeout     = 10 * time.Second
-	testRuntime       = "io.containerd.harpoon.v1"
-	shimName          = "containerd-shim-harpoon-v1"
 )
 
 var (
@@ -238,7 +236,7 @@ state  = "%[2]s"
 		filepath.Join(env.workDir, "root"),     // %[1]s
 		filepath.Join(env.workDir, "state"),    // %[2]s
 		env.getContainerdAddress(),             // %[3]s
-		testRuntime,                            // %[4]s
+		ContainerdShimRuntimeID,                // %[4]s
 		safeGetShimContainerdExecutablePath(t), // %[5]s
 	)
 
@@ -571,7 +569,7 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 		client.WithNewSnapshot(containerID, image),
 		// client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
 		client.WithNewSpec(oci.WithProcessArgs(cmd...)),
-		client.WithRuntime(testRuntime, nil),
+		client.WithRuntime(ContainerdShimRuntimeID, nil),
 	)
 	require.NoError(t, err, "Failed to create container %s", containerID)
 

@@ -25,7 +25,7 @@ import (
 	reexec "github.com/moby/sys/reexec"
 	slogctx "github.com/veqryn/slog-context"
 
-	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v1/containerd"
+	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v2/containerd"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/logging/logrusshim"
 	"github.com/walteh/ec1/pkg/testing/tctx"
@@ -35,9 +35,9 @@ import (
 const (
 	myTmpDir             = "/tmp/ec1-debugshim-test"
 	logProxySockPath     = myTmpDir + "/log-proxy.sock"
-	reexecShimBinaryPath = myTmpDir + "/reexec/" + shimName
-	reexecSockPath       = myTmpDir + "/reexec/" + shimName + ".sock"
-	debugShimBinaryPath  = myTmpDir + "/" + shimName
+	reexecShimBinaryPath = myTmpDir + "/reexec/" + ContainerdShimName
+	reexecSockPath       = myTmpDir + "/reexec/" + ContainerdShimName + ".sock"
+	debugShimBinaryPath  = myTmpDir + "/" + ContainerdShimName
 	dapLogPath           = myTmpDir + "/dap.log"
 )
 
@@ -50,7 +50,7 @@ func getTestLoggerCtx(t testing.TB) context.Context {
 	return ctx
 }
 
-//go:embed containerd-shim-harpoondebug-v1
+//go:embed testdata/shim-debug-wrapper
 var debugShimBinary []byte
 
 func TestMain(m *testing.M) {
@@ -163,7 +163,7 @@ func reexecBinaryForDebugShimE(ctx context.Context) error {
 
 	slog.Info("shim starting with args", "args", os.Args[1:], "my_pid", syscall.Getpid(), "my_parent_pid", syscall.Getppid())
 
-	shim.Run(ctx, containerd.NewManager(testRuntime), func(c *shim.Config) {
+	shim.Run(ctx, containerd.NewManager(ContainerdShimRuntimeID), func(c *shim.Config) {
 		c.NoReaper = true
 		c.NoSetupLogger = true
 	})
