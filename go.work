@@ -15,5 +15,6 @@ replace (
 	github.com/containers/gvisor-tap-vsock => ../gvisor-tap-vsock
 	github.com/moby/buildkit => ../buildkit
 	github.com/containerd/ttrpc => ../ttrpc
+	github.com/lmittmann/tint => ../tint
 )
 

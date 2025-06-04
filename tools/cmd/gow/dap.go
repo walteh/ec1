@@ -28,8 +28,6 @@ func (cfg *GowConfig) handleDap(args []string) error {
 
 	// var addr string = "127.0.0.1:22345"
 
-
-
 	// argz = append(argz, "--client-addr="+addr)
 
 	if root && os.Geteuid() != 0 {

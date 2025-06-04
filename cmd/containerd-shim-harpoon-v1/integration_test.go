@@ -22,9 +22,6 @@ import (
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/walteh/ec1/pkg/testing/tctx"
-	"github.com/walteh/ec1/pkg/testing/tlog"
 )
 
 const (
@@ -33,15 +30,23 @@ const (
 	containerdTimeout = 30 * time.Second
 	vmBootTimeout     = 10 * time.Second
 	testRuntime       = "io.containerd.harpoon.v1"
+	shimName          = "containerd-shim-harpoon-v1"
 )
 
-const shimName = "containerd-shim-harpoon-v1"
+var (
+	shimContainerdExecutablePath = ""
+)
+
+func safeGetShimContainerdExecutablePath(t testing.TB) string {
+	t.Helper()
+	require.NotEmpty(t, shimContainerdExecutablePath, "shimContainerdExecutablePath is not set")
+	return shimContainerdExecutablePath
+}
 
 // TestContainerdShimIntegration is the main integration test that validates
 // the entire containerd shim functionality end-to-end
 func TestContainerdShimIntegration(t *testing.T) {
-	ctx := tlog.SetupSlogForTest(t)
-	ctx = tctx.WithContext(ctx, t)
+	ctx := getTestLoggerCtx(t)
 
 	// Skip if not on macOS
 	if !isMacOS() {
@@ -230,11 +235,11 @@ state  = "%[2]s"
       [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s".options]
         binary_name = "%[5]s"
 `,
-		filepath.Join(env.workDir, "root"),  // %[1]s
-		filepath.Join(env.workDir, "state"), // %[2]s
-		env.getContainerdAddress(),          // %[3]s
-		testRuntime,                         // %[4]s
-		reexecPath,                          // %[5]s
+		filepath.Join(env.workDir, "root"),     // %[1]s
+		filepath.Join(env.workDir, "state"),    // %[2]s
+		env.getContainerdAddress(),             // %[3]s
+		testRuntime,                            // %[4]s
+		safeGetShimContainerdExecutablePath(t), // %[5]s
 	)
 
 	// Create required directories
@@ -556,10 +561,7 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 
 	// Pull image if needed (simplified - in real test we'd need proper image handling)
 	image, err := env.client.Pull(ctx, testImage, client.WithPullUnpack)
-	if err != nil {
-		// For now, skip if we can't pull the image
-		t.Skipf("Failed to pull image %s: %v", testImage, err)
-	}
+	require.NoError(t, err, "Failed to pull image %s", testImage)
 
 	// Create container
 	container, err := env.client.NewContainer(
@@ -580,7 +582,7 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 func (env *testEnvironment) startContainer(t *testing.T, ctx context.Context, container client.Container) client.Task {
 	ctx = namespaces.WithNamespace(ctx, testNamespace)
 
-	creator := cio.NewCreator(cio.WithStdio)
+	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(env.workDir, "fifo")))
 	task, err := container.NewTask(ctx, creator)
 	require.NoError(t, err, "Failed to create task for container %s", container.ID())
 

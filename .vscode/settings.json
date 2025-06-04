@@ -1,6 +1,7 @@
 {
 	"go.delveConfig": {
-		"dlvFlags": ["-root"]
+		"dlvFlags": ["-root"],
+		"debugAdapter": "legacy"
 	},
 	"go.toolsEnvVars": {
 		"CGO_ENABLED": "1"
@@ -17,6 +18,11 @@
 		"dlv": "${workspaceFolder}/gow",
 		"customFormatter": "${workspaceFolder}/gow"
 	},
-	"go.testFlags": ["-ide", "-codesign", "-v"],
-	"go.testExplorer.packageDisplayMode": "nested"
+	"go.testFlags": ["-ide", "-codesign", "-v", "-root"],
+	"go.testExplorer.packageDisplayMode": "nested",
+	"go.testExplorer.showDynamicSubtestsInEditor": true,
+	"go.testExplorer.alwaysRunBenchmarks": false,
+	"go.testEnvVars": {
+		"SUDO_ASKPASS": "${userHome}/dbin/sudo-askpass"
+	}
 }

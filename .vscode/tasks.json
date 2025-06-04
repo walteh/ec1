@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "shim-dap-server",
+			"type": "shell",
+			"isBackground": true,
+			"command": "go",
+			"args": ["tool", "github.com/walteh/ec1/tools/cmd/shim-debug", "--port", "2345"],
+			"problemMatcher": [
+				{
+					"pattern": [{ "regexp": "🚀 shim PID" }],
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "⌛ waiting for shim",
+						"endsPattern": "🚀 shim PID"
+					}
+				}
+			]
+		}
+	]
+}

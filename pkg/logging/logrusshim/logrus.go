@@ -4,7 +4,10 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
+	"strings"
 
+	"github.com/containerd/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,6 +20,7 @@ func ForwardLogrusToSlogGlobally() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		DisableColors: true,
 	})
+	log.L.Logger = logrus.StandardLogger()
 }
 
 func SetLogrusLevel(level logrus.Level) {
@@ -52,7 +56,11 @@ func (h *SlogBridgeHook) Fire(entry *logrus.Entry) error {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
-	record := slog.NewRecord(entry.Time, level, entry.Message, entry.Caller.PC)
+	slices.SortFunc(attrs, func(a, b slog.Attr) int {
+		return strings.Compare(a.Key, b.Key)
+	})
+
+	record := slog.NewRecord(entry.Time, level, "[logrus] "+entry.Message, entry.Caller.PC)
 	record.AddAttrs(attrs...)
 
 	// Send to slog

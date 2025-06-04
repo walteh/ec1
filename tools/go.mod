@@ -12,6 +12,7 @@ tool (
 	github.com/walteh/ec1/tools/cmd/codesign
 	github.com/walteh/ec1/tools/cmd/gow
 	github.com/walteh/ec1/tools/cmd/protoc-gen-go-opaque-helpers
+	github.com/walteh/ec1/tools/cmd/shim-debug
 )
 
 tool (

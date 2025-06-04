@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	slogctx "github.com/veqryn/slog-context"
+
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/logging/logrusshim"
@@ -22,8 +24,14 @@ func init() {
 }
 
 func SetupSlogForTestWithContext(t testing.TB, ctx context.Context) context.Context {
+	var simpctx context.Context
 
-	simpctx := logging.SetupSlogSimple(ctx)
+	existing := slogctx.FromCtx(ctx)
+	if existing != nil {
+		simpctx = ctx
+	} else {
+		simpctx = logging.SetupSlogSimple(ctx)
+	}
 
 	cached, err := host.CacheDirPrefix()
 	require.NoError(t, err)

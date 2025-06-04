@@ -39,6 +39,10 @@ type TintProcessor struct {
 }
 
 func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool, processor ...SlogProcessor) context.Context {
+	return SetupSlogSimpleToWriterWithProcessName(ctx, w, color, "", processor...)
+}
+
+func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
 
 	tintHandler := tint.NewHandler(w, &tint.Options{
 		Level:      slog.LevelDebug,
@@ -48,7 +52,8 @@ func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool, proce
 			a = formatErrorStacks(groups, a)
 			return Redact(groups, a)
 		},
-		NoColor: !color,
+		NoColor:     !color,
+		ProcessName: processName,
 	})
 
 	ctxHandler := slogctx.NewHandler(tintHandler, nil)
@@ -77,6 +82,28 @@ func link(url string, text string) string {
 	return fmt.Sprintf("\\e]8;;%s\\e\\%s\\e]8;;\\e\\", url, text)
 }
 
+type CallerURI struct {
+	Package string
+	File    string
+	Line    int
+}
+
+func GetCurrentCallerURI() CallerURI {
+	ptr, _, _, _ := runtime.Caller(1)
+	return getCallerURI(ptr)
+}
+
+func getCallerURI(ptr uintptr) CallerURI {
+	frames := runtime.CallersFrames([]uintptr{ptr})
+	frame, _ := frames.Next()
+	pkg := packageName(frame)
+	uri := fmt.Sprintf("%s:%d", frame.File, frame.Line)
+	return CallerURI{
+		Package: pkg,
+		File:    filepath.Base(filepath.Dir(uri)),
+		Line:    frame.Line,
+	}
+}
 func formatErrorStacks(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "error" {
 		if err, ok := a.Value.Any().(error); ok {

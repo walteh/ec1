@@ -3,7 +3,11 @@ set -euo pipefail
 
 # check for a -root passed in the arguments
 if [[ "$*" == *"-root"* ]]; then
-	sudo --close-from=4 go tool gow "$@"
+	bad='${userHome}'
+	if [[ -n "${SUDO_ASKPASS:-}" && "${SUDO_ASKPASS}" == "${bad}"* ]]; then
+		SUDO_ASKPASS="$(echo "${SUDO_ASKPASS}" | sed "s|${bad}|${HOME}|")"
+	fi
+	sudo -A -E --close-from=4 go tool gow "$@"
 else
 	go tool gow "$@"
 fi

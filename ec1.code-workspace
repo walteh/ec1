@@ -45,10 +45,10 @@
 			"name": "gvisor-tap-vsock",
 			"path": "../gvisor-tap-vsock"
 		},
-		// {
-		// 	"name": "firecracker",
-		// 	"path": "../firecracker"
-		// },
+		{
+			"name": "tint",
+			"path": "../tint"
+		},
 		{
 			"name": "containerd",
 			"path": "../containerd"
