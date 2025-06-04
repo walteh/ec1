@@ -301,24 +301,42 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Create and start the VM for this container
-	if err := c.createVM(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create VM: %w", err)
-	}
-
 	p, err := c.getProcess(request.ExecID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Start the process in the VM
-	if err := p.start(c.vm); err != nil {
-		return nil, err
-	}
-
 	// Set a fake PID for compatibility (VM processes don't have host PIDs)
 	p.pid = 1
+	p.status = taskt.Status_RUNNING // Set as running immediately
 
+	// Start VM creation asynchronously
+	go func() {
+		// Use background context since the request context might be cancelled
+		vmCtx := context.Background()
+
+		// Create and start the VM for this container
+		if err := c.createVM(vmCtx); err != nil {
+			log.G(vmCtx).WithError(err).Error("failed to create VM")
+			p.status = taskt.Status_STOPPED
+			p.exitStatus = 1
+			close(p.waitblock)
+			return
+		}
+
+		// Start the process in the VM
+		if err := p.start(c.vm); err != nil {
+			log.G(vmCtx).WithError(err).Error("failed to start process in VM")
+			p.status = taskt.Status_STOPPED
+			p.exitStatus = 1
+			close(p.waitblock)
+			return
+		}
+
+		log.G(vmCtx).Info("VM and process started successfully")
+	}()
+
+	// Return immediately - VM will boot in background
 	s.events <- &events.TaskStart{
 		ContainerID: request.ID,
 		Pid:         uint32(p.pid),

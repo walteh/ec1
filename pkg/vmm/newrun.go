@@ -118,33 +118,46 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		return nil, errors.Errorf("running virtual machine: %w", err)
 	}
 
-	defer func() {
-		runCancel()
-		if err := runErrGroup.Wait(); err != nil {
-			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
-		}
-	}()
+	// For container runtimes, we want the VM to stay running, not wait for it to stop
+	slog.InfoContext(ctx, "VM is ready for container execution")
 
-	slog.InfoContext(ctx, "waiting for VM to stop")
-
+	// Create an error channel that will receive VM state changes
 	errCh := make(chan error, 1)
 	go func() {
-		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
-			errCh <- fmt.Errorf("virtualization error: %v", err)
-		} else {
-			slog.InfoContext(ctx, "VM is stopped")
-			errCh <- nil
-		}
-	}()
-
-	go func() {
+		// Wait for errgroup to finish (this handles cleanup when context is cancelled)
 		if err := errgrp.Wait(); err != nil && err != context.Canceled {
 			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
+		}
+
+		// Wait for runtime services to finish
+		if err := runErrGroup.Wait(); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "error running runtime services", "error", err)
+			errCh <- err
+			return
+		}
+
+		// Only send error if VM actually encounters an error state
+		stateNotify := vm.StateChangeNotify(ctx)
+		for {
+			select {
+			case state := <-stateNotify:
+				if state.StateType == VirtualMachineStateTypeError {
+					errCh <- fmt.Errorf("VM entered error state")
+					return
+				}
+				if state.StateType == VirtualMachineStateTypeStopped {
+					slog.InfoContext(ctx, "VM stopped")
+					errCh <- nil
+					return
+				}
+			case <-ctx.Done():
+				runCancel()
+				return
+			}
 		}
 	}()
 
 	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
-
 }
 
 func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, cache oci.ImageFetchConverter, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
@@ -402,28 +415,42 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		return nil, errors.Errorf("running virtual machine: %w", err)
 	}
 
-	defer func() {
-		runCancel()
-		if err := runErrGroup.Wait(); err != nil {
-			slog.DebugContext(ctx, "error running runtime provisioners", "error", err)
-		}
-	}()
+	// For container runtimes, we want the VM to stay running, not wait for it to stop
+	slog.InfoContext(ctx, "VM is ready for container execution")
 
-	slog.InfoContext(ctx, "waiting for VM to stop")
-
+	// Create an error channel that will receive VM state changes
 	errCh := make(chan error, 1)
 	go func() {
-		if err := WaitForVMState(ctx, vm, VirtualMachineStateTypeStopped, nil); err != nil {
-			errCh <- fmt.Errorf("virtualization error: %v", err)
-		} else {
-			slog.InfoContext(ctx, "VM is stopped")
-			errCh <- nil
-		}
-	}()
-
-	go func() {
+		// Wait for errgroup to finish (this handles cleanup when context is cancelled)
 		if err := errgrp.Wait(); err != nil && err != context.Canceled {
 			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
+		}
+
+		// Wait for runtime services to finish
+		if err := runErrGroup.Wait(); err != nil && err != context.Canceled {
+			slog.ErrorContext(ctx, "error running runtime services", "error", err)
+			errCh <- err
+			return
+		}
+
+		// Only send error if VM actually encounters an error state
+		stateNotify := vm.StateChangeNotify(ctx)
+		for {
+			select {
+			case state := <-stateNotify:
+				if state.StateType == VirtualMachineStateTypeError {
+					errCh <- fmt.Errorf("VM entered error state")
+					return
+				}
+				if state.StateType == VirtualMachineStateTypeStopped {
+					slog.InfoContext(ctx, "VM stopped")
+					errCh <- nil
+					return
+				}
+			case <-ctx.Done():
+				runCancel()
+				return
+			}
 		}
 	}()
 
