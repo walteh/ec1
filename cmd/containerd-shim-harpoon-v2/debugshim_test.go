@@ -14,11 +14,7 @@ import (
 	"testing"
 
 	"github.com/containerd/containerd/v2/pkg/shim"
-	"github.com/go-delve/delve/pkg/logflags"
-	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/service"
-	"github.com/go-delve/delve/service/dap"
-	"github.com/go-delve/delve/service/debugger"
+	"github.com/containerd/plugin/registry"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/tozd/go/errors"
 
@@ -33,12 +29,13 @@ import (
 )
 
 const (
-	myTmpDir             = "/tmp/ec1-debugshim-test"
-	logProxySockPath     = myTmpDir + "/log-proxy.sock"
-	reexecShimBinaryPath = myTmpDir + "/reexec/" + ContainerdShimName
-	reexecSockPath       = myTmpDir + "/reexec/" + ContainerdShimName + ".sock"
-	debugShimBinaryPath  = myTmpDir + "/" + ContainerdShimName
-	dapLogPath           = myTmpDir + "/dap.log"
+	myTmpDir                    = "/tmp/ec1-debugshim-test"
+	logProxySockPath            = myTmpDir + "/log-proxy.sock"
+	reexecShimBinaryPath        = myTmpDir + "/reexec/" + ContainerdShimName
+	reexecSockPath              = myTmpDir + "/reexec/" + ContainerdShimName + ".sock"
+	debugShimBinaryPath         = myTmpDir + "/" + ContainerdShimName
+	dapLogPath                  = myTmpDir + "/dap.log"
+	ContainerdShimTestNamespace = "harpoon"
 )
 
 var testLogger *slog.Logger
@@ -163,6 +160,9 @@ func reexecBinaryForDebugShimE(ctx context.Context) error {
 
 	slog.Info("shim starting with args", "args", os.Args[1:], "my_pid", syscall.Getpid(), "my_parent_pid", syscall.Getppid())
 
+	registry.Reset()
+	containerd.RegisterPlugins()
+
 	shim.Run(ctx, containerd.NewManager(ContainerdShimRuntimeID), func(c *shim.Config) {
 		c.NoReaper = true
 		c.NoSetupLogger = true
@@ -171,52 +171,52 @@ func reexecBinaryForDebugShimE(ctx context.Context) error {
 	return nil
 }
 
-func debugShimDebugBackgroundServer(ctx context.Context, stdout, stderr io.Writer) error {
-	// Determine listen address (DEBUG_SHIM_LISTEN_ADDRESS or default)
-	listenAddress := os.Getenv("DAP_LISTEN_ADDRESSZ")
-	if listenAddress == "" {
-		listenAddress = "127.0.0.1:2345"
-	}
+// func debugShimDebugBackgroundServer(ctx context.Context, stdout, stderr io.Writer) error {
+// 	// Determine listen address (DEBUG_SHIM_LISTEN_ADDRESS or default)
+// 	listenAddress := os.Getenv("DAP_LISTEN_ADDRESSZ")
+// 	if listenAddress == "" {
+// 		listenAddress = "127.0.0.1:2345"
+// 	}
 
-	// Create TCP listener
-	conn, err := net.Listen("tcp", listenAddress)
-	if err != nil {
-		return errors.Errorf("listen %s: %w", listenAddress, err)
-	}
-	slog.InfoContext(ctx, "shim debug server listening", "addr", listenAddress, "os.Args", os.Args)
+// 	// Create TCP listener
+// 	conn, err := net.Listen("tcp", listenAddress)
+// 	if err != nil {
+// 		return errors.Errorf("listen %s: %w", listenAddress, err)
+// 	}
+// 	slog.InfoContext(ctx, "shim debug server listening", "addr", listenAddress, "os.Args", os.Args)
 
-	disconnectChan := make(chan struct{})
-	cfg := &service.Config{
-		Listener:       conn,
-		DisconnectChan: disconnectChan,
-		Debugger: debugger.Config{
-			AttachPid:  os.Getpid(),
-			Backend:    "native",
-			Foreground: true, // server always runs without terminal client
-			Packages:   []string{logging.GetCurrentCallerURI().Package},
-			Stdout:     proc.OutputRedirect{Path: dapLogPath},
-			Stderr:     proc.OutputRedirect{Path: dapLogPath},
-			// DebugInfoDirectories: conf.DebugInfoDirectories,
-			// CheckGoVersion:       checkGoVersion,
-			// DisableASLR:          disableASLR,
-		},
-		APIVersion:  2,
-		AcceptMulti: true, // allow multiple VS Code reconnects
-		// CheckLocalConnUser: checkLocalConnUser,
-	}
+// 	disconnectChan := make(chan struct{})
+// 	cfg := &service.Config{
+// 		Listener:       conn,
+// 		DisconnectChan: disconnectChan,
+// 		Debugger: debugger.Config{
+// 			AttachPid:  os.Getpid(),
+// 			Backend:    "native",
+// 			Foreground: true, // server always runs without terminal client
+// 			Packages:   []string{logging.GetCurrentCallerURI().Package},
+// 			Stdout:     proc.OutputRedirect{Path: dapLogPath},
+// 			Stderr:     proc.OutputRedirect{Path: dapLogPath},
+// 			// DebugInfoDirectories: conf.DebugInfoDirectories,
+// 			// CheckGoVersion:       checkGoVersion,
+// 			// DisableASLR:          disableASLR,
+// 		},
+// 		APIVersion:  2,
+// 		AcceptMulti: true, // allow multiple VS Code reconnects
+// 		// CheckLocalConnUser: checkLocalConnUser,
+// 	}
 
-	// client := rpc2.NewClientFromConn(conn)
-	// client.ToggleBreakpointByName()
+// 	// client := rpc2.NewClientFromConn(conn)
+// 	// client.ToggleBreakpointByName()
 
-	err = logflags.Setup(true, "dap", dapLogPath)
-	if err != nil {
-		return errors.Errorf("logflags.Setup: %w", err)
-	}
+// 	err = logflags.Setup(true, "dap", dapLogPath)
+// 	if err != nil {
+// 		return errors.Errorf("logflags.Setup: %w", err)
+// 	}
 
-	server := dap.NewServer(cfg)
-	defer server.Stop()
-	server.Run()
+// 	server := dap.NewServer(cfg)
+// 	defer server.Stop()
+// 	server.Run()
 
-	<-disconnectChan
-	return nil
-}
+// 	<-disconnectChan
+// 	return nil
+// }

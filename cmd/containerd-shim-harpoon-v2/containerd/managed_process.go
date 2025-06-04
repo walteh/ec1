@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/containerd/api/types/task"
+	taskt "github.com/containerd/containerd/api/types/task"
 	"github.com/hashicorp/go-multierror"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
@@ -30,7 +30,7 @@ type managedProcess struct {
 	pid int
 
 	waitblock  chan struct{}
-	status     task.Status
+	status     taskt.Status
 	exitStatus uint32
 	exitedAt   time.Time
 
@@ -65,8 +65,8 @@ func (p *managedProcess) destroy() (retErr error) {
 		}
 	}
 
-	if p.status != task.Status_STOPPED {
-		p.status = task.Status_STOPPED
+	if p.status != taskt.Status_STOPPED {
+		p.status = taskt.Status_STOPPED
 		p.exitedAt = time.Now()
 		p.exitStatus = uint32(syscall.SIGKILL)
 	}
@@ -146,13 +146,13 @@ func (p *managedProcess) start(vm *vmm.RunningVM[*vf.VirtualMachine]) (err error
 	// Create context for the command
 	p.commandCtx, p.commandCancel = context.WithCancel(context.Background())
 
-	p.status = task.Status_RUNNING
+	p.status = taskt.Status_RUNNING
 
 	// Execute the command in the VM
 	go func() {
 		defer func() {
 			p.mu.Lock()
-			p.status = task.Status_STOPPED
+			p.status = taskt.Status_STOPPED
 			p.exitedAt = time.Now()
 			close(p.waitblock)
 			p.mu.Unlock()

@@ -14,12 +14,13 @@ import (
 	"github.com/containerd/errdefs/pkg/errgrpc"
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/hashicorp/go-multierror"
+	"github.com/pkg/errors"
+
+	ec1oci "github.com/walteh/ec1/pkg/oci"
 
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
-
-	ec1oci "github.com/walteh/ec1/pkg/oci"
 )
 
 const unmountFlags = unix.MNT_FORCE
@@ -35,7 +36,7 @@ type container struct {
 	vm         *vmm.RunningVM[*vf.VirtualMachine]
 	imageRef   string
 	hypervisor vmm.Hypervisor[*vf.VirtualMachine]
-	cache      ec1oci.ImageFetchConverter
+	// cache      ec1oci.ImageFetchConverter
 
 	mu sync.Mutex
 
@@ -124,7 +125,15 @@ func (c *container) createVM(ctx context.Context) error {
 		VCPUs:    1,                              // TODO: Extract from spec
 	}
 
-	vm, err := vmm.NewContainerizedVirtualMachine(ctx, c.hypervisor, c.cache, imageConfig)
+	// we need to have created a ImageFetchConverter from the information passed via containerd
+	// note the ext4 thing is not used so no need to create that
+
+	var crf ec1oci.ImageFetchConverter
+	if crf == nil {
+		return errors.Errorf("no image fetch converter")
+	}
+
+	vm, err := vmm.NewContainerizedVirtualMachine(ctx, c.hypervisor, crf, imageConfig)
 	if err != nil {
 		return err
 	}

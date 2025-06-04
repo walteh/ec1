@@ -25,7 +25,6 @@ import (
 )
 
 const (
-	testNamespace     = "harpoon-test"
 	testImage         = "docker.io/library/alpine:latest"
 	containerdTimeout = 30 * time.Second
 	vmBootTimeout     = 10 * time.Second
@@ -202,7 +201,7 @@ func (env *testEnvironment) testStartContainerd(t *testing.T, ctx context.Contex
 }
 
 func (env *testEnvironment) createContainerdConfig(t *testing.T, ctx context.Context) {
-	// Build a containerd v3 config that points to our custom shim
+	// Build a containerd v3 config that points to our custom harpoon-v2 shim
 	configContent := fmt.Sprintf(`
 version = 3
 root   = "%[1]s"
@@ -220,10 +219,9 @@ state  = "%[2]s"
 [plugins."io.containerd.runtime.v1.linux"]
   shim_debug = true
 
-[plugins."io.containerd.runtime.v2.task"]
-  platforms = ["linux/amd64","linux/arm64"]
-
-# --- CRI runtime section (v3) ------------------------------------------
+# --------------------------------------------------------------------------------
+# 2) Register CRI runtime so kubelet/crictl know to use "io.containerd.harpoon.v2"
+# --------------------------------------------------------------------------------
 [plugins."io.containerd.cri.v1.runtime".containerd]
   default_runtime_name = "%[4]s"
 
@@ -236,8 +234,8 @@ state  = "%[2]s"
 		filepath.Join(env.workDir, "root"),     // %[1]s
 		filepath.Join(env.workDir, "state"),    // %[2]s
 		env.getContainerdAddress(),             // %[3]s
-		ContainerdShimRuntimeID,                // %[4]s
-		safeGetShimContainerdExecutablePath(t), // %[5]s
+		ContainerdShimRuntimeID,                // %[4]s, e.g. "io.containerd.harpoon.v2"
+		safeGetShimContainerdExecutablePath(t), // %[5]s, absolute path to your shim binary
 	)
 
 	// Create required directories
@@ -252,6 +250,7 @@ state  = "%[2]s"
 		require.NoError(t, err, "Failed to create directory: %s", dir)
 	}
 
+	// Write the TOML out to a file
 	env.configFile = filepath.Join(env.workDir, "containerd.toml")
 	err := os.WriteFile(env.configFile, []byte(configContent), 0644)
 	require.NoError(t, err, "Failed to write containerd config")
@@ -555,7 +554,7 @@ func (env *testEnvironment) trackContainer(containerID string) {
 }
 
 func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, containerID string, cmd []string) client.Container {
-	ctx = namespaces.WithNamespace(ctx, testNamespace)
+	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
 
 	// Pull image if needed (simplified - in real test we'd need proper image handling)
 	image, err := env.client.Pull(ctx, testImage, client.WithPullUnpack)
@@ -578,7 +577,7 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 }
 
 func (env *testEnvironment) startContainer(t *testing.T, ctx context.Context, container client.Container) client.Task {
-	ctx = namespaces.WithNamespace(ctx, testNamespace)
+	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
 
 	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(env.workDir, "fifo")))
 	task, err := container.NewTask(ctx, creator)
@@ -610,7 +609,7 @@ func (env *testEnvironment) waitContainer(t *testing.T, ctx context.Context, tas
 }
 
 func (env *testEnvironment) killContainer(t *testing.T, ctx context.Context, task client.Task) {
-	ctx = namespaces.WithNamespace(ctx, testNamespace)
+	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
 
 	err := task.Kill(ctx, 9) // SIGKILL
 	if err != nil {
@@ -621,7 +620,7 @@ func (env *testEnvironment) killContainer(t *testing.T, ctx context.Context, tas
 }
 
 func (env *testEnvironment) deleteContainer(t *testing.T, ctx context.Context, container client.Container, task client.Task) {
-	ctx = namespaces.WithNamespace(ctx, testNamespace)
+	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
 
 	// Kill task if still running
 	task.Kill(ctx, 9)
@@ -642,7 +641,7 @@ func (env *testEnvironment) deleteContainer(t *testing.T, ctx context.Context, c
 }
 
 func (env *testEnvironment) cleanupContainer(ctx context.Context, containerID string) {
-	ctx = namespaces.WithNamespace(ctx, testNamespace)
+	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
 
 	// Try to get and delete the container
 	container, err := env.client.LoadContainer(ctx, containerID)

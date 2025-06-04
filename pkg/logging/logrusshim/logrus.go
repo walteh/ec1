@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strings"
 
@@ -62,6 +63,11 @@ func (h *SlogBridgeHook) Fire(entry *logrus.Entry) error {
 
 	record := slog.NewRecord(entry.Time, level, "[logrus] "+entry.Message, entry.Caller.PC)
 	record.AddAttrs(attrs...)
+
+	if strings.HasSuffix(entry.Caller.File, "panic.go") {
+		record := slog.NewRecord(entry.Time, level, string(debug.Stack()), entry.Caller.PC)
+		slog.Default().Handler().Handle(context.Background(), record)
+	}
 
 	// Send to slog
 

@@ -9,6 +9,10 @@ import (
 )
 
 func init() {
+	RegisterPlugins()
+}
+
+func RegisterPlugins() {
 	registry.Register(&plugin.Registration{
 		Type: plugins.TTRPCPlugin,
 		ID:   "task",

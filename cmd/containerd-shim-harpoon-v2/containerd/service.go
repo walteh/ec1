@@ -12,7 +12,8 @@ import (
 
 	"github.com/containerd/containerd/api/events"
 	"github.com/containerd/containerd/api/types"
-	"github.com/containerd/containerd/api/types/task"
+
+	taskt "github.com/containerd/containerd/api/types/task"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/core/runtime"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
@@ -28,17 +29,13 @@ import (
 	"github.com/creack/pty"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
-	taskAPI "github.com/containerd/containerd/api/runtime/task/v3"
+	"github.com/containerd/containerd/api/runtime/task/v3"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
 
-	"github.com/walteh/ec1/pkg/testing/toci"
-	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm/vf"
-
-	oci_image_cache "github.com/walteh/ec1/gen/oci-image-cache"
 )
 
-func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskAPI.TTRPCTaskService, error) {
+func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (task.TTRPCTaskService, error) {
 	s := service{
 		containers: make(map[string]*container),
 		sd:         sd,
@@ -84,11 +81,11 @@ func (s *service) getContainerL(id string) (*container, error) {
 }
 
 func (s *service) RegisterTTRPC(server *ttrpc.Server) error {
-	taskAPI.RegisterTTRPCTaskService(server, s)
+	task.RegisterTTRPCTaskService(server, s)
 	return nil
 }
 
-func (s *service) State(ctx context.Context, request *taskAPI.StateRequest) (*taskAPI.StateResponse, error) {
+func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.StateResponse, error) {
 	log.G(ctx).WithField("request", request).Info("STATE")
 	defer log.G(ctx).Info("STATE_DONE")
 
@@ -105,7 +102,7 @@ func (s *service) State(ctx context.Context, request *taskAPI.StateRequest) (*ta
 	// For VM-based processes, we use the stored pid
 	var pid int = p.pid
 
-	return &taskAPI.StateResponse{
+	return &task.StateResponse{
 		ID:         request.ID,
 		Bundle:     c.bundlePath,
 		Pid:        uint32(pid),
@@ -120,7 +117,7 @@ func (s *service) State(ctx context.Context, request *taskAPI.StateRequest) (*ta
 	}, nil
 }
 
-func (s *service) Create(ctx context.Context, request *taskAPI.CreateTaskRequest) (_ *taskAPI.CreateTaskResponse, retErr error) {
+func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (_ *task.CreateTaskResponse, retErr error) {
 	log.G(ctx).WithField("request", request).Info("CREATE")
 	defer log.G(ctx).Info("CREATE_DONE")
 
@@ -151,11 +148,10 @@ func (s *service) Create(ctx context.Context, request *taskAPI.CreateTaskRequest
 		rootfs:        rootfs,
 		dnsSocketPath: dnsSocketPath,
 		hypervisor:    vf.NewHypervisor(),
-		cache:         toci.PreloadedImageCache(nil, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{}), // TODO: Proper cache
 		primary: managedProcess{
 			spec:      spec.Process,
 			waitblock: make(chan struct{}),
-			status:    task.Status_CREATED,
+			status:    taskt.Status_CREATED,
 		},
 		auxiliary: make(map[string]*managedProcess),
 	}
@@ -197,7 +193,7 @@ func (s *service) Create(ctx context.Context, request *taskAPI.CreateTaskRequest
 		Checkpoint: request.Checkpoint,
 	}
 
-	return &taskAPI.CreateTaskResponse{}, nil
+	return &task.CreateTaskResponse{}, nil
 }
 
 func shortenPath(p string) (string, error) {
@@ -290,7 +286,7 @@ func unixSocketCopy(from, to *net.UnixConn) error {
 	}
 }
 
-func (s *service) Start(ctx context.Context, request *taskAPI.StartRequest) (*taskAPI.StartResponse, error) {
+func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.StartResponse, error) {
 	log.G(ctx).WithField("request", request).Info("START")
 	defer log.G(ctx).Info("START_DONE")
 
@@ -328,12 +324,12 @@ func (s *service) Start(ctx context.Context, request *taskAPI.StartRequest) (*ta
 		Pid:         uint32(p.pid),
 	}
 
-	return &taskAPI.StartResponse{
+	return &task.StartResponse{
 		Pid: uint32(p.pid),
 	}, nil
 }
 
-func (s *service) Delete(ctx context.Context, request *taskAPI.DeleteRequest) (*taskAPI.DeleteResponse, error) {
+func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*task.DeleteResponse, error) {
 	log.G(ctx).WithField("request", request).Info("DELETE")
 	defer log.G(ctx).Info("DELETE_DONE")
 
@@ -359,7 +355,7 @@ func (s *service) Delete(ctx context.Context, request *taskAPI.DeleteRequest) (*
 		}
 		delete(c.auxiliary, request.ExecID)
 
-		return &taskAPI.DeleteResponse{
+		return &task.DeleteResponse{
 			ExitedAt:   protobuf.ToTimestamp(p.exitedAt),
 			ExitStatus: p.exitStatus,
 		}, nil
@@ -381,34 +377,34 @@ func (s *service) Delete(ctx context.Context, request *taskAPI.DeleteRequest) (*
 		Pid:         pid,
 	}
 
-	return &taskAPI.DeleteResponse{
+	return &task.DeleteResponse{
 		ExitedAt:   protobuf.ToTimestamp(c.primary.exitedAt),
 		ExitStatus: c.primary.exitStatus,
 		Pid:        pid,
 	}, nil
 }
 
-func (s *service) Pids(ctx context.Context, request *taskAPI.PidsRequest) (*taskAPI.PidsResponse, error) {
+func (s *service) Pids(ctx context.Context, request *task.PidsRequest) (*task.PidsResponse, error) {
 	log.G(ctx).WithField("request", request).Info("PIDS")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Pause(ctx context.Context, request *taskAPI.PauseRequest) (*ptypes.Empty, error) {
+func (s *service) Pause(ctx context.Context, request *task.PauseRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("PAUSE")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Resume(ctx context.Context, request *taskAPI.ResumeRequest) (*ptypes.Empty, error) {
+func (s *service) Resume(ctx context.Context, request *task.ResumeRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("RESUME")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Checkpoint(ctx context.Context, request *taskAPI.CheckpointTaskRequest) (*ptypes.Empty, error) {
+func (s *service) Checkpoint(ctx context.Context, request *task.CheckpointTaskRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("CHECKPOINT")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Kill(ctx context.Context, request *taskAPI.KillRequest) (*ptypes.Empty, error) {
+func (s *service) Kill(ctx context.Context, request *task.KillRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("KILL")
 	defer log.G(ctx).Info("KILL_DONE")
 
@@ -428,7 +424,7 @@ func (s *service) Kill(ctx context.Context, request *taskAPI.KillRequest) (*ptyp
 	return &ptypes.Empty{}, nil
 }
 
-func (s *service) Exec(ctx context.Context, request *taskAPI.ExecProcessRequest) (_ *ptypes.Empty, retErr error) {
+func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_ *ptypes.Empty, retErr error) {
 	log.G(ctx).WithField("request", request).Info("EXEC")
 
 	specAny, err := typeurl.UnmarshalAny(request.Spec)
@@ -454,7 +450,7 @@ func (s *service) Exec(ctx context.Context, request *taskAPI.ExecProcessRequest)
 	aux := &managedProcess{
 		spec:      spec,
 		waitblock: make(chan struct{}),
-		status:    task.Status_CREATED,
+		status:    taskt.Status_CREATED,
 	}
 
 	defer func() {
@@ -480,7 +476,7 @@ func (s *service) Exec(ctx context.Context, request *taskAPI.ExecProcessRequest)
 	return &ptypes.Empty{}, nil
 }
 
-func (s *service) ResizePty(ctx context.Context, request *taskAPI.ResizePtyRequest) (*ptypes.Empty, error) {
+func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("RESIZEPTY")
 	defer log.G(ctx).Info("RESIZEPTY_DONE")
 
@@ -503,7 +499,7 @@ func (s *service) ResizePty(ctx context.Context, request *taskAPI.ResizePtyReque
 	return &ptypes.Empty{}, nil
 }
 
-func (s *service) CloseIO(ctx context.Context, request *taskAPI.CloseIORequest) (*ptypes.Empty, error) {
+func (s *service) CloseIO(ctx context.Context, request *task.CloseIORequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("CLOSEIO")
 
 	c, err := s.getContainerL(request.ID)
@@ -523,12 +519,12 @@ func (s *service) CloseIO(ctx context.Context, request *taskAPI.CloseIORequest) 
 	return &ptypes.Empty{}, nil
 }
 
-func (s *service) Update(ctx context.Context, request *taskAPI.UpdateTaskRequest) (*ptypes.Empty, error) {
+func (s *service) Update(ctx context.Context, request *task.UpdateTaskRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("UPDATE")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Wait(ctx context.Context, request *taskAPI.WaitRequest) (*taskAPI.WaitResponse, error) {
+func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.WaitResponse, error) {
 	log.G(ctx).WithField("request", request).Info("WAIT")
 	defer log.G(ctx).Info("WAIT_DONE")
 
@@ -544,18 +540,18 @@ func (s *service) Wait(ctx context.Context, request *taskAPI.WaitRequest) (*task
 
 	<-p.waitblock
 
-	return &taskAPI.WaitResponse{
+	return &task.WaitResponse{
 		ExitedAt:   protobuf.ToTimestamp(p.exitedAt),
 		ExitStatus: p.exitStatus,
 	}, nil
 }
 
-func (s *service) Stats(ctx context.Context, request *taskAPI.StatsRequest) (*taskAPI.StatsResponse, error) {
+func (s *service) Stats(ctx context.Context, request *task.StatsRequest) (*task.StatsResponse, error) {
 	log.G(ctx).WithField("request", request).Info("STATS")
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) Connect(ctx context.Context, request *taskAPI.ConnectRequest) (*taskAPI.ConnectResponse, error) {
+func (s *service) Connect(ctx context.Context, request *task.ConnectRequest) (*task.ConnectResponse, error) {
 	log.G(ctx).WithField("request", request).Info("CONNECT")
 	defer log.G(ctx).Info("CONNECT_DONE")
 
@@ -564,13 +560,13 @@ func (s *service) Connect(ctx context.Context, request *taskAPI.ConnectRequest) 
 		pid = c.primary.pid
 	}
 
-	return &taskAPI.ConnectResponse{
+	return &task.ConnectResponse{
 		ShimPid: uint32(os.Getpid()),
 		TaskPid: uint32(pid),
 	}, nil
 }
 
-func (s *service) Shutdown(ctx context.Context, request *taskAPI.ShutdownRequest) (*ptypes.Empty, error) {
+func (s *service) Shutdown(ctx context.Context, request *task.ShutdownRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("SHUTDOWN")
 	defer log.G(ctx).Info("SHUTDOWN_DONE")
 
