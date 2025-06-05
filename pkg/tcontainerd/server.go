@@ -114,6 +114,18 @@ state  = "%[2]s"
 # Content store config
 [plugins."io.containerd.content.v1.content"]
   path = "%[8]s"
+
+# Garbage collection settings - delay GC to prevent race conditions during testing
+[plugins."io.containerd.gc.v1.scheduler"]
+  pause_threshold = 0.02
+  deletion_threshold = 0
+  mutation_threshold = 100
+  schedule_delay = "0s"
+  startup_delay = "10s"
+
+# Metadata settings for content sharing
+[plugins."io.containerd.metadata.v1.bolt"]
+  content_sharing_policy = "shared"
 `,
 		filepath.Join(WorkDir(), "root"),      // %[1]s
 		filepath.Join(WorkDir(), "state"),     // %[2]s

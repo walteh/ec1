@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
+
 	_ "github.com/walteh/ec1/gen/oci-image-cache"
 
 	"bytes"
@@ -23,6 +24,7 @@ import (
 	"github.com/containerd/containerd/v2/core/images/archive"
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
+	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/platforms"
 	"github.com/moby/sys/reexec"
 	"github.com/opencontainers/go-digest"
@@ -101,7 +103,7 @@ func (env *testEnvironment) preloadTestImages(t *testing.T, ctx context.Context,
 		client.WithImageRefTranslator(archive.AddRefPrefix(prefix)),
 		// client.WithPlatformMatcher(platforms.DefaultStrict()),
 		client.WithImportPlatform(matcher),
-		client.WithDiscardUnpackedLayers(),
+		// Remove WithDiscardUnpackedLayers() to prevent premature content cleanup
 		client.WithImportCompression(),
 		client.WithSkipMissing(),
 		// client.WithImageLabels(map[string]string{
@@ -117,6 +119,9 @@ func (env *testEnvironment) preloadTestImages(t *testing.T, ctx context.Context,
 	require.NoError(t, err)
 
 	env.images[name] = image
+
+	// Small delay to allow GC scheduling to settle before unpacking
+	time.Sleep(100 * time.Millisecond)
 
 	for _, img := range image {
 
@@ -402,7 +407,7 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 		// client.WithNewSnapshot(containerID, image),
 		// client.With(env.storage),
 		// client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
-		// client.WithNewSpec(oci.WithProcessArgs(cmd...)),
+		client.WithNewSpec(oci.WithProcessArgs(cmd...)),
 		client.WithRuntime(ContainerdShimRuntimeID, nil),
 	)
 	require.NoError(t, err, "Failed to create container %s", containerID)
