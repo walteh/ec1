@@ -49,7 +49,6 @@ func (s *DevContainerdServer) setupReexec(ctx context.Context) error {
 
 	oldPath := os.Getenv("PATH")
 	newPath := filepath.Dir(ShimSimlinkPath()) + string(os.PathListSeparator) + oldPath
-	newPath = filepath.Dir(CtrSimlinkPath()) + string(os.PathListSeparator) + newPath
 	os.Setenv("PATH", newPath)
 
 	return nil

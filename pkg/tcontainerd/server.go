@@ -36,7 +36,7 @@ func NewDevContainerdServer(ctx context.Context, debug bool) (*DevContainerdServ
 		return nil, errors.Errorf("ensuring only one instance is running: %w", err)
 	}
 
-	if err := server.setupShim(ctx); err != nil {
+	if err := server.setupReexec(ctx); err != nil {
 		return nil, errors.Errorf("setting up shim: %w", err)
 	}
 

@@ -70,8 +70,8 @@ func (i *ContainerdTestdataImporter) ImportImage(ctx context.Context, imageRef s
 		return errors.Errorf("creating gzip reader: %w", err)
 	}
 
-	_, err = i.client.Import(ctx, gzdata, client.WithAllPlatforms(true), client.WithDiscardUnpackedLayers(), client.WithDigestRef(func(dgst digest.Digest) string {
-		return dgst.String()
+	_, err = i.client.Import(ctx, gzdata, client.WithAllPlatforms(true), client.WithDigestRef(func(dgst digest.Digest) string {
+		return imageRef
 	}))
 	if err != nil {
 		return errors.Errorf("importing OCI layout: %w", err)

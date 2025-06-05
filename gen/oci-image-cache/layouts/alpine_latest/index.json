@@ -1,0 +1,45 @@
+{
+   "schemaVersion": 2,
+   "mediaType": "application/vnd.oci.image.index.v1+json",
+   "manifests": [
+      {
+         "mediaType": "application/vnd.oci.image.manifest.v1+json",
+         "size": 1025,
+         "digest": "sha256:008448246686fe28544e36ba89e7bc7fbe6dad8a2ccdef576875c74298c46348",
+         "annotations": {
+            "com.docker.official-images.bashbrew.arch": "arm64v8",
+            "org.opencontainers.image.base.name": "scratch",
+            "org.opencontainers.image.created": "2025-05-30T18:15:12Z",
+            "org.opencontainers.image.ref.name": "index.docker.io/library/alpine:latest",
+            "org.opencontainers.image.revision": "5213c5a71c73d39d5896657909e753effb1c05ff",
+            "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#5213c5a71c73d39d5896657909e753effb1c05ff:aarch64",
+            "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+            "org.opencontainers.image.version": "3.22.0"
+         },
+         "platform": {
+            "architecture": "arm64",
+            "os": "linux",
+            "variant": "v8"
+         }
+      },
+      {
+         "mediaType": "application/vnd.oci.image.manifest.v1+json",
+         "size": 1022,
+         "digest": "sha256:08001109a7d679fe33b04fa51d681bd40b975d8f5cea8c3ef6c0eccb6a7338ce",
+         "annotations": {
+            "com.docker.official-images.bashbrew.arch": "amd64",
+            "org.opencontainers.image.base.name": "scratch",
+            "org.opencontainers.image.created": "2025-05-30T18:04:04Z",
+            "org.opencontainers.image.ref.name": "index.docker.io/library/alpine:latest",
+            "org.opencontainers.image.revision": "5213c5a71c73d39d5896657909e753effb1c05ff",
+            "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#5213c5a71c73d39d5896657909e753effb1c05ff:x86_64",
+            "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+            "org.opencontainers.image.version": "3.22.0"
+         },
+         "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+         }
+      }
+   ]
+}

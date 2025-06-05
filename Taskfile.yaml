@@ -243,11 +243,17 @@ tasks:
             IMAGE: "{{ index .MATCH 0 }}"
             VAR_NAME: "{{.FMT_IMAGE | upper }}"
             OUT_FILE: "{{.LAYOUTS_DIR}}/{{.FMT_IMAGE}}.tar.gz"
+            PLATFORMS:
+              - linux/arm64
+              - linux/amd64
+
         cmds:
-          - cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.WRK_DIR}}
-          - cmd: ./gow run ./cmd/manifest-prune -oci-layout {{.WRK_DIR}} -platforms linux/arm64,linux/amd64,darwin/arm64,darwin/amd64
-            #   - cmd: ./gow tool arc archive -f 'tar' -c 'gz' -f '{{.OUT_FILE}}' {{.WRK_DIR}}/*
+          - for: {var: PLATFORMS}
+            cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.WRK_DIR}} --platform {{.ITEM}} --annotate-ref
+
           - cmd: cd {{.WRK_DIR}} && tar -czf {{.OUT_FILE}} .
+            #   - cmd: ./gow run ./cmd/manifest-prune -oci-layout {{.WRK_DIR}}
+            #   - cmd: ./gow tool arc archive -f 'tar' -c 'gz' -f '{{.OUT_FILE}}' {{.WRK_DIR}}/*
           - cmd: sha256sum {{.OUT_FILE}} > {{.OUT_FILE}}.sha256
           - cmd: rm -rf {{.WRK_DIR}}
           - cmd: |-

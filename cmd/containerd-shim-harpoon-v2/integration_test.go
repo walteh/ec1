@@ -2,13 +2,13 @@ package main
 
 import (
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
-
 	_ "github.com/walteh/ec1/gen/oci-image-cache"
 
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,18 +18,43 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/v2/client"
-	"github.com/containerd/containerd/v2/cmd/containerd/command"
+	"github.com/containerd/containerd/v2/core/diff"
+	"github.com/containerd/containerd/v2/core/images"
+	"github.com/containerd/containerd/v2/core/images/archive"
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
-	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/platforms"
+	"github.com/moby/sys/reexec"
+	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/walteh/ec1/pkg/testing/tcontainerd"
+	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/pkg/logging"
+	"github.com/walteh/ec1/pkg/tcontainerd"
+	"github.com/walteh/ec1/pkg/testing/tctx"
+	"github.com/walteh/ec1/pkg/testing/tlog"
 	"github.com/walteh/ec1/pkg/testing/toci"
 
 	ec1oci "github.com/walteh/ec1/pkg/oci"
 )
+
+func init() {
+	tcontainerd.ShimReexecInit()
+
+	if reexec.Init() {
+		os.Exit(0)
+	}
+}
+
+type testEnvironment struct {
+	mu         sync.Mutex
+	server     *tcontainerd.DevContainerdServer
+	containers []string // Track containers for cleanup
+	client     *client.Client
+	images     map[string][]images.Image
+}
 
 const (
 	testImage         = "docker.io/library/alpine:latest"
@@ -37,14 +62,72 @@ const (
 	vmBootTimeout     = 10 * time.Second
 )
 
-var (
-	shimContainerdExecutablePath = ""
-)
+var testEnv *testEnvironment
+var testLogger *slog.Logger
 
-func safeGetShimContainerdExecutablePath(t testing.TB) string {
-	t.Helper()
-	require.NotEmpty(t, shimContainerdExecutablePath, "shimContainerdExecutablePath is not set")
-	return shimContainerdExecutablePath
+func getTestLoggerCtx(t testing.TB) context.Context {
+	ctx := slogctx.NewCtx(t.Context(), testLogger)
+	ctx = tlog.SetupSlogForTestWithContext(t, ctx)
+	ctx = tctx.WithContext(ctx, t)
+	return ctx
+}
+
+func TestMain(m *testing.M) {
+	ctx := context.Background()
+	ctx = logging.SetupSlogSimpleToWriterWithProcessName(ctx, os.Stdout, true, "test")
+	testLogger = slogctx.FromCtx(ctx)
+	testEnv = setupTestEnvironment(ctx)
+
+	code := m.Run()
+	testEnv.server.Stop(ctx)
+	os.Exit(code)
+}
+
+func (env *testEnvironment) preloadTestImages(t *testing.T, ctx context.Context, name string, compressedData []byte) {
+	data := bytes.NewReader(compressedData)
+
+	gzdata, err := gzip.NewReader(data)
+	require.NoError(t, err)
+
+	platSpec, err := platforms.Parse("linux")
+	if err != nil {
+		t.Fatalf("failed to parse platform: %v", err)
+	}
+
+	matcher := platforms.OnlyStrict(platSpec)
+
+	prefix := fmt.Sprintf("import-%s", time.Now().Format("2006-01-02"))
+	opts := []client.ImportOpt{
+		client.WithImageRefTranslator(archive.AddRefPrefix(prefix)),
+		// client.WithPlatformMatcher(platforms.DefaultStrict()),
+		client.WithImportPlatform(matcher),
+		client.WithDiscardUnpackedLayers(),
+		client.WithImportCompression(),
+		client.WithSkipMissing(),
+		// client.WithImageLabels(map[string]string{
+		// 	"io.containerd.image.name":          name,
+		// 	"org.opencontainers.image.ref.name": strings.Split(name, ":")[1],
+		// }),
+		client.WithDigestRef(func(dgst digest.Digest) string {
+			return name
+		}),
+	}
+
+	image, err := env.client.Import(ctx, gzdata, opts...)
+	require.NoError(t, err)
+
+	env.images[name] = image
+
+	for _, img := range image {
+
+		image := client.NewImageWithPlatform(env.client, img, platforms.All)
+
+		// TODO: Show unpack status
+		fmt.Printf("unpacking %s (%s)...\n", img.Name, img.Target.Digest)
+		err = image.Unpack(ctx, "native", client.WithUnpackApplyOpts(diff.WithSyncFs(true)))
+		require.NoError(t, err)
+
+	}
 }
 
 // TestContainerdShimIntegration is the main integration test that validates
@@ -52,347 +135,70 @@ func safeGetShimContainerdExecutablePath(t testing.TB) string {
 func TestContainerdShimIntegration(t *testing.T) {
 	ctx := getTestLoggerCtx(t)
 
-	// Skip if not on macOS
-	if !isMacOS() {
-		t.Skip("Harpoon shim only works on macOS")
+	data := map[string][]byte{
+		"docker.io/library/alpine:latest": toci.Registry()["docker.io/library/alpine:latest"],
 	}
 
-	// Create test environment
-	testEnv := setupTestEnvironment(t, ctx)
-	defer testEnv.cleanup()
+	for name, compressedData := range data {
+		testEnv.preloadTestImages(t, ctx, name, compressedData)
+	}
 
-	// // Run test phases
-	// t.Run("Phase1_BuildShim", func(t *testing.T) {
-	// 	testEnv.testBuildShim(t, ctx)
-	// })
-
-	// // Create containerd client
-	// testEnv.createContainerdClient(t, ctx)
-	// defer testEnv.client.Close()
-
-	testEnv.testStartContainerd(t, ctx)
+	// err = importer.PreloadTestImages(ctx, )
+	// require.NoError(t, err)
 
 	testEnv.testBasicContainerLifecycle(t, ctx)
 
 	testEnv.testCommandExecution(t, ctx)
 
-	t.Run("Phase4_CommandExecution", func(t *testing.T) {
-	})
+	// t.Run("BasicContainerLifecycle", func(t *testing.T) {
+	// })
 
-	t.Run("Phase5_IOStreams", func(t *testing.T) {
+	// t.Run("CommandExecution", func(t *testing.T) {
+	// })
+
+	t.Run("IOStreams", func(t *testing.T) {
 		testEnv.testIOStreams(t, ctx)
 	})
 
-	t.Run("Phase6_ErrorHandling", func(t *testing.T) {
+	t.Run("ErrorHandling", func(t *testing.T) {
 		testEnv.testErrorHandling(t, ctx)
 	})
 
-	t.Run("Phase7_Performance", func(t *testing.T) {
+	t.Run("Performance", func(t *testing.T) {
 		testEnv.testPerformance(t, ctx)
 	})
 
-	t.Run("Phase8_ResourceCleanup", func(t *testing.T) {
+	t.Run("ResourceCleanup", func(t *testing.T) {
 		testEnv.testResourceCleanup(t, ctx)
 	})
 }
 
 // testEnvironment manages the test setup and cleanup
-type testEnvironment struct {
-	t              *testing.T
-	workDir        string
-	containerdProc *os.Process
-	containerdAddr string
-	configFile     string
-	client         *client.Client
-	mu             sync.Mutex
-	containers     []string // Track containers for cleanup
-}
+func setupTestEnvironment(ctx context.Context) *testEnvironment {
 
-func setupTestEnvironment(t *testing.T, ctx context.Context) *testEnvironment {
-	// Create temporary directory
-	workDir, err := os.MkdirTemp("", "harpoon-test-*")
-	require.NoError(t, err, "Failed to create temp directory")
+	server, err := tcontainerd.NewDevContainerdServer(ctx, true)
+	if err != nil {
+		panic(err)
+	}
+
+	err = server.StartBackground(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	client, err := tcontainerd.NewContainerdClient(ctx)
+	if err != nil {
+		panic(err)
+	}
 
 	env := &testEnvironment{
-		t:       t,
-		workDir: workDir,
+		server:     server,
+		containers: []string{},
+		client:     client,
+		images:     map[string][]images.Image{},
 	}
 
-	slog.InfoContext(ctx, "Test environment created", "workDir", workDir)
 	return env
-}
-
-func (env *testEnvironment) cleanup() {
-	env.mu.Lock()
-	defer env.mu.Unlock()
-
-	ctx := context.Background()
-
-	// Clean up containers
-	for _, containerID := range env.containers {
-		env.cleanupContainer(ctx, containerID)
-	}
-
-	// Close containerd client
-	if env.client != nil {
-		env.client.Close()
-	}
-
-	// Stop containerd
-	if env.containerdProc != nil {
-		slog.Info("Stopping containerd process")
-		env.containerdProc.Kill()
-		env.containerdProc.Wait()
-	}
-
-	// Clean up work directory
-	if env.workDir != "" {
-		os.RemoveAll(env.workDir)
-		slog.Info("Cleaned up work directory", "path", env.workDir)
-	}
-}
-
-// func (env *testEnvironment) testBuildShim(t *testing.T, ctx context.Context) {
-// 	slog.InfoContext(ctx, "Building containerd shim")
-
-// 	// Build the shim binary
-// 	shimPath := filepath.Join(env.workDir, "containerd-shim-harpoon-v1")
-
-// 	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", shimPath, ".")
-// 	buildCmd.Dir = "." // Current directory (cmd/containerd-shim-harpoon-v1)
-
-// 	// Handle code signing if needed
-// 	if needsCodeSigning() {
-// 		slog.InfoContext(ctx, "Code signing may be required for Apple Virtualization Framework")
-// 		// The build will handle this via go tool codesign if configured
-// 	}
-
-// 	output, err := buildCmd.CombinedOutput()
-// 	require.NoError(t, err, "Failed to build shim: %s", string(output))
-
-// 	// Verify binary exists and is executable
-// 	info, err := os.Stat(shimPath)
-// 	require.NoError(t, err, "Shim binary not found")
-// 	require.True(t, info.Mode()&0111 != 0, "Shim binary is not executable")
-
-// 	env.shimBinary = shimPath
-// 	slog.InfoContext(ctx, "Shim built successfully", "path", shimPath, "size", info.Size())
-
-// 	// Test basic shim functionality
-// 	helpCmd := exec.CommandContext(ctx, shimPath, "--help")
-// 	err = helpCmd.Run()
-// 	// Note: shim might not have --help, so we just check it doesn't crash immediately
-// 	assert.NotNil(t, err, "Shim should exit with help or error, not hang")
-// }
-
-func (env *testEnvironment) testStartContainerd(t *testing.T, ctx context.Context) {
-	slog.InfoContext(ctx, "Starting containerd with harpoon shim configuration")
-
-	// Create containerd config
-	env.createContainerdConfig(t, ctx)
-
-	t.Logf("containterd config created")
-
-	// Start containerd as a Go process (not external binary)
-	ctx = env.startContainerdProcess(t, ctx)
-
-	t.Logf("containerd process started")
-
-	// Wait for containerd to be ready
-	env.waitForContainerdReady(t, ctx)
-
-	t.Logf("containerd ready")
-
-	// Create containerd client
-	env.createContainerdClient(t, ctx)
-}
-
-func (env *testEnvironment) createContainerdConfig(t *testing.T, ctx context.Context) {
-	// Build a containerd v3 config that points to our custom harpoon-v2 shim
-	configContent := fmt.Sprintf(`
-version = 3
-root   = "%[1]s"
-state  = "%[2]s"
-
-[grpc]
-  address = "%[3]s"
-
-[ttrpc]
-  address = "%[3]s.ttrpc"
-
-[debug]
-  level = "debug"
-
-[plugins."io.containerd.runtime.v1.linux"]
-  shim_debug = true
-
-# --------------------------------------------------------------------------------
-# 2) Register CRI runtime so kubelet/crictl know to use "io.containerd.harpoon.v2"
-# --------------------------------------------------------------------------------
-[plugins."io.containerd.cri.v1.runtime".containerd]
-  default_runtime_name = "%[4]s"
-
-  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
-    [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s"]
-      runtime_type = "%[4]s"
-      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[4]s".options]
-        binary_name = "%[5]s"
-`,
-		filepath.Join(env.workDir, "root"),     // %[1]s
-		filepath.Join(env.workDir, "state"),    // %[2]s
-		env.getContainerdAddress(),             // %[3]s
-		ContainerdShimRuntimeID,                // %[4]s, e.g. "io.containerd.harpoon.v2"
-		safeGetShimContainerdExecutablePath(t), // %[5]s, absolute path to your shim binary
-	)
-
-	// Create required directories
-	dirs := []string{
-		filepath.Join(env.workDir, "root"),
-		filepath.Join(env.workDir, "state"),
-		filepath.Join(env.workDir, "snapshots"),
-		filepath.Join(env.workDir, "content"),
-	}
-	for _, dir := range dirs {
-		err := os.MkdirAll(dir, 0755)
-		require.NoError(t, err, "Failed to create directory: %s", dir)
-	}
-
-	// Write the TOML out to a file
-	env.configFile = filepath.Join(env.workDir, "containerd.toml")
-	err := os.WriteFile(env.configFile, []byte(configContent), 0644)
-	require.NoError(t, err, "Failed to write containerd config")
-
-	slog.InfoContext(ctx, "Containerd config created", "path", env.configFile)
-}
-
-func (env *testEnvironment) getContainerdAddress() string {
-	if env.containerdAddr == "" {
-		env.containerdAddr = filepath.Join(env.workDir, "containerd.sock")
-	}
-	return env.containerdAddr
-}
-
-func (env *testEnvironment) startContainerdProcess(t *testing.T, ctx context.Context) context.Context {
-	// Create all necessary directories for containerd
-	dirs := []string{
-		filepath.Join(env.workDir, "state"),
-		filepath.Join(env.workDir, "root"),
-		filepath.Join(env.workDir, "run"),
-		filepath.Join(env.workDir, "snapshots"),
-		filepath.Join(env.workDir, "content"),
-		filepath.Join(env.workDir, "metadata"),
-	}
-
-	for _, dir := range dirs {
-		err := os.MkdirAll(dir, 0755)
-		require.NoError(t, err, "Failed to create directory %s", dir)
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	// Start containerd using exec to avoid permission issues with the embedded approach
-	go func() {
-		defer func() {
-			cancel()
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "Containerd process panicked", "error", r)
-			}
-		}()
-
-		// Fallback to embedded containerd
-		args := []string{
-			"containerd",
-			"--config", env.configFile,
-			"--address", env.getContainerdAddress(),
-			"--state", filepath.Join(env.workDir, "state"),
-			"--root", filepath.Join(env.workDir, "root"),
-			"--log-level", "debug",
-		}
-
-		app := command.App()
-		if err := app.Run(args); err != nil {
-			slog.ErrorContext(ctx, "Embedded containerd failed", "error", err)
-		}
-
-	}()
-
-	// Wait until the unix socket appears or we hit the overall timeout.
-	startDeadline := time.Now().Add(containerdTimeout)
-	for {
-		if env.isContainerdReady(ctx) {
-			slog.InfoContext(ctx, "Containerd process started and socket is up")
-			break
-		}
-		if time.Now().After(startDeadline) {
-			t.Fatalf("Timeout (%s) waiting for containerd to start", containerdTimeout)
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	return ctx
-}
-
-func (env *testEnvironment) waitForContainerdReady(t *testing.T, ctx context.Context) {
-	slog.InfoContext(ctx, "Waiting for containerd to be ready")
-
-	timeout := time.After(containerdTimeout)
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatal("Context cancelled")
-		case <-timeout:
-			t.Fatal("Timeout waiting for containerd to be ready")
-		case <-ticker.C:
-			if env.isContainerdReady(ctx) {
-				slog.InfoContext(ctx, "Containerd is ready")
-				return
-			}
-		}
-	}
-}
-
-func (env *testEnvironment) isContainerdReady(ctx context.Context) bool {
-	// Try to connect to containerd socket
-	conn, err := net.DialTimeout("unix", env.getContainerdAddress(), time.Second)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
-}
-
-func (env *testEnvironment) createContainerdClient(t *testing.T, ctx context.Context) {
-	var err error
-
-	// Retry client creation a few times
-	for i := 0; i < 5; i++ {
-		env.client, err = client.New(env.getContainerdAddress())
-		if err == nil {
-			break
-		}
-		slog.WarnContext(ctx, "Failed to create containerd client, retrying", "attempt", i+1, "error", err)
-		time.Sleep(time.Second)
-	}
-
-	require.NoError(t, err, "Failed to create containerd client after retries")
-
-	// Test the connection
-	_, err = env.client.Version(ctx)
-	require.NoError(t, err, "Failed to get containerd version")
-
-	slog.InfoContext(ctx, "Containerd client created and connected")
-
-	importer, err := tcontainerd.NewContainerdTestdataImporter(env.client, ContainerdShimTestNamespace)
-	require.NoError(t, err)
-
-	err = importer.PreloadTestImages(ctx, map[string][]byte{
-		"docker.io/library/alpine:latest": toci.Registry()["docker.io/library/alpine:latest"],
-	})
-	require.NoError(t, err)
-
 }
 
 func (env *testEnvironment) testBasicContainerLifecycle(t *testing.T, ctx context.Context) {
@@ -575,10 +381,17 @@ type ContainerdOci struct {
 }
 
 func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, containerID string, cmd []string) client.Container {
-	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
 
-	// Pull image if needed (simplified - in real test we'd need proper image handling)
-	image, err := env.client.Pull(ctx, testImage, client.WithPullUnpack)
+	// list images
+	imgs, err := env.client.ListImages(ctx)
+	require.NoError(t, err, "Failed to list images")
+	for _, img := range imgs {
+		fmt.Println("images", img.Name(), img.Labels())
+	}
+
+	// // Pull image if needed (simplified - in real test we'd need proper image handling)
+	image, err := env.client.GetImage(ctx, testImage)
 	require.NoError(t, err, "Failed to pull image %s", testImage)
 
 	// Create container
@@ -586,9 +399,10 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 		ctx,
 		containerID,
 		client.WithImage(image),
-		client.WithNewSnapshot(containerID, image),
+		// client.WithNewSnapshot(containerID, image),
+		// client.With(env.storage),
 		// client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
-		client.WithNewSpec(oci.WithProcessArgs(cmd...)),
+		// client.WithNewSpec(oci.WithProcessArgs(cmd...)),
 		client.WithRuntime(ContainerdShimRuntimeID, nil),
 	)
 	require.NoError(t, err, "Failed to create container %s", containerID)
@@ -598,9 +412,9 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 }
 
 func (env *testEnvironment) startContainer(t *testing.T, ctx context.Context, container client.Container) client.Task {
-	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
 
-	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(env.workDir, "fifo")))
+	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(tcontainerd.WorkDir(), "fifo")))
 	task, err := container.NewTask(ctx, creator)
 	require.NoError(t, err, "Failed to create task for container %s", container.ID())
 
@@ -630,7 +444,7 @@ func (env *testEnvironment) waitContainer(t *testing.T, ctx context.Context, tas
 }
 
 func (env *testEnvironment) killContainer(t *testing.T, ctx context.Context, task client.Task) {
-	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
 
 	err := task.Kill(ctx, 9) // SIGKILL
 	if err != nil {
@@ -641,7 +455,7 @@ func (env *testEnvironment) killContainer(t *testing.T, ctx context.Context, tas
 }
 
 func (env *testEnvironment) deleteContainer(t *testing.T, ctx context.Context, container client.Container, task client.Task) {
-	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
 
 	// Kill task if still running
 	task.Kill(ctx, 9)
@@ -662,7 +476,7 @@ func (env *testEnvironment) deleteContainer(t *testing.T, ctx context.Context, c
 }
 
 func (env *testEnvironment) cleanupContainer(ctx context.Context, containerID string) {
-	ctx = namespaces.WithNamespace(ctx, ContainerdShimTestNamespace)
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
 
 	// Try to get and delete the container
 	container, err := env.client.LoadContainer(ctx, containerID)

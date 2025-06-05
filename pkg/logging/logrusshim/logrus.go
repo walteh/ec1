@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/containerd/log"
 	"github.com/sirupsen/logrus"
@@ -14,14 +15,20 @@ import (
 
 var _ logrus.Hook = &SlogBridgeHook{}
 
+var (
+	logrusOnce = sync.Once{}
+)
+
 func ForwardLogrusToSlogGlobally() {
-	logrus.SetReportCaller(true)
-	logrus.AddHook(&SlogBridgeHook{})
-	logrus.SetOutput(io.Discard)
-	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableColors: true,
+	logrusOnce.Do(func() {
+		logrus.SetReportCaller(true)
+		logrus.AddHook(&SlogBridgeHook{})
+		logrus.SetOutput(io.Discard)
+		logrus.SetFormatter(&logrus.TextFormatter{
+			DisableColors: true,
+		})
+		log.L.Logger = logrus.StandardLogger()
 	})
-	log.L.Logger = logrus.StandardLogger()
 }
 
 func SetLogrusLevel(level logrus.Level) {
