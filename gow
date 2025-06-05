@@ -7,6 +7,11 @@ if [[ "$*" == *"-root"* ]]; then
 	if [[ -n "${SUDO_ASKPASS:-}" && "${SUDO_ASKPASS}" == "${bad}"* ]]; then
 		SUDO_ASKPASS="$(echo "${SUDO_ASKPASS}" | sed "s|${bad}|${HOME}|")"
 	fi
+	# if root is the second arg then skip it
+	if [[ "$1" == "-root" ]]; then
+		shift
+	fi
+
 	sudo -A -E --close-from=4 go tool gow "$@"
 else
 	go tool gow "$@"

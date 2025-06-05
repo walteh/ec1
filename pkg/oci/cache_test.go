@@ -11,9 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	oci_image_cache "github.com/walteh/ec1/gen/oci-image-cache"
 	"github.com/walteh/ec1/pkg/oci"
+	"github.com/walteh/ec1/pkg/testing/toci"
 	"github.com/walteh/ec1/pkg/units"
+
+	oci_image_cache "github.com/walteh/ec1/gen/oci-image-cache"
 )
 
 func TestCachedFetcher(t *testing.T) {
@@ -21,8 +23,8 @@ func TestCachedFetcher(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a memory map fetcher with test data
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
-	
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
+
 	// Wrap it with a cached fetcher
 	cachedFetcher := oci.NewCachedFetcher(tempDir, memFetcher)
 
@@ -48,7 +50,7 @@ func TestMemoryMapFetcher(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a memory map fetcher with test data
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 
 	// Test fetching an image
 	imageRef := string(oci_image_cache.ALPINE_LATEST)
@@ -67,7 +69,7 @@ func TestOCIFilesystemConverter(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a memory map fetcher with test data
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 
 	// Fetch an image
 	imageRef := string(oci_image_cache.ALPINE_LATEST)
@@ -96,7 +98,7 @@ func TestCachedConverter(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create a memory map fetcher with test data
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 
 	// Fetch an image
 	imageRef := string(oci_image_cache.ALPINE_LATEST)
@@ -124,9 +126,9 @@ func TestImageCache(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create components
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 	converter := oci.NewOCIFilesystemConverter()
-	
+
 	// Create cache
 	cache := oci.NewImageCache(tempDir, memFetcher, converter)
 
@@ -155,7 +157,7 @@ func TestFetchAndConvertImage(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create cache
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 	converter := oci.NewOCIFilesystemConverter()
 	cache := oci.NewImageCache(tempDir, memFetcher, converter)
 
@@ -256,9 +258,9 @@ func TestFetchAndConvertImageErrors(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create components
-	memFetcher := oci.NewMemoryMapFetcher(tempDir, oci_image_cache.Registry)
+	memFetcher := oci.NewMemoryMapFetcher(tempDir, toci.Registry())
 	converter := oci.NewOCIFilesystemConverter()
-	
+
 	// Create cache
 	cache := oci.NewImageCache(tempDir, memFetcher, converter)
 

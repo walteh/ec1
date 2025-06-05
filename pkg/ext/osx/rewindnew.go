@@ -3,6 +3,8 @@ package osx
 import (
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 var _ io.ReaderAt = &TempFileRewindReader{}
@@ -14,10 +16,20 @@ type TempFileRewindReader struct {
 }
 
 func NewTempFileRewindReader(r io.Reader) *TempFileRewindReader {
-	df, err := os.CreateTemp("", "initramfs-discarder")
+	df, err := os.CreateTemp("", "ec1-temp-file")
 	if err != nil {
-		panic(err)
+		panic("creating temp file rewind reader: " + err.Error())
 	}
+
+	go func() {
+		// wait for sigterm and remove the file
+		sigchan := make(chan os.Signal, 1)
+		signal.Notify(sigchan, syscall.SIGTERM, syscall.SIGINT)
+		<-sigchan
+		df.Close()
+		os.Remove(df.Name())
+	}()
+
 	return &TempFileRewindReader{
 		r:   r,
 		pos: 0,

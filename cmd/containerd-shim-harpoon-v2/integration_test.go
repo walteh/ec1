@@ -3,6 +3,8 @@ package main
 import (
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 
+	_ "github.com/walteh/ec1/gen/oci-image-cache"
+
 	"context"
 	"fmt"
 	"log/slog"
@@ -22,6 +24,11 @@ import (
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/walteh/ec1/pkg/testing/tcontainerd"
+	"github.com/walteh/ec1/pkg/testing/toci"
+
+	ec1oci "github.com/walteh/ec1/pkg/oci"
 )
 
 const (
@@ -377,6 +384,15 @@ func (env *testEnvironment) createContainerdClient(t *testing.T, ctx context.Con
 	require.NoError(t, err, "Failed to get containerd version")
 
 	slog.InfoContext(ctx, "Containerd client created and connected")
+
+	importer, err := tcontainerd.NewContainerdTestdataImporter(env.client, ContainerdShimTestNamespace)
+	require.NoError(t, err)
+
+	err = importer.PreloadTestImages(ctx, map[string][]byte{
+		"docker.io/library/alpine:latest": toci.Registry()["docker.io/library/alpine:latest"],
+	})
+	require.NoError(t, err)
+
 }
 
 func (env *testEnvironment) testBasicContainerLifecycle(t *testing.T, ctx context.Context) {
@@ -551,6 +567,11 @@ func (env *testEnvironment) trackContainer(containerID string) {
 	env.mu.Lock()
 	defer env.mu.Unlock()
 	env.containers = append(env.containers, containerID)
+}
+
+var _ ec1oci.ImageFetchConverter
+
+type ContainerdOci struct {
 }
 
 func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, containerID string, cmd []string) client.Container {

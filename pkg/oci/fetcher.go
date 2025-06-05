@@ -55,9 +55,7 @@ func (f *RemoteImageFetcher) FetchImageToOCILayout(ctx context.Context, imageRef
 		return "", errors.Errorf("parsing source reference: %w", err)
 	}
 
-	sysCtx := &types.SystemContext{
-		
-	}
+	sysCtx := &types.SystemContext{}
 
 	if f.SkipTLSVerify {
 		sysCtx.OCIInsecureSkipTLSVerify = true

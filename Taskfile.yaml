@@ -237,41 +237,53 @@ tasks:
 
     oci:cache:*:
         label: 'oci:cache:{{.IMAGE}}'
+        requires: {vars: [LAYOUTS_DIR, GO_FILE, WRK_DIR, FMT_IMAGE, IMAGE]}
         desc: pulls an oci image and archives it
         vars:
             IMAGE: "{{ index .MATCH 0 }}"
-            FMT_IMAGE: |-
-                {{.IMAGE  | trimPrefix "docker.io/library/" | trimPrefix "docker.io/" | replace "/" "_" | replace ":" "_" | lower | replace "-" "_" | replace "." "_" | replace "+" "_" }}
-            VAR_NAME: '{{.FMT_IMAGE | upper }}'
-            DIRECTORY: 'gen/oci-image-cache/{{.FMT_IMAGE}}'
+            VAR_NAME: "{{.FMT_IMAGE | upper }}"
+            OUT_FILE: "{{.LAYOUTS_DIR}}/{{.FMT_IMAGE}}.tar.gz"
         cmds:
-          - cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.DIRECTORY}}
-          - cmd: ./gow run ./cmd/manifest-prune -oci-layout {{.DIRECTORY}} -platforms linux/arm64,linux/amd64,darwin/arm64,darwin/amd64
-          - cmd: ./gow tool arc archive -t 'tar' -c 'gz' -f '{{.DIRECTORY}}.tar.gz' {{.DIRECTORY}}
-          - cmd: sha256sum {{.DIRECTORY}}.tar.gz > {{.DIRECTORY}}.tar.gz.sha256
-          - cmd: rm -rf {{.DIRECTORY}}
+          - cmd: ./gow tool crane pull --format=oci {{.IMAGE}} {{.WRK_DIR}}
+          - cmd: ./gow run ./cmd/manifest-prune -oci-layout {{.WRK_DIR}} -platforms linux/arm64,linux/amd64,darwin/arm64,darwin/amd64
+            #   - cmd: ./gow tool arc archive -f 'tar' -c 'gz' -f '{{.OUT_FILE}}' {{.WRK_DIR}}/*
+          - cmd: cd {{.WRK_DIR}} && tar -czf {{.OUT_FILE}} .
+          - cmd: sha256sum {{.OUT_FILE}} > {{.OUT_FILE}}.sha256
+          - cmd: rm -rf {{.WRK_DIR}}
           - cmd: |-
-                echo -e "package oci_image_cache\n\nimport _ \"embed\"\n" > {{.DIRECTORY}}.gen.go
-                echo -e "//go:embed {{.FMT_IMAGE}}.tar.gz\nvar {{.VAR_NAME }}_TAR_GZ []byte\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "const {{.VAR_NAME }}_TAR_GZ_CHECKSUM = \"$(cat {{.DIRECTORY}}.tar.gz.sha256 | awk '{print $1}')\"\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "const {{.VAR_NAME }} OCICachedImage = \"{{.IMAGE}}\"\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "func init() {\n\tRegistry[{{.VAR_NAME }}] = {{.VAR_NAME }}_TAR_GZ\n}\n" >> {{.DIRECTORY}}.gen.go
-                echo -e "const {{.VAR_NAME }}_SIZE = \"$(ls -S -lh {{.DIRECTORY}}.tar.gz | awk '{print $5}')\"\n" >> {{.DIRECTORY}}.gen.go
-          - cmd: go fmt {{.DIRECTORY}}.gen.go
+                echo -e "const {{.VAR_NAME }}_TAR_GZ_CHECKSUM = \"$(cat {{.OUT_FILE}}.sha256 | awk '{print $1}')\"" >> {{.GO_FILE}}
+                echo -e "const {{.VAR_NAME }} OCICachedImage = \"{{.IMAGE}}\"" >> {{.GO_FILE}}
+                echo -e "const {{.VAR_NAME }}_SIZE = \"$(ls -S -lh {{.OUT_FILE}} | awk '{print $5}')\"" >> {{.GO_FILE}}
+                echo -e "func init() { register({{.VAR_NAME }}.String(), \"{{.FMT_IMAGE}}.tar.gz\") }\n" >> {{.GO_FILE}}
 
     oci:cache:
         desc: pulls all oci images and archives them
         vars:
             DIRECTORY: 'gen/oci-image-cache'
+            GO_FILE: '{{.DIRECTORY}}/oci_image_cache.gen.go'
+            IMAGES:
+              - docker.io/library/alpine:latest
+              - docker.io/library/busybox:glibc
+              - docker.io/library/debian:bookworm-slim
+              - docker.io/oven/bun:alpine
+              - docker.io/alpine/socat:latest
         cmds:
-          - cmd: mkdir -p {{.DIRECTORY}}
+          - cmd: rm -rf {{.DIRECTORY}}
+          - cmd: mkdir -p {{.DIRECTORY}}/layouts
           - cmd: |-
-                echo -e "package oci_image_cache\n\n type OCICachedImage string\n\n" > {{.DIRECTORY}}/oci_image_cache.gen.go
-                echo -e "var Registry = map[OCICachedImage][]byte{}\n" >> {{.DIRECTORY}}/oci_image_cache.gen.go
-                echo -e "func (me OCICachedImage) String() string {\n\treturn string(me)\n}\n" >> {{.DIRECTORY}}/oci_image_cache.gen.go
-          - task: oci:cache:docker.io/library/alpine:latest
-          - task: oci:cache:docker.io/oven/bun:alpine
-          - task: oci:cache:docker.io/alpine/socat:latest
-          - task: oci:cache:docker.io/library/busybox:glibc
-          - task: oci:cache:docker.io/library/debian:bookworm-slim
+                echo -e "package oci_image_cache\n\n" > {{.GO_FILE}}
+                echo -e "import (\n\t\"embed\"\n\t\"github.com/walteh/ec1/pkg/testing/toci\"\n)\n" >> {{.GO_FILE}}
+                echo -e "type OCICachedImage string\n" >> {{.GO_FILE}}
+                echo -e "func (me OCICachedImage) String() string {\n\treturn string(me)\n}\n" >> {{.GO_FILE}}
+                echo -e "//go:embed layouts/*\nvar s embed.FS\n\n" >> {{.GO_FILE}}
+                echo -e "func register(imageName string, fileName string) {\n\ttoci.MustRegisterImage(imageName, \"layouts/\" + fileName, s)\n}\n" >> {{.GO_FILE}}
+          - for: {var: IMAGES}
+            task: oci:cache:{{.ITEM}}
+            vars:
+                LAYOUTS_DIR: {sh: "echo \"$(pwd)/{{.DIRECTORY}}/layouts\""}
+                GO_FILE: "{{.GO_FILE}}"
+                WRK_DIR: {sh: 'mktemp -d'}
+                FMT_IMAGE: |-
+                    {{.ITEM | trimPrefix "docker.io/library/" | trimPrefix "docker.io/" | replace "/" "_" | replace ":" "_" | lower | replace "-" "_" | replace "." "_" | replace "+" "_" }}
+          - cmd: go fmt {{.DIRECTORY}}/oci_image_cache.gen.go
 
