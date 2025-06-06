@@ -156,7 +156,8 @@ type VirtioSerial struct {
 	UsesPty   bool   `json:"usesPty,omitempty"`
 	// PtyName must not be set when creating the VM, from a user perspective, it's read-only,
 	// vfkit will set it during VM startup.
-	PtyName string `json:"ptyName,omitempty"`
+	PtyName string  `json:"ptyName,omitempty"`
+	FD      uintptr `json:"fd,omitempty"`
 }
 
 var _ VirtioDevice = &VirtioSerial{}

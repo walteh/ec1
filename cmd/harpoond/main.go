@@ -33,7 +33,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ctx = logging.SetupSlogSimple(ctx)
+	ctx = logging.SetupSlogSimpleToWriterWithProcessName(ctx, os.Stdout, true, "harpoond")
 
 	ctx = slogctx.With(ctx, slog.Int("pid", pid))
 

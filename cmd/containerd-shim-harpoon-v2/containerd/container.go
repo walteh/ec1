@@ -15,7 +15,7 @@ import (
 	"github.com/containerd/errdefs/pkg/errgrpc"
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -111,7 +111,7 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 }
 
 // createVM creates and starts a new microVM for this container using the already-prepared rootfs
-func (c *container) createVM(ctx context.Context) error {
+func (c *container) createVM(ctx context.Context, spec *oci.Spec, rootfs string, stdio stdio) error {
 	// containerd has already prepared the rootfs for us at c.rootfs
 	// We just need to create a VM that uses this existing rootfs directory
 
@@ -142,10 +142,15 @@ func (c *container) createVM(ctx context.Context) error {
 		platform = units.PlatformLinuxARM64
 	}
 
-	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, c.rootfs, vmm.ContainerVMConfig{
-		Platform: platform,
-		Memory:   memory,
-		VCPUs:    vcpus,
+	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
+		RootfsPath: c.rootfs,
+		StderrFD:   stdio.stderrFD,
+		StdoutFD:   stdio.stdoutFD,
+		StdinFD:    stdio.stdinFD,
+		Spec:       spec,
+		Platform:   platform,
+		Memory:     memory,
+		VCPUs:      vcpus,
 	})
 	if err != nil {
 		return errors.Errorf("creating VM from rootfs: %w", err)

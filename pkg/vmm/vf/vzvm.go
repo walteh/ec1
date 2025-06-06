@@ -34,29 +34,14 @@ type VirtualMachineConfiguration struct {
 	id        string
 	bl        vmm.Bootloader
 	newVMOpts *vmm.NewVMOptions // go-friendly virtual machine configuration definition
-	wrapper   *vzVitualMachineConfigurationWrapper
+	wrapper   *vzVirtioConverter
 	internal  *vz.VirtualMachineConfiguration
 	platform  string
 }
 
-type vzVitualMachineConfigurationWrapper struct {
-	useMacOSGPUGraphicsDevice            bool
-	storageDevicesConfiguration          []vz.StorageDeviceConfiguration
-	directorySharingDevicesConfiguration []vz.DirectorySharingDeviceConfiguration
-	keyboardConfiguration                []vz.KeyboardConfiguration
-	pointingDevicesConfiguration         []vz.PointingDeviceConfiguration
-	graphicsDevicesConfiguration         []vz.GraphicsDeviceConfiguration
-	networkDevicesConfiguration          []*vz.VirtioNetworkDeviceConfiguration
-	entropyDevicesConfiguration          []*vz.VirtioEntropyDeviceConfiguration
-	serialPortsConfiguration             []*vz.VirtioConsoleDeviceSerialPortConfiguration
-	socketDevicesConfiguration           []vz.SocketDeviceConfiguration
-	consolePortsConfiguration            []*vz.VirtioConsolePortConfiguration
-	memoryBalloonDevicesConfiguration    []vz.MemoryBalloonDeviceConfiguration
-}
-
 func NewVirtualMachineConfiguration(ctx context.Context, id string, opts *vmm.NewVMOptions, bootLoader vmm.Bootloader) (*VirtualMachineConfiguration, error) {
 
-	wrapper := &vzVitualMachineConfigurationWrapper{
+	wrapper := &vzVirtioConverter{
 		storageDevicesConfiguration:          make([]vz.StorageDeviceConfiguration, 0),
 		directorySharingDevicesConfiguration: make([]vz.DirectorySharingDeviceConfiguration, 0),
 		keyboardConfiguration:                make([]vz.KeyboardConfiguration, 0),

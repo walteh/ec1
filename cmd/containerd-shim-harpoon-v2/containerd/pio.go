@@ -2,10 +2,12 @@ package containerd
 
 import (
 	"context"
-	"github.com/containerd/fifo"
 	"io"
 	"os"
 	"syscall"
+
+	"github.com/containerd/fifo"
+	"gitlab.com/tozd/go/errors"
 )
 
 type stdio struct {
@@ -13,9 +15,45 @@ type stdio struct {
 	stdoutPath string
 	stderrPath string
 
+	stdinFD  int
+	stdoutFD int
+	stderrFD int
+
 	stdin  io.ReadCloser
 	stdout io.WriteCloser
 	stderr io.WriteCloser
+}
+
+func openFifo(ctx context.Context, path string, flags int) (uintptr, io.ReadWriteCloser, error) {
+
+	if _, err := os.Stat(path); err != nil {
+		return 0, nil, errors.Errorf("stat: %w", err)
+	}
+
+	fo, err := fifo.OpenFifo(ctx, path, flags, 0)
+	if err != nil {
+		return 0, nil, err
+	}
+	sc, ok := fo.(syscall.Conn)
+	if !ok {
+		return 0, nil, errors.Errorf("fifo is not a syscall.Conn")
+	}
+
+	rc, err := sc.SyscallConn()
+	if err != nil {
+		return 0, nil, errors.Errorf("getting syscall.Conn: %w", err)
+	}
+
+	var fdr uintptr
+
+	err = rc.Control(func(fd uintptr) {
+		fdr = fd
+	})
+	if err != nil {
+		return fdr, nil, errors.Errorf("setting fd: %w", err)
+	}
+
+	return fdr, fo, nil
 }
 
 func setupIO(ctx context.Context, stdin, stdout, stderr string) (io stdio, _ error) {
@@ -23,24 +61,27 @@ func setupIO(ctx context.Context, stdin, stdout, stderr string) (io stdio, _ err
 	io.stdoutPath = stdout
 	io.stderrPath = stderr
 
-	if _, err := os.Stat(stdin); err == nil {
-		io.stdin, err = fifo.OpenFifo(ctx, stdin, syscall.O_RDONLY|syscall.O_NONBLOCK, 0)
-		if err != nil {
-			return io, err
-		}
+	fd, fo, err := openFifo(ctx, stdin, syscall.O_RDONLY|syscall.O_NONBLOCK)
+	if err != nil {
+		return io, err
 	}
-	if _, err := os.Stat(stdout); err == nil {
-		io.stdout, err = fifo.OpenFifo(ctx, stdout, syscall.O_WRONLY, 0)
-		if err != nil {
-			return io, err
-		}
+	io.stdinFD = int(fd)
+	io.stdin = fo
+
+	fd, fo, err = openFifo(ctx, stdout, syscall.O_WRONLY)
+	if err != nil {
+		return io, err
 	}
-	if _, err := os.Stat(stderr); err == nil {
-		io.stderr, err = fifo.OpenFifo(ctx, stderr, syscall.O_WRONLY, 0)
-		if err != nil {
-			return io, err
-		}
+	io.stdoutFD = int(fd)
+	io.stdout = fo
+
+	fd, fo, err = openFifo(ctx, stderr, syscall.O_WRONLY)
+	if err != nil {
+		return io, err
 	}
+	io.stderrFD = int(fd)
+	io.stderr = fo
+
 	return io, nil
 }
 

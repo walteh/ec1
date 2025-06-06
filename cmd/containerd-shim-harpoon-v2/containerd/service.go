@@ -11,9 +11,8 @@ import (
 	"syscall"
 
 	"github.com/containerd/containerd/api/events"
+	"github.com/containerd/containerd/api/runtime/task/v3"
 	"github.com/containerd/containerd/api/types"
-
-	taskt "github.com/containerd/containerd/api/types/task"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/core/runtime"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
@@ -29,7 +28,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
-	"github.com/containerd/containerd/api/runtime/task/v3"
+	taskt "github.com/containerd/containerd/api/types/task"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
 
 	"github.com/walteh/ec1/pkg/vmm/vf"
@@ -313,11 +312,11 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	// Start VM creation asynchronously
 	go func() {
 		// Use background context since the request context might be cancelled
-		vmCtx := context.Background()
+		// vmCtx := context.Background()
 
 		// Create and start the VM for this container
-		if err := c.createVM(vmCtx); err != nil {
-			log.G(vmCtx).WithError(err).Error("failed to create VM")
+		if err := c.createVM(ctx, c.spec, c.rootfs, c.primary.io); err != nil {
+			log.G(ctx).WithError(err).Error("failed to create VM")
 			p.status = taskt.Status_STOPPED
 			p.exitStatus = 1
 			close(p.waitblock)
@@ -326,14 +325,14 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 
 		// Start the process in the VM
 		if err := p.start(c.vm); err != nil {
-			log.G(vmCtx).WithError(err).Error("failed to start process in VM")
+			log.G(ctx).WithError(err).Error("failed to start process in VM")
 			p.status = taskt.Status_STOPPED
 			p.exitStatus = 1
 			close(p.waitblock)
 			return
 		}
 
-		log.G(vmCtx).Info("VM and process started successfully")
+		log.G(ctx).Info("VM and process started successfully")
 	}()
 
 	// Return immediately - VM will boot in background

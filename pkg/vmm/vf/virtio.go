@@ -53,7 +53,7 @@ func (dev *NVMExpressController) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *NVMExpressController) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *NVMExpressController) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (dev *VirtioBlk) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *VirtioBlk) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioBlk) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (dev *VirtioInput) toVz() (interface{}, error) {
 	return inputConfig, nil
 }
 
-func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	inputDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -162,7 +162,7 @@ func (dev *VirtioGPU) toVz(useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceCon
 
 }
 
-func (dev *VirtioGPU) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioGPU) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	gpuDeviceConfig, err := dev.toVz(vmConfig.useMacOSGPUGraphicsDevice)
 	if err != nil {
 		return err
@@ -203,7 +203,7 @@ func (dev *VirtioFs) toVz() (vz.DirectorySharingDeviceConfiguration, error) {
 	return fileSystemDeviceConfig, nil
 }
 
-func (dev *VirtioFs) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioFs) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	fileSystemDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -217,7 +217,7 @@ func (dev *VirtioRng) toVz() (*vz.VirtioEntropyDeviceConfiguration, error) {
 	return vz.NewVirtioEntropyDeviceConfiguration()
 }
 
-func (dev *VirtioRng) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioRng) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	log.Infof("Adding virtio-rng device")
 	entropyConfig, err := dev.toVz()
 	if err != nil {
@@ -232,7 +232,7 @@ func (dev *VirtioBalloon) toVz() (*vz.VirtioTraditionalMemoryBalloonDeviceConfig
 	return vz.NewVirtioTraditionalMemoryBalloonDeviceConfiguration()
 }
 
-func (dev *VirtioBalloon) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioBalloon) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	// log.Infof("Adding virtio-balloon device")
 	// balloonConfig, err := dev.toVz()
 	// if err != nil {
@@ -270,10 +270,19 @@ func (dev *VirtioSerial) toVz() (*vz.VirtioConsoleDeviceSerialPortConfiguration,
 	var retErr error
 	switch {
 	case dev.UsesStdio:
-		if err := setRawMode(os.Stdin); err != nil {
+		var stdin, stdout *os.File
+		if dev.RawFDs != nil {
+			fd1, fd2 := dev.RawFDs()
+			stdin = os.NewFile(uintptr(fd1), "stdin")
+			stdout = os.NewFile(uintptr(fd2), "stdout")
+		} else {
+			stdin = os.Stdin
+			stdout = os.Stdout
+		}
+		if err := setRawMode(stdin); err != nil {
 			return nil, err
 		}
-		serialPortAttachment, retErr = vz.NewFileHandleSerialPortAttachment(os.Stdin, os.Stdout)
+		serialPortAttachment, retErr = vz.NewFileHandleSerialPortAttachment(stdin, stdout)
 	default:
 		serialPortAttachment, retErr = vz.NewFileSerialPortAttachment(dev.LogFile, false)
 	}
@@ -284,7 +293,7 @@ func (dev *VirtioSerial) toVz() (*vz.VirtioConsoleDeviceSerialPortConfiguration,
 	return vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
 }
 
-func (dev *VirtioSerial) toVzConsole() (*vz.VirtioConsolePortConfiguration, error) {
+func (dev *VirtioSerial) toVzPtyConsole() (*vz.VirtioConsolePortConfiguration, error) {
 	master, slave, err := termios.Pty()
 	if err != nil {
 		return nil, err
@@ -310,30 +319,54 @@ func (dev *VirtioSerial) toVzConsole() (*vz.VirtioConsolePortConfiguration, erro
 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
 }
 
-func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *VirtioSerial) toVzRawConsole() (*vz.VirtioConsolePortConfiguration, error) {
+	fd1, fd2 := dev.RawFDs()
+	stdin := os.NewFile(uintptr(fd1), "stdin")
+	stdout := os.NewFile(uintptr(fd2), "stdout")
+
+	// Set raw mode on stdin
+	if err := setRawMode(stdin); err != nil {
+		return nil, err
+	}
+
+	serialPortAttachment, retErr := vz.NewFileHandleSerialPortAttachment(stdin, stdout)
+	if retErr != nil {
+		return nil, retErr
+	}
+	return vz.NewVirtioConsolePortConfiguration(
+		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
+		vz.WithVirtioConsolePortConfigurationIsConsole(true))
+}
+
+func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	if dev.LogFile != "" {
 		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
 	}
-	if dev.UsesStdio {
-		log.Infof("Adding stdio console")
-	}
+	// if dev.UsesStdio {
+	// 	log.Infof("Adding stdio console")
+	// }
 	if dev.PtyName != "" {
 		return fmt.Errorf("VirtioSerial.PtyName must be empty (current value: %s)", dev.PtyName)
 	}
 
-	if dev.UsesPty {
-		consolePortConfig, err := dev.toVzConsole()
-		if err != nil {
-			return err
-		}
-		vmConfig.consolePortsConfiguration = append(vmConfig.consolePortsConfiguration, consolePortConfig)
-		log.Infof("Using PTY (pty path: %s)", dev.PtyName)
-	} else {
+	if dev.UsesStdio {
 		consoleConfig, err := dev.toVz()
 		if err != nil {
 			return err
 		}
 		vmConfig.serialPortsConfiguration = append(vmConfig.serialPortsConfiguration, consoleConfig)
+	} else {
+		var consolePortConfig *vz.VirtioConsolePortConfiguration
+		var err error
+		if dev.RawFDs != nil {
+			consolePortConfig, err = dev.toVzRawConsole()
+		} else {
+			consolePortConfig, err = dev.toVzPtyConsole()
+		}
+		if err != nil {
+			return err
+		}
+		vmConfig.consolePortsConfiguration = append(vmConfig.consolePortsConfiguration, consolePortConfig)
 	}
 
 	return nil
@@ -421,7 +454,7 @@ func (dev *NetworkBlockDevice) SynchronizationModeVZ() vz.DiskSynchronizationMod
 	return vz.DiskSynchronizationModeFull
 }
 
-func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
@@ -457,7 +490,7 @@ func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
 	return nil
 }
 
-func AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper, dev virtio.VirtioDevice) error {
+func AddToVirtualMachineConfig(vmConfig *vzVirtioConverter, dev virtio.VirtioDevice) error {
 	switch d := dev.(type) {
 	case *virtio.USBMassStorage:
 		return (*USBMassStorage)(d).AddToVirtualMachineConfig(vmConfig)
@@ -513,7 +546,7 @@ func (dev *USBMassStorage) toVz() (vz.StorageDeviceConfiguration, error) {
 	return vz.NewUSBMassStorageDeviceConfiguration(attachment)
 }
 
-func (dev *USBMassStorage) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
+func (dev *USBMassStorage) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
 	storageDeviceConfig, err := dev.toVz()
 	if err != nil {
 		return err
