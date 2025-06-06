@@ -56,14 +56,13 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	var root bool
 	var targetDir string
 	var ide bool
-	var codesign bool
-	var codesignEntitlements arrayFlags
-	var codesignIdentity string
-	var codesignForce bool
 	var isCompileOnly bool
 	// var outputFile string
 
 	isCalledByDap := isNestedBy(CommandDap)
+
+	// Parse codesign flags first
+	codesign, codesignEntitlements, codesignIdentity, codesignForce, filteredArgs := parseCodesignFlags(args)
 
 	// Parse only gow-specific flags, pass everything else through
 	var goArgs []string
@@ -71,10 +70,10 @@ func (cfg *GowConfig) handleTest(args []string) error {
 
 	var codesignAdditionalArgs []string
 
-	// Skip "test" and process remaining args
+	// Skip "test" and process remaining args from filtered args
 	i := 1
-	for i < len(args) {
-		arg := args[i]
+	for i < len(filteredArgs) {
+		arg := filteredArgs[i]
 
 		switch arg {
 		case "-function-coverage":
@@ -85,22 +84,6 @@ func (cfg *GowConfig) handleTest(args []string) error {
 			root = true
 		case "-ide":
 			ide = true
-		case "-codesign":
-			codesign = true
-		case "-codesign-entitlement":
-			// Handle -codesign-entitlement with next argument
-			if i+1 < len(args) {
-				codesignEntitlements = append(codesignEntitlements, args[i+1])
-				i++ // Skip the entitlement value
-			}
-		case "-codesign-identity":
-			// Handle -codesign-identity with next argument
-			if i+1 < len(args) {
-				codesignIdentity = args[i+1]
-				i++ // Skip the identity value
-			}
-		case "-codesign-force":
-			codesignForce = true
 		case "-o":
 			// outputFile = args[i+1]
 			// i++ // Skip the exec value
@@ -196,7 +179,7 @@ func (cfg *GowConfig) handleTest(args []string) error {
 						fmt.Printf("🔐 Code signing debug binary: %s\n", outputFile)
 					}
 
-					// Use new codesign syntax
+					// Use codesign signing for debug binary
 					signArgs := []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=sign", "-target=" + outputFile}
 
 					// Add entitlements if specified, otherwise use default
@@ -341,35 +324,12 @@ func (cfg *GowConfig) handleTest(args []string) error {
 	}
 
 	if codesign {
-		// Use new codesign test mode
-		execArgs := []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=test"}
+		// Use codesign test mode
+		execArgs := cfg.buildCodesignExecArgs("test", codesignEntitlements, codesignIdentity, codesignForce, codesignAdditionalArgs)
 
-		// Add entitlements if specified, otherwise use default
-		if len(codesignEntitlements) > 0 {
-			for _, ent := range codesignEntitlements {
-				execArgs = append(execArgs, "-entitlement="+ent)
-			}
-		} else {
-			execArgs = append(execArgs, "-entitlement=virtualization")
-		}
-
-		// Add identity if specified
-		if codesignIdentity != "" {
-			execArgs = append(execArgs, "-identity="+codesignIdentity)
-		}
-
-		// Add force if specified
-		if codesignForce {
-			execArgs = append(execArgs, "-force")
-		}
-
-		execArgs = append(execArgs, "-quiet")
-
-		execArgs = append(execArgs, codesignAdditionalArgs...)
-
-		execArgs = append(execArgs, "--")
-
-		goArgs = append(goArgs, "-exec=go "+strings.Join(execArgs, " "))
+		// Format the -exec flag correctly: -exec "go tool codesign ..."
+		execCommand := strings.Join(execArgs, " ")
+		goArgs = append(goArgs, "-exec="+execCommand)
 	}
 
 	// Add standard flags if not already present

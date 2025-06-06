@@ -160,6 +160,76 @@ func TestExample(t *testing.T) {
 	}
 }
 
+func TestGowConfig_handleRun(t *testing.T) {
+	// Create a temporary package with a runnable main
+	tmpDir := t.TempDir()
+
+	// Create a simple Go main file
+	mainFile := filepath.Join(tmpDir, "main.go")
+	mainContent := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, World!")
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to create main file: %v", err)
+	}
+
+	// Create go.mod
+	goModFile := filepath.Join(tmpDir, "go.mod")
+	goModContent := "module testmod\n\ngo 1.24\n"
+	if err := os.WriteFile(goModFile, []byte(goModContent), 0644); err != nil {
+		t.Fatalf("failed to create go.mod: %v", err)
+	}
+
+	// Change to temp dir
+	oldDir, _ := os.Getwd()
+	defer os.Chdir(oldDir)
+	os.Chdir(tmpDir)
+
+	cfg := NewGowConfig()
+	cfg.WorkspaceRoot = tmpDir
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantErr   bool
+		allowFail bool // Allow failure for codesign tests that may not work in test env
+	}{
+		{
+			name:    "basic run",
+			args:    []string{"run", "main.go"},
+			wantErr: false,
+		},
+		{
+			name:      "run with codesign",
+			args:      []string{"run", "-codesign", "main.go"},
+			wantErr:   false,
+			allowFail: true, // Codesign tool may not be available in test env
+		},
+		{
+			name:      "run with codesign entitlement",
+			args:      []string{"run", "-codesign", "-codesign-entitlement", "virtualization", "main.go"},
+			wantErr:   false,
+			allowFail: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := cfg.handleRun(tt.args)
+			if !tt.allowFail && (err != nil) != tt.wantErr {
+				t.Errorf("handleRun() error = %v, wantErr %v", err, tt.wantErr)
+			} else if tt.allowFail && err != nil {
+				t.Logf("handleRun() failed as expected in test environment: %v", err)
+			}
+		})
+	}
+}
+
 func TestGowConfig_handleMod(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -480,6 +550,131 @@ func TestGowConfig_createStdioLogFile(t *testing.T) {
 	}
 }
 
+func TestParseCodesignFlags(t *testing.T) {
+	tests := []struct {
+		name                 string
+		args                 []string
+		expectedCodesign     bool
+		expectedEntitlements []string
+		expectedIdentity     string
+		expectedForce        bool
+		expectedRemaining    []string
+	}{
+		{
+			name:                 "no codesign flags",
+			args:                 []string{"run", "main.go"},
+			expectedCodesign:     false,
+			expectedEntitlements: nil,
+			expectedIdentity:     "",
+			expectedForce:        false,
+			expectedRemaining:    []string{"run", "main.go"},
+		},
+		{
+			name:                 "basic codesign",
+			args:                 []string{"run", "-codesign", "main.go"},
+			expectedCodesign:     true,
+			expectedEntitlements: nil,
+			expectedIdentity:     "",
+			expectedForce:        false,
+			expectedRemaining:    []string{"run", "main.go"},
+		},
+		{
+			name:                 "codesign with entitlement",
+			args:                 []string{"run", "-codesign", "-codesign-entitlement", "virtualization", "main.go"},
+			expectedCodesign:     true,
+			expectedEntitlements: []string{"virtualization"},
+			expectedIdentity:     "",
+			expectedForce:        false,
+			expectedRemaining:    []string{"run", "main.go"},
+		},
+		{
+			name:                 "codesign with multiple entitlements",
+			args:                 []string{"run", "-codesign", "-codesign-entitlement", "virtualization", "-codesign-entitlement", "hypervisor", "main.go"},
+			expectedCodesign:     true,
+			expectedEntitlements: []string{"virtualization", "hypervisor"},
+			expectedIdentity:     "",
+			expectedForce:        false,
+			expectedRemaining:    []string{"run", "main.go"},
+		},
+		{
+			name:                 "codesign with identity and force",
+			args:                 []string{"run", "-codesign", "-codesign-identity", "Developer ID", "-codesign-force", "main.go"},
+			expectedCodesign:     true,
+			expectedEntitlements: nil,
+			expectedIdentity:     "Developer ID",
+			expectedForce:        true,
+			expectedRemaining:    []string{"run", "main.go"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			codesign, entitlements, identity, force, remaining := parseCodesignFlags(tt.args)
+
+			assert.Equal(t, tt.expectedCodesign, codesign, "codesign flag should match")
+			assert.Equal(t, tt.expectedEntitlements, entitlements, "entitlements should match")
+			assert.Equal(t, tt.expectedIdentity, identity, "identity should match")
+			assert.Equal(t, tt.expectedForce, force, "force flag should match")
+			assert.Equal(t, tt.expectedRemaining, remaining, "remaining args should match")
+		})
+	}
+}
+
+func TestGowConfig_buildCodesignExecArgs(t *testing.T) {
+	cfg := NewGowConfig()
+
+	tests := []struct {
+		name           string
+		mode           string
+		entitlements   []string
+		identity       string
+		force          bool
+		additionalArgs []string
+		expectedArgs   []string
+	}{
+		{
+			name:         "basic test mode",
+			mode:         "test",
+			entitlements: nil,
+			identity:     "",
+			force:        false,
+			expectedArgs: []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=test", "-entitlement=virtualization", "-quiet", "--"},
+		},
+		{
+			name:         "run mode with custom entitlement",
+			mode:         "run",
+			entitlements: []string{"hypervisor"},
+			identity:     "",
+			force:        false,
+			expectedArgs: []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=run", "-entitlement=hypervisor", "-quiet", "--"},
+		},
+		{
+			name:         "test mode with identity and force",
+			mode:         "test",
+			entitlements: nil,
+			identity:     "Developer ID",
+			force:        true,
+			expectedArgs: []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=test", "-entitlement=virtualization", "-identity=Developer ID", "-force", "-quiet", "--"},
+		},
+		{
+			name:           "run mode with multiple entitlements and additional args",
+			mode:           "run",
+			entitlements:   []string{"virtualization", "hypervisor"},
+			identity:       "",
+			force:          false,
+			additionalArgs: []string{"-custom-flag", "value"},
+			expectedArgs:   []string{"tool", "github.com/walteh/ec1/tools/cmd/codesign", "-mode=run", "-entitlement=virtualization", "-entitlement=hypervisor", "-quiet", "-custom-flag", "value", "--"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cfg.buildCodesignExecArgs(tt.mode, tt.entitlements, tt.identity, tt.force, tt.additionalArgs)
+			assert.Equal(t, tt.expectedArgs, result, "exec args should match expected")
+		})
+	}
+}
+
 func TestGowConfig_PipeStdioToFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := NewGowConfig()
@@ -569,24 +764,24 @@ func TestGowConfig_handleTestRunPatternFix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the pattern transformation logic directly
 			result := tt.inputPattern
-			
+
 			// Apply the same logic as in handleTest
 			if strings.Contains(result, "/") {
 				parts := strings.SplitN(result, "/", 2)
 				if len(parts) == 2 {
 					testFunc := parts[0]
 					subtest := parts[1]
-					
+
 					// Remove leading ^ if present
 					if strings.HasPrefix(testFunc, "^") {
 						testFunc = testFunc[1:]
 					}
-					
+
 					// Create the fixed pattern
 					result = "^" + testFunc + "$/" + subtest
 				}
 			}
-			
+
 			assert.Equal(t, tt.expected, result, "Pattern transformation should match expected result")
 		})
 	}

@@ -1,4 +1,4 @@
-package main
+package codesigncmd
 
 import (
 	"context"

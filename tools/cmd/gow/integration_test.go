@@ -35,6 +35,20 @@ func TestExample(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
+	// Create a simple Go main file for run tests
+	mainFile := filepath.Join(tmpDir, "main.go")
+	mainContent := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello from main")
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to create main file: %v", err)
+	}
+
 	// Create go.mod
 	goModFile := filepath.Join(tmpDir, "go.mod")
 	goModContent := "module testmod\n\ngo 1.24\n"
@@ -96,6 +110,22 @@ func TestExample(t *testing.T) {
 			timeout:        15 * time.Second,
 			workingDir:     tmpDir,
 			expectInOutput: []string{"TestExample", "PASS"},
+		},
+		{
+			name:           "basic_run_command",
+			args:           []string{"run", "main.go"},
+			wantErr:        false,
+			timeout:        10 * time.Second,
+			workingDir:     tmpDir,
+			expectInOutput: []string{"Hello from main"},
+		},
+		{
+			name:           "run_with_codesign",
+			args:           []string{"run", "-codesign", "main.go"},
+			wantErr:        false,
+			timeout:        15 * time.Second,
+			workingDir:     tmpDir,
+			expectInOutput: []string{"Hello from main"},
 		},
 	}
 

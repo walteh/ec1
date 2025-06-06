@@ -10,7 +10,17 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/walteh/ec1/tools/cmd/codesign/codesigncmd"
 )
+
+func init() {
+	if os.Args[1] == "codesign" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		codesigncmd.CodeSignMain()
+		os.Exit(0)
+	}
+}
 
 // Global stdio writers that can be wrapped for logging
 var (
@@ -372,6 +382,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Enhanced commands:")
 	fmt.Println("  gow test [flags] [target]    Enhanced test runner with project gotestsum")
+	fmt.Println("  gow run [flags] [files...]   Enhanced runner with codesign support")
 	fmt.Println("  gow mod tidy                 Optimized mod tidy via project task system")
 	fmt.Println("  gow mod upgrade              Optimized mod upgrade via project task system")
 	fmt.Println("  gow tool [args...]           go tool with error suppression")
@@ -396,13 +407,136 @@ func printUsage() {
 	fmt.Println("  -pipe-stdio-to-file          Pipe all stdio to timestamped log file (./.log/gow/)")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  gow test -codesign ./pkg/vmnet                          # Basic signing with virtualization")
-	fmt.Println("  gow test -codesign-entitlement hypervisor ./pkg/host    # Custom entitlement")
+	fmt.Println("  gow test -codesign ./pkg/vmnet                          # Basic test signing with virtualization")
+	fmt.Println("  gow run -codesign ./cmd/myapp                           # Basic run signing with virtualization")
+	fmt.Println("  gow test -codesign-entitlement hypervisor ./pkg/host    # Custom entitlement for tests")
+	fmt.Println("  gow run -codesign-entitlement hypervisor ./cmd/vm       # Custom entitlement for run")
 	fmt.Println("  gow test -codesign -function-coverage -v ./...          # Full enhanced testing")
 	fmt.Println("  gow -pipe-stdio-to-file build ./cmd/myapp               # Build with stdio logging")
 	fmt.Println()
 	fmt.Println("All other commands are passed through to the real go binary with zero overhead.")
 	fmt.Println("Enhanced commands use project tools (gotestsum, task) for optimal performance.")
+}
+
+// buildCodesignExecArgs builds the -exec arguments for codesigning binaries.
+// This shared function is used by both test and run commands to generate consistent
+// codesign arguments for the -exec flag.
+func (cfg *GowConfig) buildCodesignExecArgs(mode string, entitlements []string, identity string, force bool, additionalArgs []string) []string {
+	execArgs := []string{os.Args[0], "codesign", "-mode=" + mode}
+
+	// Add entitlements if specified, otherwise use default
+	if len(entitlements) > 0 {
+		for _, ent := range entitlements {
+			execArgs = append(execArgs, "-entitlement="+ent)
+		}
+	} else {
+		execArgs = append(execArgs, "-entitlement=virtualization")
+	}
+
+	// Add identity if specified
+	if identity != "" {
+		execArgs = append(execArgs, "-identity="+identity)
+	}
+
+	// Add force if specified
+	if force {
+		execArgs = append(execArgs, "-force")
+	}
+
+	execArgs = append(execArgs, "-quiet")
+	execArgs = append(execArgs, additionalArgs...)
+	execArgs = append(execArgs, "--")
+
+	return execArgs
+}
+
+// parseCodesignFlags extracts codesign-related flags from args, returning the flags and remaining args.
+// This shared function parses -codesign, -codesign-entitlement, -codesign-identity, and -codesign-force
+// flags from the command line arguments, returning the parsed values and the remaining non-codesign arguments.
+func parseCodesignFlags(args []string) (codesign bool, entitlements []string, identity string, force bool, remainingArgs []string) {
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+
+		switch arg {
+		case "-codesign":
+			codesign = true
+		case "-codesign-entitlement":
+			// Handle -codesign-entitlement with next argument
+			if i+1 < len(args) {
+				entitlements = append(entitlements, args[i+1])
+				i++ // Skip the entitlement value
+			}
+		case "-codesign-identity":
+			// Handle -codesign-identity with next argument
+			if i+1 < len(args) {
+				identity = args[i+1]
+				i++ // Skip the identity value
+			}
+		case "-codesign-force":
+			force = true
+		default:
+			remainingArgs = append(remainingArgs, arg)
+		}
+		i++
+	}
+	return
+}
+
+// handleRun processes run commands with codesign support
+func (cfg *GowConfig) handleRun(args []string) error {
+	var root bool
+	var targetArgs []string
+
+	// Parse codesign flags
+	codesign, codesignEntitlements, codesignIdentity, codesignForce, filteredArgs := parseCodesignFlags(args)
+
+	// Parse remaining flags
+	var goArgs []string
+	goArgs = append(goArgs, "run")
+
+	var codesignAdditionalArgs []string
+
+	if codesign {
+		// Use codesign run mode - create the exec command properly
+		execArgs := cfg.buildCodesignExecArgs("test", codesignEntitlements, codesignIdentity, codesignForce, codesignAdditionalArgs)
+
+		// Format the -exec flag correctly: -exec "go tool codesign ..."
+		execCommand := strings.Join(execArgs, " ")
+		goArgs = append(goArgs, "-exec="+execCommand)
+	}
+
+	// Skip "run" and process remaining args
+	i := 1
+	for i < len(filteredArgs) {
+		arg := filteredArgs[i]
+
+		switch arg {
+		case "-root":
+			root = true
+		default:
+			// Pass through all other arguments to go run
+			goArgs = append(goArgs, arg)
+		}
+		i++
+	}
+
+	if root && os.Geteuid() != 0 {
+		return fmt.Errorf("root is required for -root flag")
+	}
+
+	// Add target arguments if specified
+	if len(targetArgs) > 0 {
+		goArgs = append(goArgs, targetArgs...)
+	}
+
+	ctx := context.Background()
+
+	if cfg.Verbose {
+		fmt.Printf("🚀 Running go run with args: %v\n", goArgs)
+	}
+
+	return cfg.execSafeGo(ctx, goArgs...)
 }
 
 func main() {
@@ -443,6 +577,12 @@ func main() {
 	case "test":
 		if err := cfg.handleTest(args); err != nil {
 			fmt.Fprintf(os.Stderr, "Error running tests: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "run":
+		if err := cfg.handleRun(args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error running go run: %v\n", err)
 			os.Exit(1)
 		}
 
