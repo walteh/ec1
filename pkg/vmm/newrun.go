@@ -121,7 +121,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		Devices: devices,
 	}
 
-	vm, err := hpv.NewVirtualMachine(ctx, id, opts, bootloader)
+	vm, err := hpv.NewVirtualMachine(ctx, id, &opts, bootloader)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}

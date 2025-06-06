@@ -5,7 +5,10 @@ import (
 	"os"
 
 	"github.com/Code-Hex/vz/v3"
+
 	log "github.com/sirupsen/logrus"
+
+	"github.com/walteh/ec1/pkg/virtio"
 )
 
 var (
@@ -13,7 +16,7 @@ var (
 	doInstallRosetta                       = vz.LinuxRosettaDirectoryShareInstallRosetta
 )
 
-func (dev *RosettaShare) checkRosettaAvailability() error {
+func checkRosettaAvailability(dev *virtio.RosettaShare) error {
 	availability := checkRosettaDirectoryShareAvailability()
 	switch availability {
 	case vz.LinuxRosettaAvailabilityNotSupported:
@@ -42,11 +45,11 @@ func (dev *RosettaShare) checkRosettaAvailability() error {
 	return nil
 }
 
-func (dev *RosettaShare) toVz() (vz.DirectorySharingDeviceConfiguration, error) {
+func toVzRosettaShare(dev *virtio.RosettaShare) (vz.DirectorySharingDeviceConfiguration, error) {
 	if dev.MountTag == "" {
 		return nil, fmt.Errorf("missing mandatory 'mountTage' option for rosetta share")
 	}
-	if err := dev.checkRosettaAvailability(); err != nil {
+	if err := checkRosettaAvailability(dev); err != nil {
 		return nil, err
 	}
 
@@ -64,12 +67,12 @@ func (dev *RosettaShare) toVz() (vz.DirectorySharingDeviceConfiguration, error) 
 	return config, nil
 }
 
-func (dev *RosettaShare) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	fileSystemDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyRosettaShare(dev *virtio.RosettaShare) error {
+	fileSystemDeviceConfig, err := toVzRosettaShare(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding virtio-fs device")
-	vmConfig.directorySharingDevicesConfiguration = append(vmConfig.directorySharingDevicesConfiguration, fileSystemDeviceConfig)
+	vmConfig.directorySharingDevicesToSet = append(vmConfig.directorySharingDevicesToSet, fileSystemDeviceConfig)
 	return nil
 }

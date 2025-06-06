@@ -83,7 +83,7 @@ func TestCheckRosettaAvailability(t *testing.T) {
 
 func testCheckRosettaAvailability(t *testing.T, test *checkRosettaAvailabilityTest) {
 	rosetta :=
-		RosettaShare{
+		virtio.RosettaShare{
 			InstallRosetta:  test.installRosetta,
 			IgnoreIfMissing: test.ignoreIfMissing,
 			DirectorySharingConfig: virtio.DirectorySharingConfig{
@@ -100,7 +100,7 @@ func testCheckRosettaAvailability(t *testing.T, test *checkRosettaAvailabilityTe
 		doInstallRosetta = origDoInstallRosetta
 	}()
 
-	err := rosetta.checkRosettaAvailability()
+	err := checkRosettaAvailability(&rosetta)
 
 	if test.errorValue != "" {
 		require.Error(t, err)

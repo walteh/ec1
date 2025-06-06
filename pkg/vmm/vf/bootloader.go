@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/Code-Hex/vz/v3"
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -62,6 +63,22 @@ func toVzBootloader(bl vmm.Bootloader) (vz.BootLoader, error) {
 		return toVzEFIBootloader(b)
 	case *vmm.MacOSBootloader:
 		return toVzMacOSBootloader(b)
+	default:
+		return nil, fmt.Errorf("Unexpected bootloader type: %T", b)
+	}
+}
+
+func toVzPlatformConfiguration(bl vmm.Bootloader) (vz.PlatformConfiguration, error) {
+
+	switch b := bl.(type) {
+	case *vmm.LinuxBootloader, *vmm.EFIBootloader:
+		return vz.NewGenericPlatformConfiguration()
+	case *vmm.MacOSBootloader:
+		platformConfig, err := NewMacPlatformConfiguration(b.MachineIdentifierPath, b.HardwareModelPath, b.AuxImagePath)
+		if err != nil {
+			return nil, errors.Errorf("creating macos platform configuration: %w", err)
+		}
+		return platformConfig, nil
 	default:
 		return nil, fmt.Errorf("Unexpected bootloader type: %T", b)
 	}

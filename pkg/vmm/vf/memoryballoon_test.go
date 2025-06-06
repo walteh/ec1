@@ -22,8 +22,8 @@ import (
 func TestMemoryBalloonDevices(t *testing.T) {
 	ctx := tlog.SetupSlogForTest(t)
 
-	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{
-		oci_image_cache.ALPINE_LATEST,
+	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []string{
+		oci_image_cache.ALPINE_LATEST.String(),
 	})
 
 	// // Skip on non-macOS platforms
@@ -59,8 +59,8 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 	// 	t.Skip("Skipping test as Virtualization framework is not available")
 	// }
 
-	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []oci_image_cache.OCICachedImage{
-		oci_image_cache.ALPINE_LATEST,
+	cache := toci.PreloadedImageCache(t, units.PlatformLinuxARM64, []string{
+		oci_image_cache.ALPINE_LATEST.String(),
 	})
 
 	startingMemory := strongunits.MiB(512)

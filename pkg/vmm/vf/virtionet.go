@@ -1,7 +1,7 @@
 package vf
 
 import (
-	"net"
+	"context"
 
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
@@ -11,12 +11,12 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-type VirtioNet struct {
-	*virtio.VirtioNet
-	localAddr *net.UnixAddr
-}
+// type VirtioNet struct {
+// 	*virtio.VirtioNet
+// 	localAddr *net.UnixAddr
+// }
 
-func (dev *VirtioNet) toVz() (*vz.VirtioNetworkDeviceConfiguration, error) {
+func toVzVirtioNet(dev *virtio.VirtioNet) (*vz.VirtioNetworkDeviceConfiguration, error) {
 	var (
 		mac *vz.MACAddress
 		err error
@@ -52,7 +52,7 @@ func (dev *VirtioNet) toVz() (*vz.VirtioNetworkDeviceConfiguration, error) {
 	return networkConfig, nil
 }
 
-func (dev *VirtioNet) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
+func (c *vzVirtioDeviceApplier) ApplyVirtioNet(ctx context.Context, dev *virtio.VirtioNet) error {
 	log.Infof("Adding virtio-net device (nat: %t macAddress: [%s])", dev.Nat, dev.MacAddress)
 	// if dev.Socket != nil {
 	// 	log.Infof("Using fd %d", dev.Socket.Fd())
@@ -63,12 +63,12 @@ func (dev *VirtioNet) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) err
 	// 		return err
 	// 	}
 	// }
-	netConfig, err := dev.toVz()
+	netConfig, err := toVzVirtioNet(dev)
 	if err != nil {
 		return errors.Errorf("converting virtio-net to vz: %w", err)
 	}
 
-	vmConfig.networkDevicesConfiguration = append(vmConfig.networkDevicesConfiguration, netConfig)
+	c.networkDevicesToSet = append(c.networkDevicesToSet, netConfig)
 
 	return nil
 }

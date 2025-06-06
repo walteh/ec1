@@ -3,7 +3,6 @@ package virtio
 import (
 	"fmt"
 	"math"
-	"strings"
 	"time"
 )
 
@@ -200,94 +199,6 @@ func USBMassStorageNewEmpty() (VirtioDevice, error) {
 	return &USBMassStorage{}, nil
 }
 
-func (v *VirtioBalloon) FromOptions(options []option) error {
-	if len(options) != 0 {
-		return fmt.Errorf("unknown options for virtio-balloon devices: %s", options)
-	}
-	return nil
-}
-
-func (v *VirtioBalloon) ToCmdLine() ([]string, error) {
-	return []string{"--device", "virtio-balloon"}, nil
-}
-
-type option struct {
-	key   string
-	value string
-}
-
-func strToOption(str string) option {
-	splitStr := strings.SplitN(str, "=", 2)
-
-	opt := option{
-		key: splitStr[0],
-	}
-	if len(splitStr) > 1 {
-		opt.value = splitStr[1]
-	}
-
-	return opt
-}
-
-func strvToOptions(opts []string) []option {
-	parsedOpts := []option{}
-	for _, opt := range opts {
-		if len(opt) == 0 {
-			continue
-		}
-		parsedOpts = append(parsedOpts, strToOption(opt))
-	}
-
-	return parsedOpts
-}
-
-// func deviceFromCmdLine(deviceOpts string) (VirtioDevice, error) {
-// 	opts := strings.Split(deviceOpts, ",")
-// 	if len(opts) == 0 {
-// 		return nil, fmt.Errorf("empty option list in command line argument")
-// 	}
-// 	var dev VirtioDevice
-// 	switch opts[0] {
-// 	case "rosetta":
-// 		dev = &RosettaShare{}
-// 	case "nvme":
-// 		dev = nvmExpressControllerNewEmpty()
-// 	case "virtio-blk":
-// 		dev = virtioBlkNewEmpty()
-// 	case "virtio-fs":
-// 		dev = &VirtioFs{}
-// 	case "virtio-net":
-// 		dev = &VirtioNet{}
-// 	case "virtio-rng":
-// 		dev = &VirtioRng{}
-// 	case "virtio-serial":
-// 		dev = &VirtioSerial{}
-// 	case "virtio-vsock":
-// 		dev = &VirtioVsock{}
-// 	case "usb-mass-storage":
-// 		dev = usbMassStorageNewEmpty()
-// 	case "virtio-input":
-// 		dev = &VirtioInput{}
-// 	case "virtio-gpu":
-// 		dev = &VirtioGPU{}
-// 	case "virtio-balloon":
-// 		dev = &VirtioBalloon{}
-// 	case "nbd":
-// 		dev = networkBlockDeviceNewEmpty()
-// 	default:
-// 		return nil, fmt.Errorf("unknown device type: %s", opts[0])
-// 	}
-
-// 	parsedOpts := strvToOptions(opts[1:])
-// 	if v, ok := dev.(interface{ FromOptions(options []option) error }); ok {
-// 		if err := v.FromOptions(parsedOpts); err != nil {
-// 			return nil, err
-// 		}
-// 	}
-
-// 	return dev, nil
-// }
-
 // VirtioSerialNew creates a new serial device for the virtual machine. The
 // output the virtual machine sent to the serial port will be written to the
 // file at logFilePath.
@@ -325,42 +236,6 @@ func (dev *VirtioSerial) validate() error {
 
 	return nil
 }
-
-// func (dev *VirtioSerial) ToCmdLine() ([]string, error) {
-// 	if err := dev.validate(); err != nil {
-// 		return nil, err
-// 	}
-// 	switch {
-// 	case dev.UsesStdio:
-// 		return []string{"--device", "virtio-serial,stdio"}, nil
-// 	case dev.UsesPty:
-// 		return []string{"--device", "virtio-serial,pty"}, nil
-// 	case dev.LogFile != "":
-// 		fallthrough
-// 	default:
-// 		return []string{"--device", fmt.Sprintf("virtio-serial,logFilePath=%s", dev.LogFile)}, nil
-// 	}
-// }
-
-// func (dev *VirtioSerial) FromOptions(options []option) error {
-// 	for _, option := range options {
-// 		switch option.key {
-// 		case "logFilePath":
-// 			dev.LogFile = option.value
-// 		case "stdio":
-// 			if option.value != "" {
-// 				return fmt.Errorf("unexpected value for virtio-serial 'stdio' option: %s", option.value)
-// 			}
-// 			dev.UsesStdio = true
-// 		case "pty":
-// 			dev.UsesPty = true
-// 		default:
-// 			return fmt.Errorf("unknown option for virtio-serial devices: %s", option.key)
-// 		}
-// 	}
-
-// 	return dev.validate()
-// }
 
 // VirtioInputNew creates a new input device for the virtual machine.
 // The inputType parameter is the type of virtio-input device that will be added
@@ -428,60 +303,11 @@ func (dev *VirtioGPU) validate() error {
 	return nil
 }
 
-// func (dev *VirtioGPU) ToCmdLine() ([]string, error) {
-// 	if err := dev.validate(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	return []string{"--device", fmt.Sprintf("virtio-gpu,width=%d,height=%d", dev.Width, dev.Height)}, nil
-// }
-
-// func (dev *VirtioGPU) FromOptions(options []option) error {
-// 	for _, option := range options {
-// 		switch option.key {
-// 		case VirtioGPUResolutionHeight:
-// 			height, err := strconv.Atoi(option.value)
-// 			if err != nil || height < 1 {
-// 				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
-// 			}
-
-// 			dev.Height = height
-// 		case VirtioGPUResolutionWidth:
-// 			width, err := strconv.Atoi(option.value)
-// 			if err != nil || width < 1 {
-// 				return fmt.Errorf("Invalid value for virtio-gpu %s: %s", option.key, option.value)
-// 			}
-
-// 			dev.Width = width
-// 		default:
-// 			return fmt.Errorf("unknown option for virtio-gpu devices: %s", option.key)
-// 		}
-// 	}
-
-// 	if dev.Width == 0 && dev.Height == 0 {
-// 		dev.Width = defaultVirtioGPUResolutionWidth
-// 		dev.Height = defaultVirtioGPUResolutionHeight
-// 	}
-
-// 	return dev.validate()
-// }
-
 // VirtioRngNew creates a new random number generator device to feed entropy
 // into the virtual machine.
 func VirtioRngNew() (VirtioDevice, error) {
 	return &VirtioRng{}, nil
 }
-
-// func (dev *VirtioRng) ToCmdLine() ([]string, error) {
-// 	return []string{"--device", "virtio-rng"}, nil
-// }
-
-// func (dev *VirtioRng) FromOptions(options []option) error {
-// 	if len(options) != 0 {
-// 		return fmt.Errorf("unknown options for virtio-rng devices: %s", options)
-// 	}
-// 	return nil
-// }
 
 func nvmExpressControllerNewEmpty() *NVMExpressController {
 	return &NVMExpressController{
@@ -525,34 +351,6 @@ func VirtioBlkNew(imagePath string) (*VirtioBlk, error) {
 func (dev *VirtioBlk) SetDeviceIdentifier(devID string) {
 	dev.DeviceIdentifier = devID
 }
-
-// func (dev *VirtioBlk) FromOptions(options []option) error {
-// 	unhandledOpts := []option{}
-// 	for _, option := range options {
-// 		switch option.key {
-// 		case "deviceId":
-// 			dev.DeviceIdentifier = option.value
-// 		default:
-// 			unhandledOpts = append(unhandledOpts, option)
-// 		}
-// 	}
-
-// 	return dev.DiskStorageConfig.FromOptions(unhandledOpts)
-// }
-
-// func (dev *VirtioBlk) ToCmdLine() ([]string, error) {
-// 	cmdLine, err := dev.DiskStorageConfig.ToCmdLine()
-// 	if err != nil {
-// 		return []string{}, err
-// 	}
-// 	if len(cmdLine) != 2 {
-// 		return []string{}, fmt.Errorf("unexpected storage config commandline")
-// 	}
-// 	if dev.DeviceIdentifier != "" {
-// 		cmdLine[1] = fmt.Sprintf("%s,deviceId=%s", cmdLine[1], dev.DeviceIdentifier)
-// 	}
-// 	return cmdLine, nil
-// }
 
 // VirtioVsockNew creates a new virtio-vsock device for 2-way communication
 // between the host and the virtual machine. The communication will happen on

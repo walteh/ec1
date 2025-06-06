@@ -83,6 +83,13 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		return nil, errors.Errorf("unsupported OS: %s", ctrconfig.Platform.OS())
 	}
 
+	if ctrconfig.Spec.Process.Terminal {
+		// create a pty i guess
+
+	} else {
+
+	}
+
 	devices = append(devices, &virtio.VirtioSerial{
 		UsesStdio: !ctrconfig.Spec.Process.Terminal,
 		RawFDs: func() (int, int) {

@@ -19,7 +19,7 @@ const (
 )
 
 type Hypervisor[VM VirtualMachine] interface {
-	NewVirtualMachine(ctx context.Context, id string, opts NewVMOptions, bl Bootloader) (VM, error)
+	NewVirtualMachine(ctx context.Context, id string, opts *NewVMOptions, bl Bootloader) (VM, error)
 	OnCreate() <-chan VM
 	EncodeLinuxInitramfs(ctx context.Context, initramfs io.Reader) (io.ReadCloser, error)
 	EncodeLinuxKernel(ctx context.Context, kernel io.Reader) (io.ReadCloser, error)

@@ -1,7 +1,6 @@
 package vf
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -17,31 +16,16 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/virtio"
+	"github.com/walteh/ec1/pkg/vmm"
 )
-
-// vf will define toVZ() and AddToVirtualMachineConfig() methods on these types
-// We alias the types from the config package to avoid duplicating struct
-// definitions between the config and vf packages
-type RosettaShare virtio.RosettaShare
-type NVMExpressController virtio.NVMExpressController
-type VirtioBlk virtio.VirtioBlk
-type VirtioFs virtio.VirtioFs
-type VirtioRng virtio.VirtioRng
-type VirtioSerial virtio.VirtioSerial
-type VirtioVsock virtio.VirtioVsock
-type VirtioInput virtio.VirtioInput
-type VirtioGPU virtio.VirtioGPU
-type VirtioBalloon virtio.VirtioBalloon
-type NetworkBlockDevice virtio.NetworkBlockDevice
 
 type vzNetworkBlockDevice struct {
 	*vz.VirtioBlockDeviceConfiguration
-	config *NetworkBlockDevice
+	config *virtio.NetworkBlockDevice
 }
 
-func (dev *NVMExpressController) toVz() (vz.StorageDeviceConfiguration, error) {
-	var storageConfig DiskStorageConfig = DiskStorageConfig(dev.DiskStorageConfig)
-	attachment, err := storageConfig.toVz()
+func toVzNVMExpressController(dev *virtio.NVMExpressController) (vz.StorageDeviceConfiguration, error) {
+	attachment, err := toVzDiskStorageConfig(&dev.DiskStorageConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -53,20 +37,19 @@ func (dev *NVMExpressController) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *NVMExpressController) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	storageDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyNVMExpressController(dev *virtio.NVMExpressController) error {
+	storageDeviceConfig, err := toVzNVMExpressController(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding nvme device (imagePath: %s)", dev.ImagePath)
-	vmConfig.storageDevicesConfiguration = append(vmConfig.storageDevicesConfiguration, storageDeviceConfig)
+	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
 }
 
-func (dev *VirtioBlk) toVz() (vz.StorageDeviceConfiguration, error) {
-	var storageConfig DiskStorageConfig = DiskStorageConfig(dev.DiskStorageConfig)
-	attachment, err := storageConfig.toVz()
+func toVzVirtioBlk(dev *virtio.VirtioBlk) (vz.StorageDeviceConfiguration, error) {
+	attachment, err := toVzDiskStorageConfig(&dev.DiskStorageConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -86,18 +69,18 @@ func (dev *VirtioBlk) toVz() (vz.StorageDeviceConfiguration, error) {
 	return devConfig, nil
 }
 
-func (dev *VirtioBlk) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	storageDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioBlk(dev *virtio.VirtioBlk) error {
+	storageDeviceConfig, err := toVzVirtioBlk(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding virtio-blk device (imagePath: %s)", dev.ImagePath)
-	vmConfig.storageDevicesConfiguration = append(vmConfig.storageDevicesConfiguration, storageDeviceConfig)
+	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
 }
 
-func (dev *VirtioInput) toVz() (interface{}, error) {
+func toVzVirtioInput(dev *virtio.VirtioInput) (interface{}, error) {
 	var inputConfig interface{}
 	if dev.InputType == virtio.VirtioInputPointingDevice {
 		inputConfig, err := vz.NewUSBScreenCoordinatePointingDeviceConfiguration()
@@ -116,8 +99,8 @@ func (dev *VirtioInput) toVz() (interface{}, error) {
 	return inputConfig, nil
 }
 
-func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	inputDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioInput(dev *virtio.VirtioInput) error {
+	inputDeviceConfig, err := toVzVirtioInput(dev)
 	if err != nil {
 		return err
 	}
@@ -125,16 +108,16 @@ func (dev *VirtioInput) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) e
 	switch conf := inputDeviceConfig.(type) {
 	case vz.PointingDeviceConfiguration:
 		log.Info("Adding virtio-input pointing device")
-		vmConfig.pointingDevicesConfiguration = append(vmConfig.pointingDevicesConfiguration, conf)
+		vmConfig.pointingDevicesToSet = append(vmConfig.pointingDevicesToSet, conf)
 	case vz.KeyboardConfiguration:
 		log.Info("Adding virtio-input keyboard device")
-		vmConfig.keyboardConfiguration = append(vmConfig.keyboardConfiguration, conf)
+		vmConfig.keyboardToSet = append(vmConfig.keyboardToSet, conf)
 	}
 
 	return nil
 }
 
-func newVirtioGraphicsDeviceConfiguration(dev *VirtioGPU) (vz.GraphicsDeviceConfiguration, error) {
+func newVirtioGraphicsDeviceConfiguration(dev *virtio.VirtioGPU) (vz.GraphicsDeviceConfiguration, error) {
 	gpuDeviceConfig, err := vz.NewVirtioGraphicsDeviceConfiguration()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize virtio graphics device: %w", err)
@@ -152,7 +135,7 @@ func newVirtioGraphicsDeviceConfiguration(dev *VirtioGPU) (vz.GraphicsDeviceConf
 	return gpuDeviceConfig, nil
 }
 
-func (dev *VirtioGPU) toVz(useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceConfiguration, error) {
+func toVzVirtioGPU(dev *virtio.VirtioGPU, useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceConfiguration, error) {
 	log.Debugf("Setting up graphics device with %vx%v resolution.", dev.Width, dev.Height)
 
 	if useMacOSGPUGraphicsDevice {
@@ -162,20 +145,21 @@ func (dev *VirtioGPU) toVz(useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceCon
 
 }
 
-func (dev *VirtioGPU) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	gpuDeviceConfig, err := dev.toVz(vmConfig.useMacOSGPUGraphicsDevice)
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioGPU(dev *virtio.VirtioGPU) error {
+	_, isMacOS := vmConfig.bootLoader.(*vmm.MacOSBootloader)
+	gpuDeviceConfig, err := toVzVirtioGPU(dev, isMacOS)
 	if err != nil {
 		return err
 	}
 
 	log.Infof("Adding virtio-gpu device")
 
-	vmConfig.graphicsDevicesConfiguration = append(vmConfig.graphicsDevicesConfiguration, gpuDeviceConfig)
+	vmConfig.graphicsDevicesToSet = append(vmConfig.graphicsDevicesToSet, gpuDeviceConfig)
 
 	return nil
 }
 
-func (dev *VirtioFs) toVz() (vz.DirectorySharingDeviceConfiguration, error) {
+func toVzVirtioFs(dev *virtio.VirtioFs) (vz.DirectorySharingDeviceConfiguration, error) {
 	if dev.SharedDir == "" {
 		return nil, fmt.Errorf("missing mandatory 'sharedDir' option for virtio-fs device")
 	}
@@ -203,44 +187,33 @@ func (dev *VirtioFs) toVz() (vz.DirectorySharingDeviceConfiguration, error) {
 	return fileSystemDeviceConfig, nil
 }
 
-func (dev *VirtioFs) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	fileSystemDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioFs(dev *virtio.VirtioFs) error {
+	fileSystemDeviceConfig, err := toVzVirtioFs(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding virtio-fs device")
-	vmConfig.directorySharingDevicesConfiguration = append(vmConfig.directorySharingDevicesConfiguration, fileSystemDeviceConfig)
+	vmConfig.directorySharingDevicesToSet = append(vmConfig.directorySharingDevicesToSet, fileSystemDeviceConfig)
 	return nil
 }
 
-func (dev *VirtioRng) toVz() (*vz.VirtioEntropyDeviceConfiguration, error) {
+func toVzVirtioRng(dev *virtio.VirtioRng) (*vz.VirtioEntropyDeviceConfiguration, error) {
 	return vz.NewVirtioEntropyDeviceConfiguration()
 }
 
-func (dev *VirtioRng) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioRng(dev *virtio.VirtioRng) error {
 	log.Infof("Adding virtio-rng device")
-	entropyConfig, err := dev.toVz()
+	entropyConfig, err := toVzVirtioRng(dev)
 	if err != nil {
 		return err
 	}
-	vmConfig.entropyDevicesConfiguration = append(vmConfig.entropyDevicesConfiguration, entropyConfig)
+	vmConfig.entropyDevicesToSet = append(vmConfig.entropyDevicesToSet, entropyConfig)
 
 	return nil
 }
 
-func (dev *VirtioBalloon) toVz() (*vz.VirtioTraditionalMemoryBalloonDeviceConfiguration, error) {
+func toVzVirtioBalloon(dev *virtio.VirtioBalloon) (*vz.VirtioTraditionalMemoryBalloonDeviceConfiguration, error) {
 	return vz.NewVirtioTraditionalMemoryBalloonDeviceConfiguration()
-}
-
-func (dev *VirtioBalloon) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	// log.Infof("Adding virtio-balloon device")
-	// balloonConfig, err := dev.toVz()
-	// if err != nil {
-	// 	return err
-	// }
-	// vmConfig.SetMemoryBalloonDevicesVirtualMachineConfiguration([]vz.MemoryBalloonDeviceConfiguration{balloonConfig})
-
-	return nil
 }
 
 func unixFd(fd uintptr) int {
@@ -265,14 +238,14 @@ func setRawMode(f *os.File) error {
 	return termios.Tcsetattr(f.Fd(), termios.TCSANOW, &attr)
 }
 
-func (dev *VirtioSerial) toVz() (*vz.VirtioConsoleDeviceSerialPortConfiguration, error) {
+func toVzVirtioSerial(dev *virtio.VirtioSerial) (*vz.VirtioConsoleDeviceSerialPortConfiguration, error) {
 	var serialPortAttachment vz.SerialPortAttachment
 	var retErr error
 	switch {
 	case dev.UsesStdio:
 		var stdin, stdout *os.File
-		if dev.RawFDs != nil {
-			fd1, fd2 := dev.RawFDs()
+		if dev.FD != 0 {
+			fd1, fd2 := dev.FD, dev.FD
 			stdin = os.NewFile(uintptr(fd1), "stdin")
 			stdout = os.NewFile(uintptr(fd2), "stdout")
 		} else {
@@ -293,7 +266,7 @@ func (dev *VirtioSerial) toVz() (*vz.VirtioConsoleDeviceSerialPortConfiguration,
 	return vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
 }
 
-func (dev *VirtioSerial) toVzPtyConsole() (*vz.VirtioConsolePortConfiguration, error) {
+func toVzVirtioSerialPtyConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
 	master, slave, err := termios.Pty()
 	if err != nil {
 		return nil, err
@@ -319,8 +292,8 @@ func (dev *VirtioSerial) toVzPtyConsole() (*vz.VirtioConsolePortConfiguration, e
 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
 }
 
-func (dev *VirtioSerial) toVzRawConsole() (*vz.VirtioConsolePortConfiguration, error) {
-	fd1, fd2 := dev.RawFDs()
+func toVzVirtioSerialRawConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
+	fd1, fd2 := dev.FD, dev.FD
 	stdin := os.NewFile(uintptr(fd1), "stdin")
 	stdout := os.NewFile(uintptr(fd2), "stdout")
 
@@ -338,7 +311,7 @@ func (dev *VirtioSerial) toVzRawConsole() (*vz.VirtioConsolePortConfiguration, e
 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
 }
 
-func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
+func (vmConfig *vzVirtioDeviceApplier) applyVirtioSerial(dev *virtio.VirtioSerial) error {
 	if dev.LogFile != "" {
 		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
 	}
@@ -350,23 +323,23 @@ func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) 
 	}
 
 	if dev.UsesStdio {
-		consoleConfig, err := dev.toVz()
+		consoleConfig, err := toVzVirtioSerial(dev)
 		if err != nil {
 			return err
 		}
-		vmConfig.serialPortsConfiguration = append(vmConfig.serialPortsConfiguration, consoleConfig)
+		vmConfig.serialPortsToSet = append(vmConfig.serialPortsToSet, consoleConfig)
 	} else {
 		var consolePortConfig *vz.VirtioConsolePortConfiguration
 		var err error
-		if dev.RawFDs != nil {
-			consolePortConfig, err = dev.toVzRawConsole()
+		if dev.FD != 0 {
+			consolePortConfig, err = toVzVirtioSerialRawConsole(dev)
 		} else {
-			consolePortConfig, err = dev.toVzPtyConsole()
+			consolePortConfig, err = toVzVirtioSerialPtyConsole(dev)
 		}
 		if err != nil {
 			return err
 		}
-		vmConfig.consolePortsConfiguration = append(vmConfig.consolePortsConfiguration, consolePortConfig)
+		vmConfig.consolePortsToSet = append(vmConfig.consolePortsToSet, consolePortConfig)
 	}
 
 	return nil
@@ -387,16 +360,16 @@ func (dev *VirtioSerial) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) 
 // 	return nil
 // }
 
-func (dev *NetworkBlockDevice) toVz() (vz.StorageDeviceConfiguration, error) {
-	if err := dev.validateNbdURI(dev.URI); err != nil {
+func toVzNetworkBlockDevice(dev *virtio.NetworkBlockDevice) (vz.StorageDeviceConfiguration, error) {
+	if err := validateNbdURI(dev.URI); err != nil {
 		return nil, fmt.Errorf("invalid NBD device 'uri': %s", err.Error())
 	}
 
-	if err := dev.validateNbdDeviceIdentifier(dev.DeviceIdentifier); err != nil {
+	if err := validateNbdDeviceIdentifier(dev.DeviceIdentifier); err != nil {
 		return nil, fmt.Errorf("invalid NBD device 'deviceId': %s", err.Error())
 	}
 
-	attachment, err := vz.NewNetworkBlockDeviceStorageDeviceAttachment(dev.URI, dev.Timeout, dev.ReadOnly, dev.SynchronizationModeVZ())
+	attachment, err := vz.NewNetworkBlockDeviceStorageDeviceAttachment(dev.URI, dev.Timeout, dev.ReadOnly, synchronizationModeVZ(dev))
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +386,7 @@ func (dev *NetworkBlockDevice) toVz() (vz.StorageDeviceConfiguration, error) {
 	return vzNetworkBlockDevice{VirtioBlockDeviceConfiguration: vzdev, config: dev}, nil
 }
 
-func (dev *NetworkBlockDevice) validateNbdURI(uri string) error {
+func validateNbdURI(uri string) error {
 	if uri == "" {
 		return fmt.Errorf("'uri' must be specified")
 	}
@@ -431,7 +404,7 @@ func (dev *NetworkBlockDevice) validateNbdURI(uri string) error {
 	return nil
 }
 
-func (dev *NetworkBlockDevice) validateNbdDeviceIdentifier(deviceID string) error {
+func validateNbdDeviceIdentifier(deviceID string) error {
 	if deviceID == "" {
 		return fmt.Errorf("'deviceId' must be specified")
 	}
@@ -447,116 +420,86 @@ func (dev *NetworkBlockDevice) validateNbdDeviceIdentifier(deviceID string) erro
 	return nil
 }
 
-func (dev *NetworkBlockDevice) SynchronizationModeVZ() vz.DiskSynchronizationMode {
+func synchronizationModeVZ(dev *virtio.NetworkBlockDevice) vz.DiskSynchronizationMode {
 	if dev.SynchronizationMode == virtio.SynchronizationNoneMode {
 		return vz.DiskSynchronizationModeNone
 	}
 	return vz.DiskSynchronizationModeFull
 }
 
-func (dev *NetworkBlockDevice) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	storageDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyNetworkBlockDevice(dev *virtio.NetworkBlockDevice) error {
+	storageDeviceConfig, err := toVzNetworkBlockDevice(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding NBD device (uri: %s, deviceId: %s)", dev.URI, dev.DeviceIdentifier)
-	vmConfig.storageDevicesConfiguration = append(vmConfig.storageDevicesConfiguration, storageDeviceConfig)
+	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
 }
 
-func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
+// func AddToVirtualMachineConfig(vmConfig *vzVirtioConverter, dev virtio.VirtioDevice) error {
+// 	switch d := dev.(type) {
+// 	case *virtio.USBMassStorage:
+// 		return (*USBMassStorage)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioBlk:
+// 		return (*VirtioBlk)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.RosettaShare:
+// 		return (*RosettaShare)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.NVMExpressController:
+// 		return (*NVMExpressController)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioFs:
+// 		return (*VirtioFs)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioNet:
+// 		dev := VirtioNet{VirtioNet: d}
+// 		return dev.AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioRng:
+// 		return (*VirtioRng)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioSerial:
+// 		return (*VirtioSerial)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioVsock:
+// 		// return (*VirtioVsock)(d).AddToVirtualMachineConfig(vmConfig)
+// 		return nil // vsocks get handled by the host via a proxy
+// 	case *virtio.VirtioInput:
+// 		return (*VirtioInput)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioGPU:
+// 		return (*VirtioGPU)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.VirtioBalloon:
+// 		return (*VirtioBalloon)(d).AddToVirtualMachineConfig(vmConfig)
+// 	case *virtio.NetworkBlockDevice:
+// 		return (*NetworkBlockDevice)(d).AddToVirtualMachineConfig(vmConfig)
+// 	default:
+// 		return fmt.Errorf("Unexpected virtio device type: %T", d)
+// 	}
+// }
 
-	for _, dev := range vm.configuration.wrapper.storageDevicesConfiguration {
-		if nbdDev, isNbdDev := dev.(vzNetworkBlockDevice); isNbdDev {
-			nbdAttachment, isNbdAttachment := dev.Attachment().(*vz.NetworkBlockDeviceStorageDeviceAttachment)
-			if !isNbdAttachment {
-				log.Info("Found NBD device with no NBD attachment. Please file a vfkit bug.")
-				return fmt.Errorf("NetworkBlockDevice must use a NBD attachment")
-			}
-			nbdConfig := nbdDev.config
-			go func() {
-				for {
-					select {
-					case err := <-nbdAttachment.DidEncounterError():
-						log.Infof("Disconnected from NBD server %s. Error %v", nbdConfig.URI, err.Error())
-					case <-nbdAttachment.Connected():
-						log.Infof("Successfully connected to NBD server %s.", nbdConfig.URI)
-					}
-				}
-			}()
-		}
-	}
-	return nil
-}
-
-func AddToVirtualMachineConfig(vmConfig *vzVirtioConverter, dev virtio.VirtioDevice) error {
-	switch d := dev.(type) {
-	case *virtio.USBMassStorage:
-		return (*USBMassStorage)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioBlk:
-		return (*VirtioBlk)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.RosettaShare:
-		return (*RosettaShare)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.NVMExpressController:
-		return (*NVMExpressController)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioFs:
-		return (*VirtioFs)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioNet:
-		dev := VirtioNet{VirtioNet: d}
-		return dev.AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioRng:
-		return (*VirtioRng)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioSerial:
-		return (*VirtioSerial)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioVsock:
-		// return (*VirtioVsock)(d).AddToVirtualMachineConfig(vmConfig)
-		return nil // vsocks get handled by the host via a proxy
-	case *virtio.VirtioInput:
-		return (*VirtioInput)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioGPU:
-		return (*VirtioGPU)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.VirtioBalloon:
-		return (*VirtioBalloon)(d).AddToVirtualMachineConfig(vmConfig)
-	case *virtio.NetworkBlockDevice:
-		return (*NetworkBlockDevice)(d).AddToVirtualMachineConfig(vmConfig)
-	default:
-		return fmt.Errorf("Unexpected virtio device type: %T", d)
-	}
-}
-
-func (config *DiskStorageConfig) toVz() (vz.StorageDeviceAttachment, error) {
-	if config.ImagePath == "" {
-		return nil, fmt.Errorf("missing mandatory 'path' option for %s device", config.DevName)
+func toVzDiskStorageConfig(dev *virtio.DiskStorageConfig) (vz.StorageDeviceAttachment, error) {
+	if dev.ImagePath == "" {
+		return nil, fmt.Errorf("missing mandatory 'path' option for %s device", dev.DevName)
 	}
 	syncMode := vz.DiskImageSynchronizationModeFsync
 	caching := vz.DiskImageCachingModeCached
 
 	// return vz.NewDiskBlockDeviceStorageDeviceAttachment(config.=, config.ReadOnly, syncMode)
 
-	return vz.NewDiskImageStorageDeviceAttachmentWithCacheAndSync(config.ImagePath, config.ReadOnly, caching, syncMode)
+	return vz.NewDiskImageStorageDeviceAttachmentWithCacheAndSync(dev.ImagePath, dev.ReadOnly, caching, syncMode)
 }
 
-func (dev *USBMassStorage) toVz() (vz.StorageDeviceConfiguration, error) {
-	var storageConfig DiskStorageConfig = DiskStorageConfig(dev.DiskStorageConfig)
-	attachment, err := storageConfig.toVz()
+func toVzUSBMassStorage(dev *virtio.USBMassStorage) (vz.StorageDeviceConfiguration, error) {
+	attachment, err := toVzDiskStorageConfig(&dev.DiskStorageConfig)
 	if err != nil {
 		return nil, err
 	}
 	return vz.NewUSBMassStorageDeviceConfiguration(attachment)
 }
 
-func (dev *USBMassStorage) AddToVirtualMachineConfig(vmConfig *vzVirtioConverter) error {
-	storageDeviceConfig, err := dev.toVz()
+func (vmConfig *vzVirtioDeviceApplier) applyUSBMassStorage(dev *virtio.USBMassStorage) error {
+	storageDeviceConfig, err := toVzUSBMassStorage(dev)
 	if err != nil {
 		return err
 	}
 	log.Infof("Adding USB mass storage device (imagePath: %s)", dev.ImagePath)
-	vmConfig.storageDevicesConfiguration = append(vmConfig.storageDevicesConfiguration, storageDeviceConfig)
+	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
 }
-
-type DiskStorageConfig virtio.DiskStorageConfig
-
-type USBMassStorage virtio.USBMassStorage

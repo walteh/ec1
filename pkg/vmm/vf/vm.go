@@ -3,11 +3,14 @@ package vf
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
 	"gitlab.com/tozd/go/errors"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -38,8 +41,22 @@ func vzStateToHypervisorState(state vz.VirtualMachineState) vmm.VirtualMachineSt
 }
 
 type VirtualMachine struct {
+	id            string
 	vzvm          *vz.VirtualMachine
-	configuration *VirtualMachineConfiguration
+	configuration *vz.VirtualMachineConfiguration
+	bootLoader    vz.BootLoader
+	opts          *vmm.NewVMOptions
+}
+
+func (vm *VirtualMachine) Start(ctx context.Context) error {
+	if vm.vzvm == nil {
+		return errors.Errorf("virtual machine not initialized")
+	}
+	slog.DebugContext(ctx, "Starting virtual machine")
+	return vm.vzvm.Start()
+}
+func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
+	return hpv.vzvm
 }
 
 // func (vm *VirtualMachine) objcPtr() uintptr {
@@ -120,12 +137,12 @@ func (vm *VirtualMachine) CurrentState() vmm.VirtualMachineStateType {
 
 // Devices implements vmm.VirtualMachine.
 func (vm *VirtualMachine) Devices() []virtio.VirtioDevice {
-	return vm.configuration.newVMOpts.Devices
+	return vm.opts.Devices
 }
 
 // ID implements vmm.VirtualMachine.
 func (vm *VirtualMachine) ID() string {
-	return vm.configuration.id
+	return vm.id
 }
 
 func (vm *VirtualMachine) GetVSockDevice() (*vz.VirtioSocketDevice, error) {
@@ -292,7 +309,32 @@ func (vm *VirtualMachine) SetMemoryBalloonTargetSize(ctx context.Context, target
 }
 
 func (vm *VirtualMachine) Opts() *vmm.NewVMOptions {
-	return vm.configuration.newVMOpts
+	return vm.opts
+}
+
+func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
+
+	for _, dev := range vm.configuration.StorageDevices() {
+		if nbdDev, isNbdDev := dev.(vzNetworkBlockDevice); isNbdDev {
+			nbdAttachment, isNbdAttachment := dev.Attachment().(*vz.NetworkBlockDeviceStorageDeviceAttachment)
+			if !isNbdAttachment {
+				log.Info("Found NBD device with no NBD attachment. Please file a vfkit bug.")
+				return fmt.Errorf("NetworkBlockDevice must use a NBD attachment")
+			}
+			nbdConfig := nbdDev.config
+			go func() {
+				for {
+					select {
+					case err := <-nbdAttachment.DidEncounterError():
+						log.Infof("Disconnected from NBD server %s. Error %v", nbdConfig.URI, err.Error())
+					case <-nbdAttachment.Connected():
+						log.Infof("Successfully connected to NBD server %s.", nbdConfig.URI)
+					}
+				}
+			}()
+		}
+	}
+	return nil
 }
 
 // func (vm *VirtualMachine) RootVSockAddress() string {

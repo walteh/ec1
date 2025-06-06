@@ -12,6 +12,7 @@ import (
 
 	"github.com/walteh/ec1/pkg/ext/archivesx"
 	"github.com/walteh/ec1/pkg/magic"
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -30,32 +31,36 @@ type Hypervisor struct {
 	notify chan *VirtualMachine
 }
 
-func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts vmm.NewVMOptions, bl vmm.Bootloader) (*VirtualMachine, error) {
-	vfConfig, err := NewVirtualMachineConfiguration(ctx, id, &opts, bl)
+func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts *vmm.NewVMOptions, bl vmm.Bootloader) (*VirtualMachine, error) {
+	cfg, vzbl, err := hpv.buildConfig(ctx, opts, bl)
 	if err != nil {
 		return nil, err
 	}
 
 	slog.InfoContext(ctx, "validating vz virtual machine configuration")
 
-	valid, err := vfConfig.internal.Validate()
+	applier, err := NewVzVirtioDeviceApplier(ctx, cfg, bl)
 	if err != nil {
-		return nil, errors.Errorf("validating vz virtual machine configuration: %w", err)
+		return nil, errors.Errorf("creating vz virtio device applier: %w", err)
 	}
-	if !valid {
-		return nil, errors.New("invalid vz virtual machine configuration")
+
+	if err := virtio.ApplyDevices(ctx, applier, opts.Devices); err != nil {
+		return nil, errors.Errorf("applying virtio devices: %w", err)
 	}
 
 	slog.InfoContext(ctx, "creating vz virtual machine")
 
-	vzVM, err := vz.NewVirtualMachine(vfConfig.internal)
+	vzVM, err := vz.NewVirtualMachine(cfg)
 	if err != nil {
 		return nil, errors.Errorf("creating vz virtual machine: %w", err)
 	}
 
 	vm := &VirtualMachine{
-		configuration: vfConfig,
+		id:            id,
+		bootLoader:    vzbl,
+		configuration: cfg,
 		vzvm:          vzVM,
+		opts:          opts,
 	}
 
 	hpv.mu.Lock()
@@ -78,6 +83,21 @@ func (hpv *Hypervisor) OnCreate() <-chan *VirtualMachine {
 // func (hpv *Hypervisor) ListenNetworkBlockDevices(ctx context.Context, vm vmm.VirtualMachine) error {
 // 	panic("not implemented")
 // }
+
+func (hpv *Hypervisor) buildConfig(ctx context.Context, opts *vmm.NewVMOptions, bl vmm.Bootloader) (*vz.VirtualMachineConfiguration, vz.BootLoader, error) {
+	slog.DebugContext(ctx, "Creating virtual machine configuration")
+	vzBootloader, err := toVzBootloader(bl)
+	if err != nil {
+		return nil, nil, errors.Errorf("converting bootloader to vz bootloader: %w", err)
+	}
+
+	vzVMConfig, err := vz.NewVirtualMachineConfiguration(vzBootloader, uint(opts.Vcpus), uint64(opts.Memory.ToBytes()))
+	if err != nil {
+		return nil, nil, errors.Errorf("creating vz virtual machine configuration: %w", err)
+	}
+
+	return vzVMConfig, vzBootloader, nil
+}
 
 func (hpv *Hypervisor) EncodeLinuxInitramfs(ctx context.Context, initramfs io.Reader) (io.ReadCloser, error) {
 	// Use optimized gzip settings for speed over compression ratio

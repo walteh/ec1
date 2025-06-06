@@ -18,7 +18,7 @@ func (v *VirtualMachine) SaveFullSnapshot(ctx context.Context, path string) erro
 
 	hash := sha256.Sum256([]byte(path))
 
-	if ok, err := v.configuration.internal.ValidateSaveRestoreSupport(); err != nil {
+	if ok, err := v.configuration.ValidateSaveRestoreSupport(); err != nil {
 		return errors.Errorf("checking save/restore support: %w", err)
 	} else if !ok {
 		return errors.New("save/restore is not supported")
@@ -40,7 +40,7 @@ func (v *VirtualMachine) SaveFullSnapshot(ctx context.Context, path string) erro
 
 func (v *VirtualMachine) RestoreFromFullSnapshot(ctx context.Context, path string) error {
 
-	if ok, err := v.configuration.internal.ValidateSaveRestoreSupport(); err != nil {
+	if ok, err := v.configuration.ValidateSaveRestoreSupport(); err != nil {
 		return errors.Errorf("checking save/restore support: %w", err)
 	} else if !ok {
 		return errors.New("save/restore is not supported")

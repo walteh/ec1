@@ -5,6 +5,7 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 
+	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
@@ -52,7 +53,7 @@ func toVzMacOSBootloader(_ *vmm.MacOSBootloader) (vz.BootLoader, error) {
 	return vz.NewMacOSBootLoader()
 }
 
-func newMacGraphicsDeviceConfiguration(dev *VirtioGPU) (vz.GraphicsDeviceConfiguration, error) {
+func newMacGraphicsDeviceConfiguration(dev *virtio.VirtioGPU) (vz.GraphicsDeviceConfiguration, error) {
 	const MacDisplayPixelsPerInch = int64(80) // Hardcoded since HiDPI scaling doesn't seem to work
 
 	gpuDeviceConfig, err := vz.NewMacGraphicsDeviceConfiguration()
