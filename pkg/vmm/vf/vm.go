@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
@@ -53,7 +54,23 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 		return errors.Errorf("virtual machine not initialized")
 	}
 	slog.DebugContext(ctx, "Starting virtual machine")
-	return vm.vzvm.Start()
+
+	errchan := make(chan error)
+	go func() {
+		errchan <- vm.vzvm.Start()
+	}()
+
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timeout.C:
+		return errors.Errorf("timeout waiting for virtual machine to start")
+	case err := <-errchan:
+		return err
+	}
 }
 func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
 	return hpv.vzvm

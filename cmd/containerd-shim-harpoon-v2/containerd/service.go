@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/containerd/containerd/api/events"
 	"github.com/containerd/containerd/api/runtime/task/v3"
@@ -321,28 +322,69 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	p.pid = 1
 	p.status = taskt.Status_RUNNING // Set as running immediately
 
-	// Start VM creation asynchronously
+	// Start VM creation asynchronously with better error handling
 	go func() {
 		// Use background context since the request context might be cancelled
 		vmCtx := context.Background()
+
 		defer func() {
+			if r := recover(); r != nil {
+				log.G(ctx).WithField("panic", r).WithField("pid", p.pid).Error("PANIC in VM creation")
+				p.status = taskt.Status_STOPPED
+				p.exitStatus = 1
+				// Send task exit event to notify containerd of failure
+				s.events <- &events.TaskExit{
+					ContainerID: request.ID,
+					ID:          request.ExecID,
+					Pid:         uint32(p.pid),
+					ExitStatus:  1,
+					ExitedAt:    protobuf.ToTimestamp(time.Now()),
+				}
+				// Ensure waitblock is closed in case of panic
+				select {
+				case <-p.waitblock:
+					// Already closed
+				default:
+					close(p.waitblock)
+				}
+			}
 			log.G(ctx).WithField("pid", p.pid).Info("START_VM_WAIT_DONE")
-			// close(p.waitblock)
 		}()
 
+		log.G(ctx).Info("Starting VM creation")
 		// Create and start the VM for this container
 		if err := c.createVM(vmCtx, c.spec, request.ID, request.ExecID, c.rootfs, c.primary.io); err != nil {
 			log.G(ctx).WithError(err).Error("failed to create VM")
 			p.status = taskt.Status_STOPPED
 			p.exitStatus = 1
+
+			// Send task exit event to notify containerd of failure
+			s.events <- &events.TaskExit{
+				ContainerID: request.ID,
+				ID:          request.ExecID,
+				Pid:         uint32(p.pid),
+				ExitStatus:  1,
+				ExitedAt:    protobuf.ToTimestamp(time.Now()),
+			}
+			// Close waitblock since start won't be called
+			close(p.waitblock)
 			return
 		}
 
-		// // Start the process in the VM
+		// Start the process in the VM now that VM is created
 		// if err := p.start(c.vm); err != nil {
 		// 	log.G(ctx).WithError(err).Error("failed to start process in VM")
 		// 	p.status = taskt.Status_STOPPED
 		// 	p.exitStatus = 1
+		// 	// Send task exit event to notify containerd of failure
+		// 	s.events <- &events.TaskExit{
+		// 		ContainerID: request.ID,
+		// 		ID:          request.ExecID,
+		// 		Pid:         uint32(p.pid),
+		// 		ExitStatus:  1,
+		// 		ExitedAt:    protobuf.ToTimestamp(time.Now()),
+		// 	}
+		// 	// Close waitblock since start failed
 		// 	close(p.waitblock)
 		// 	return
 		// }

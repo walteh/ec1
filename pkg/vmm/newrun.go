@@ -307,6 +307,17 @@ func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case <-bootCtx.Done():
+				return
+			case <-vm.StateChangeNotify(bootCtx):
+				slog.InfoContext(bootCtx, "virtual machine state changed", "state", vm.CurrentState())
+			}
+		}
+	}()
+
 	if err := vm.Start(ctx); err != nil {
 		return errors.Errorf("starting virtual machine: %w", err)
 	}

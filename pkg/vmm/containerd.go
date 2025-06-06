@@ -47,7 +47,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	ctrconfig ContainerizedVMConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 
-	id := "harpoon-oci-" + ctrconfig.ID + "-" + ctrconfig.ExecID
+	id := "harpoon-oci-" + ctrconfig.ID
 	errgrp, ctx := errgroup.WithContext(ctx)
 
 	startTime := time.Now()
@@ -174,6 +174,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 					errCh <- nil
 					return
 				}
+				slog.InfoContext(ctx, "VM state changed", "state", state.StateType, "metadata", state.Metadata)
 			case <-ctx.Done():
 				runCancel()
 				return
@@ -231,6 +232,7 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 		return nil, errors.Errorf("creating block device directory: %w", err)
 	}
 
+	// i think the prob is that ctrconfig.Root.Path is set to 'rootfs'
 	// Create a VirtioFs device pointing to the existing rootfs directory
 	blkDev, err := virtio.VirtioFsNew(ctrconfig.Root.Path, ec1init.RootfsVirtioTag)
 	if err != nil {
@@ -247,17 +249,17 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 		return nil, errors.Errorf("marshalling spec: %w", err)
 	}
 
-	mountsBytes, err := json.Marshal(bindMounts)
-	if err != nil {
-		return nil, errors.Errorf("marshalling mounts: %w", err)
-	}
-
 	bindMounts = append(bindMounts, specs.Mount{
 		Type:        "virtiofs",
 		Source:      ec1init.Ec1VirtioTag,
 		Destination: ec1init.Ec1AbsPath,
 		Options:     []string{},
 	})
+
+	mountsBytes, err := json.Marshal(bindMounts)
+	if err != nil {
+		return nil, errors.Errorf("marshalling mounts: %w", err)
+	}
 
 	files := map[string][]byte{
 		ec1init.ContainerSpecFile:   specBytes,

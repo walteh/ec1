@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -111,13 +112,25 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 }
 
 // createVM creates and starts a new microVM for this container using the already-prepared rootfs
-func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, execID string, rootfs string, stdio stdio) error {
+func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, execID string, rootfs string, stdio stdio) (retErr error) {
 	// containerd has already prepared the rootfs for us at c.rootfs
 	// We just need to create a VM that uses this existing rootfs directory
 
+	// Add panic recovery for VM creation
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", id, "execID", execID)
+			retErr = errors.Errorf("VM creation panicked: %v", r)
+		}
+	}()
+
+	slog.InfoContext(ctx, "createVM: Starting VM creation", "id", id, "execID", execID, "rootfs", rootfs)
+
 	// Extract configuration from the OCI spec
-	memory := strongunits.MiB(128).ToBytes() // Default, TODO: Extract from spec.Linux.Resources.Memory
+	memory := strongunits.MiB(512).ToBytes() // Use 512MB minimum for VZ compatibility
 	vcpus := uint64(1)                       // Default, TODO: Extract from spec.Process or other location
+
+	slog.InfoContext(ctx, "createVM: VM configuration", "memory", memory, "vcpus", vcpus)
 
 	// Determine platform based on the OCI spec content and runtime architecture
 	var platform units.Platform
@@ -140,24 +153,51 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 	if err != nil {
 		// Fallback to ARM64 Linux if parsing fails
 		platform = units.PlatformLinuxARM64
+		slog.WarnContext(ctx, "createVM: Failed to parse platform, using fallback", "platformStr", platformStr, "fallback", platform)
 	}
 
-	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
-		ID:         id,
-		ExecID:     execID,
-		RootfsPath: c.rootfs,
-		StderrFD:   stdio.stderrFD,
-		StdoutFD:   stdio.stdoutFD,
-		StdinFD:    stdio.stdinFD,
-		Spec:       spec,
-		Platform:   platform,
-		Memory:     memory,
-		VCPUs:      vcpus,
-	})
+	slog.InfoContext(ctx, "createVM: Platform determined", "platform", platform)
+
+	slog.InfoContext(ctx, "createVM: Calling NewContainerizedVirtualMachineFromRootfs")
+
+	// The critical call that might be causing the process to exit
+	vm, err := func() (*vmm.RunningVM[*vf.VirtualMachine], error) {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "FATAL: NewContainerizedVirtualMachineFromRootfs panic", "panic", r)
+				panic(r)
+			}
+		}()
+
+		vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
+			ID:         id,
+			ExecID:     execID,
+			RootfsPath: c.rootfs,
+			StderrFD:   stdio.stderrFD,
+			StdoutFD:   stdio.stdoutFD,
+			StdinFD:    stdio.stdinFD,
+			Spec:       spec,
+			Platform:   platform,
+			Memory:     memory,
+			VCPUs:      vcpus,
+		})
+
+		return vm, err
+	}()
+
 	if err != nil {
+		slog.ErrorContext(ctx, "createVM: Failed to create VM", "error", err)
 		return errors.Errorf("creating VM from rootfs: %w", err)
 	}
 
+	to := time.NewTimer(10 * time.Second)
+	defer to.Stop()
+
+	if err := vmm.WaitForVMState(ctx, vm.VM(), vmm.VirtualMachineStateTypeRunning, to.C); err != nil {
+		return errors.Errorf("timeout waiting for VM to start: %w", err)
+	}
+
+	slog.InfoContext(ctx, "createVM: VM created successfully")
 	c.vm = vm
 	return nil
 }
