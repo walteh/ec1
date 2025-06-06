@@ -111,7 +111,7 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 }
 
 // createVM creates and starts a new microVM for this container using the already-prepared rootfs
-func (c *container) createVM(ctx context.Context, spec *oci.Spec, rootfs string, stdio stdio) error {
+func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, execID string, rootfs string, stdio stdio) error {
 	// containerd has already prepared the rootfs for us at c.rootfs
 	// We just need to create a VM that uses this existing rootfs directory
 
@@ -143,6 +143,8 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, rootfs string,
 	}
 
 	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
+		ID:         id,
+		ExecID:     execID,
 		RootfsPath: c.rootfs,
 		StderrFD:   stdio.stderrFD,
 		StdoutFD:   stdio.stdoutFD,

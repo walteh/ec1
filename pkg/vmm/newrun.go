@@ -88,8 +88,9 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		return nil, errors.Errorf("unsupported OS: %s", imageConfig.Platform.OS())
 	}
 
-	devices = append(devices, &virtio.VirtioSerial{
-		LogFile: filepath.Join(workingDir, "console.log"),
+	devices = append(devices, &virtio.VirtioSerialLogFile{
+		Path:   filepath.Join(workingDir, "console.log"),
+		Append: true,
 	})
 
 	errgrp.Go(func() error {

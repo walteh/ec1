@@ -56,7 +56,7 @@ func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, co
 		ProcessName: processName,
 	})
 
-	ctxHandler := slogctx.NewHandler(tintHandler, nil)
+	ctxHandler := slogctx.NewHandler(tintHandler, &slogctx.HandlerOptions{})
 
 	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)

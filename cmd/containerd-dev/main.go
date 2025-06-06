@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
+	slogctx "github.com/veqryn/slog-context"
 
 	"context"
 	"flag"
@@ -40,6 +41,8 @@ func main() {
 	flag.Parse()
 
 	ctx := logging.SetupSlogSimpleToWriterWithProcessName(context.Background(), os.Stdout, debug, "containerd")
+
+	ctx = slogctx.Append(ctx, slog.String("process", "containerd"), slog.String("pid", strconv.Itoa(os.Getpid())))
 
 	slog.InfoContext(ctx, "Starting development containerd instance",
 		"background", background,

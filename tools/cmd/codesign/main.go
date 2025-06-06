@@ -90,7 +90,7 @@ func main() {
 
 	// Store logger in context and add tool info
 	ctx = slogctx.NewCtx(ctx, logger)
-	ctx = slogctx.With(ctx, "tool", "codesign")
+	ctx = slogctx.Append(ctx, slog.String("tool", "codesign"))
 
 	if showEntitlements {
 		listCommonEntitlements()

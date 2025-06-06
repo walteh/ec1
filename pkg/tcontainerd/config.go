@@ -2,6 +2,8 @@ package tcontainerd
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -32,4 +34,101 @@ func LoadCurrentServerConfig(ctx context.Context) ([]byte, error) {
 	}
 
 	return config, nil
+}
+
+func (s *DevContainerdServer) createNerdctlConfig(ctx context.Context) error {
+	logLevel := "info"
+	if s.debug {
+		logLevel = "debug"
+	}
+
+	configContent := fmt.Sprintf(`
+debug          = %[1]v
+debug_full     = %[1]v
+address        = "unix://%[2]s"
+namespace      = "%[3]s"
+snapshotter    = "native"
+# cgroup_manager = "cgroupfs"
+# hosts_dir      = ["/etc/containerd/certs.d", "/etc/docker/certs.d"]
+experimental   = true
+# userns_remap   = ""
+	`, logLevel == "debug", Address(), Namespace())
+
+	if err := os.WriteFile(NerdctlConfigTomlPath(), []byte(configContent), 0644); err != nil {
+		return errors.Errorf("writing nerdctl config: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created nerdctl config", "path", NerdctlConfigTomlPath())
+	return nil
+}
+
+func (s *DevContainerdServer) createConfig(ctx context.Context) error {
+	logLevel := "info"
+	if s.debug {
+		logLevel = "debug"
+	}
+
+	configContent := fmt.Sprintf(`
+version = 3
+root   = "%[1]s"
+state  = "%[2]s"
+
+[grpc]
+  address = "%[3]s"
+
+[ttrpc]
+  address = "%[3]s.ttrpc"
+
+[debug]
+  level = "%[4]s"
+
+[plugins."io.containerd.runtime.v1.linux"]
+  shim_debug = true
+
+# Register harpoon runtime for CRI
+[plugins."io.containerd.cri.v1.runtime".containerd]
+  default_runtime_name = "%[5]s"
+
+  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+    [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[5]s"]
+      runtime_type = "%[5]s"
+      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes."%[5]s".options]
+        binary_name = "%[6]s"
+
+# Snapshotter config
+[plugins."io.containerd.snapshotter.v1.overlayfs"]
+  root_path = "%[7]s"
+
+# Content store config
+[plugins."io.containerd.content.v1.content"]
+  path = "%[8]s"
+
+# Garbage collection settings - delay GC to prevent race conditions during testing
+[plugins."io.containerd.gc.v1.scheduler"]
+  pause_threshold = 0.02
+  deletion_threshold = 0
+  mutation_threshold = 100
+  schedule_delay = "0s"
+  startup_delay = "10s"
+
+# Metadata settings for content sharing
+[plugins."io.containerd.metadata.v1.bolt"]
+  content_sharing_policy = "shared"
+`,
+		filepath.Join(WorkDir(), "root"),      // %[1]s
+		filepath.Join(WorkDir(), "state"),     // %[2]s
+		Address(),                             // %[3]s
+		logLevel,                              // %[4]s
+		shimRuntimeID,                         // %[5]s
+		ShimSimlinkPath(),                     // %[6]s
+		filepath.Join(WorkDir(), "snapshots"), // %[7]s
+		filepath.Join(WorkDir(), "content"),   // %[8]s
+	)
+
+	if err := os.WriteFile(ContainerdConfigTomlPath(), []byte(configContent), 0644); err != nil {
+		return errors.Errorf("writing containerd config: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created containerd config", "path", ContainerdConfigTomlPath())
+	return nil
 }

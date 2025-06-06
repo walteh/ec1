@@ -2,8 +2,12 @@ package vf
 
 import (
 	"context"
+	"os"
+
+	"github.com/pkg/term/termios"
 
 	"github.com/Code-Hex/vz/v3"
+	"github.com/crc-org/vfkit/pkg/util"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/virtio"
@@ -54,12 +58,6 @@ func NewVzVirtioDeviceApplier(ctx context.Context, cfg *vz.VirtualMachineConfigu
 }
 
 func (v *vzVirtioDeviceApplier) Finalize(ctx context.Context) error {
-	platformConfig, err := toVzPlatformConfiguration(v.bootLoader)
-	if err != nil {
-		return errors.Errorf("converting platform configuration to vz platform configuration: %w", err)
-	}
-
-	v.SetPlatformVirtualMachineConfiguration(platformConfig)
 
 	v.SetStorageDevicesVirtualMachineConfiguration(v.storageDevicesToSet)
 	v.SetDirectorySharingDevicesVirtualMachineConfiguration(v.directorySharingDevicesToSet)
@@ -85,6 +83,13 @@ func (v *vzVirtioDeviceApplier) Finalize(ctx context.Context) error {
 		}
 		v.SetSocketDevicesVirtualMachineConfiguration([]vz.SocketDeviceConfiguration{vzdev})
 	}
+
+	platformConfig, err := toVzPlatformConfiguration(v.bootLoader)
+	if err != nil {
+		return errors.Errorf("converting platform configuration to vz platform configuration: %w", err)
+	}
+
+	v.SetPlatformVirtualMachineConfiguration(platformConfig)
 
 	valid, err := v.Validate()
 	if err != nil {
@@ -143,9 +148,95 @@ func (v *vzVirtioDeviceApplier) ApplyVirtioRosettaShare(ctx context.Context, dev
 	return v.applyRosettaShare(dev)
 }
 
-// ApplyVirtioSerial implements virtio.DeviceApplier.
-func (v *vzVirtioDeviceApplier) ApplyVirtioSerial(ctx context.Context, dev *virtio.VirtioSerial) error {
-	return v.applyVirtioSerial(dev)
+// ApplyVirtioSerialFifo implements virtio.DeviceApplier.
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFifo(ctx context.Context, dev *virtio.VirtioSerialFifo) error {
+	fifoRead := os.NewFile(uintptr(dev.FD), "fifo-read")
+	fifoWrite := os.NewFile(uintptr(dev.FD), "fifo-write")
+
+	serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(fifoRead, fifoWrite)
+	if err != nil {
+		return errors.Errorf("creating file handle serial port attachment: %w", err)
+	}
+
+	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+	if err != nil {
+		return errors.Errorf("creating virtio console device serial port configuration: %w", err)
+	}
+
+	v.serialPortsToSet = append(v.serialPortsToSet, serialPort)
+	return nil
+}
+
+// ApplyVirtioSerialStdio implements virtio.DeviceApplier.
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialStdio(ctx context.Context, dev *virtio.VirtioSerialStdio) error {
+	stdin := dev.Stdin
+	stdout := dev.Stdout
+	if err := setRawMode(stdin); err != nil {
+		return errors.Errorf("setting raw mode for stdin: %w", err)
+	}
+	serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(stdin, stdout)
+	if err != nil {
+		return errors.Errorf("creating file handle serial port attachment: %w", err)
+	}
+	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+	if err != nil {
+		return errors.Errorf("creating virtio console device serial port configuration: %w", err)
+	}
+	v.serialPortsToSet = append(v.serialPortsToSet, serialPort)
+	return nil
+}
+
+// ApplyVirtioSerialPty implements virtio.DeviceApplier.
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialPty(ctx context.Context, dev *virtio.VirtioSerialPty) error {
+	master, slave, err := termios.Pty()
+	if err != nil {
+		return errors.Errorf("creating pty: %w", err)
+	}
+
+	// the master fd and slave fd must stay open for vfkit's lifetime
+	util.RegisterExitHandler(func() {
+		_ = master.Close()
+		_ = slave.Close()
+	})
+
+	dev.InternalManagedName = slave.Name()
+
+	if err := setRawMode(master); err != nil {
+		return errors.Errorf("setting raw mode for master: %w", err)
+	}
+
+	serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(master, master)
+	if err != nil {
+		return errors.Errorf("creating file handle serial port attachment: %w", err)
+	}
+
+	serialPort, err := vz.NewVirtioConsolePortConfiguration(
+		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
+		vz.WithVirtioConsolePortConfigurationIsConsole(dev.IsSystemConsole),
+	)
+	if err != nil {
+		return errors.Errorf("creating virtio console device serial port configuration: %w", err)
+	}
+
+	v.consolePortsToSet = append(v.consolePortsToSet, serialPort)
+	return nil
+}
+
+// ApplyVirtioSerialLogFile implements virtio.DeviceApplier.
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialLogFile(ctx context.Context, dev *virtio.VirtioSerialLogFile) error {
+	serialPortAttachment, err := vz.NewFileSerialPortAttachment(dev.Path, dev.Append)
+	if err != nil {
+		return errors.Errorf("creating file serial port attachment: %w", err)
+	}
+
+	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+	if err != nil {
+		return errors.Errorf("creating virtio console device serial port configuration: %w", err)
+	}
+
+	v.serialPortsToSet = append(v.serialPortsToSet, serialPort)
+
+	return nil
 }
 
 // ApplyVirtioStorage implements virtio.DeviceApplier.

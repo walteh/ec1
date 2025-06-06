@@ -2,7 +2,7 @@ package containerd
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net"
 	"os"
 	"path"
@@ -27,6 +27,7 @@ import (
 	"github.com/containerd/typeurl/v2"
 	"github.com/creack/pty"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"gitlab.com/tozd/go/errors"
 
 	taskt "github.com/containerd/containerd/api/types/task"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
@@ -90,12 +91,12 @@ func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	p, err := c.getProcessL(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
 	// For VM-based processes, we use the stored pid
@@ -120,20 +121,22 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 	log.G(ctx).WithField("request", request).Info("CREATE")
 	defer log.G(ctx).Info("CREATE_DONE")
 
+	specPath := path.Join(request.Bundle, oci.ConfigFilename)
+
 	spec, err := oci.ReadSpec(path.Join(request.Bundle, oci.ConfigFilename))
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("reading spec at %s/: %w", specPath, err)
 	}
 
 	rootfs, err := mount.CanonicalizePath(spec.Root.Path)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("canonicalizing rootfs at %s/: %w", rootfs, err)
 	}
 
 	// Workaround for 104-char limit of UNIX socket path
 	shortenedRootfsPath, err := shortenPath(rootfs)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("shortening rootfs at %s/: %w", rootfs, err)
 	}
 
 	dnsSocketPath := path.Join(shortenedRootfsPath, "var", "run", "mDNSResponder")
@@ -163,17 +166,21 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 		}
 	}()
 
+	log.G(ctx).WithField("request", request).Info("CREATE_SETUP_START")
+
 	if err = c.primary.setup(ctx, c.rootfs, request.Stdin, request.Stdout, request.Stderr); err != nil {
-		return nil, err
+		return nil, errors.Errorf("setting up primary process: %w", err)
 	}
+
+	log.G(ctx).WithField("request", request).Info("CREATE_SETUP_DONE")
 
 	mounts, err := processMounts(c.rootfs, request.Rootfs, spec.Mounts)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("processing mounts: %w", err)
 	}
 
 	if err = mount.All(mounts, c.rootfs); err != nil {
-		return nil, fmt.Errorf("failed to mount rootfs component: %w", err)
+		return nil, errors.Errorf("mounting rootfs component: %w", err)
 	}
 
 	// TODO: Check if container already exists?
@@ -198,7 +205,7 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 func shortenPath(p string) (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", errors.Errorf("getting working directory: %w", err)
 	}
 
 	shortened, err := filepath.Rel(wd, path.Join(p))
@@ -214,7 +221,7 @@ func processMounts(targetRoot string, rootfs []*types.Mount, specMounts []specs.
 	for _, m := range rootfs {
 		mm, err := processMount(targetRoot, m.Type, m.Source, m.Target, m.Options)
 		if err != nil {
-			return nil, err
+			return nil, errors.Errorf("processing mount: %w", err)
 		}
 
 		if mm != nil {
@@ -225,7 +232,7 @@ func processMounts(targetRoot string, rootfs []*types.Mount, specMounts []specs.
 	for _, m := range specMounts {
 		mm, err := processMount(targetRoot, m.Type, m.Source, m.Destination, m.Options)
 		if err != nil {
-			return nil, err
+			return nil, errors.Errorf("processing mount: %w", err)
 		}
 
 		if mm != nil {
@@ -248,13 +255,13 @@ func processMount(rootfs, mtype, source, target string, options []string) (*moun
 	case "bind":
 		stat, err := os.Stat(source)
 		if err != nil {
-			return nil, err
+			return nil, errors.Errorf("statting source: %w", err)
 		}
 
 		if stat.IsDir() {
 			fullPath := filepath.Join(rootfs, target)
 			if err = os.MkdirAll(fullPath, 0o755); err != nil {
-				return nil, err
+				return nil, errors.Errorf("creating directory %s: %w", fullPath, err)
 			}
 
 			return m, nil
@@ -265,7 +272,12 @@ func processMount(rootfs, mtype, source, target string, options []string) (*moun
 		return m, nil
 	}
 
-	log.L.Warn("skipping mount: ", m)
+	mountJson, err := json.Marshal(m)
+	if err != nil {
+		return nil, errors.Errorf("marshalling mount: %w", err)
+	}
+
+	log.L.Warn("skipping mount: ", string(mountJson))
 	return nil, nil
 }
 
@@ -294,7 +306,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 
 	c, err := s.getContainer(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	c.mu.Lock()
@@ -302,7 +314,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 
 	p, err := c.getProcess(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
 	// Set a fake PID for compatibility (VM processes don't have host PIDs)
@@ -312,25 +324,28 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	// Start VM creation asynchronously
 	go func() {
 		// Use background context since the request context might be cancelled
-		// vmCtx := context.Background()
+		vmCtx := context.Background()
+		defer func() {
+			log.G(ctx).WithField("pid", p.pid).Info("START_VM_WAIT_DONE")
+			// close(p.waitblock)
+		}()
 
 		// Create and start the VM for this container
-		if err := c.createVM(ctx, c.spec, c.rootfs, c.primary.io); err != nil {
+		if err := c.createVM(vmCtx, c.spec, request.ID, request.ExecID, c.rootfs, c.primary.io); err != nil {
 			log.G(ctx).WithError(err).Error("failed to create VM")
 			p.status = taskt.Status_STOPPED
 			p.exitStatus = 1
-			close(p.waitblock)
 			return
 		}
 
-		// Start the process in the VM
-		if err := p.start(c.vm); err != nil {
-			log.G(ctx).WithError(err).Error("failed to start process in VM")
-			p.status = taskt.Status_STOPPED
-			p.exitStatus = 1
-			close(p.waitblock)
-			return
-		}
+		// // Start the process in the VM
+		// if err := p.start(c.vm); err != nil {
+		// 	log.G(ctx).WithError(err).Error("failed to start process in VM")
+		// 	p.status = taskt.Status_STOPPED
+		// 	p.exitStatus = 1
+		// 	close(p.waitblock)
+		// 	return
+		// }
 
 		log.G(ctx).Info("VM and process started successfully")
 	}()
@@ -355,7 +370,7 @@ func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*tas
 
 	c, err := s.getContainer(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	if request.ExecID != "" {
@@ -364,7 +379,7 @@ func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*tas
 
 		p, err := c.getProcess(request.ExecID)
 		if err != nil {
-			return nil, err
+			return nil, errors.Errorf("getting process: %w", err)
 		}
 
 		if err := p.destroy(); err != nil {
@@ -427,12 +442,12 @@ func (s *service) Kill(ctx context.Context, request *task.KillRequest) (*ptypes.
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	p, err := c.getProcessL(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
 	// TODO: Do we care about error here?
@@ -447,18 +462,18 @@ func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_
 	specAny, err := typeurl.UnmarshalAny(request.Spec)
 	if err != nil {
 		log.G(ctx).WithError(err).Error("failed to unmarshal spec")
-		return nil, errdefs.ErrInvalidArgument
+		return nil, errors.Errorf("failed to unmarshal spec: %w", err)
 	}
 
 	spec, ok := specAny.(*specs.Process)
 	if !ok {
 		log.G(ctx).Error("mismatched type for spec")
-		return nil, errdefs.ErrInvalidArgument
+		return nil, errors.Errorf("mismatched type for spec")
 	}
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	c.mu.Lock()
@@ -499,17 +514,17 @@ func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest)
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	p, err := c.getProcessL(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
 	if con := p.getConsoleL(); con != nil {
 		if err = pty.Setsize(con, &pty.Winsize{Cols: uint16(request.Width), Rows: uint16(request.Height)}); err != nil {
-			return nil, err
+			return nil, errors.Errorf("setting pty size: %w", err)
 		}
 	}
 
@@ -521,12 +536,12 @@ func (s *service) CloseIO(ctx context.Context, request *task.CloseIORequest) (*p
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	p, err := c.getProcessL(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
 	if stdin := p.io.stdin; stdin != nil {
@@ -547,15 +562,19 @@ func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.Wa
 
 	c, err := s.getContainerL(request.ID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting container: %w", err)
 	}
 
 	p, err := c.getProcessL(request.ExecID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("getting process: %w", err)
 	}
 
+	log.G(ctx).WithField("request", request).Info("WAIT_BLOCK_START")
+
 	<-p.waitblock
+
+	log.G(ctx).WithField("request", request).Info("WAIT_BLOCK_DONE")
 
 	return &task.WaitResponse{
 		ExitedAt:   protobuf.ToTimestamp(p.exitedAt),

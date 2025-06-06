@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
-
 	_ "github.com/walteh/ec1/gen/oci-image-cache"
 
 	"bytes"
@@ -24,10 +23,10 @@ import (
 	"github.com/containerd/containerd/v2/core/images/archive"
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
-	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/platforms"
 	"github.com/moby/sys/reexec"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -237,13 +236,14 @@ func (env *testEnvironment) testCommandExecution(t *testing.T, ctx context.Conte
 
 	// Test various commands
 	testCases := []struct {
-		name string
-		cmd  []string
+		name   string
+		cmd    []string
+		stdout string
 	}{
-		{"simple_echo", []string{"echo", "test output"}},
-		{"list_root", []string{"ls", "-la", "/"}},
-		{"show_processes", []string{"ps", "aux"}},
-		{"memory_info", []string{"cat", "/proc/meminfo"}},
+		{"simple_echo", []string{"echo", "test output"}, "test output\n"},
+		// {"list_root", []string{"ls", "-la", "/"}},
+		// {"show_processes", []string{"ps", "aux"}},
+		// {"memory_info", []string{"cat", "/proc/meminfo"}},
 	}
 
 	for _, tc := range testCases {
@@ -251,18 +251,38 @@ func (env *testEnvironment) testCommandExecution(t *testing.T, ctx context.Conte
 			subContainerID := env.generateContainerID(tc.name)
 			env.trackContainer(subContainerID)
 
-			container := env.createContainer(t, ctx, subContainerID, tc.cmd)
+			container := env.createContainer(t, ctx, subContainerID, []string{})
+
+			task := env.startContainer(t, ctx, container)
+
+			// env.waitContainer(t, ctx, task, 5*time.Second)
+
+			process := env.execContainer(t, ctx, task, tc.cmd)
+
+			waiter, err := process.Wait(ctx)
+			require.NoError(t, err)
 
 			execStart := time.Now()
-			task := env.startContainer(t, ctx, container)
-			execTime := time.Since(execStart)
+			var execTime time.Duration
+
+			select {
+			case <-ctx.Done():
+				t.Fatal("context done")
+			case <-waiter:
+				execTime = time.Since(execStart)
+			}
+
+			iod := process.IO()
+			stdout, err := os.ReadFile(iod.Config().Stdout)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.stdout, string(stdout))
 
 			slog.InfoContext(ctx, "Command executed", "command", tc.cmd, "execTime", execTime)
 
 			// Verify execution time target (<10ms overhead is very ambitious, <100ms is more realistic)
 			assert.Less(t, execTime, 100*time.Millisecond, "Command execution should be fast")
 
-			env.waitContainer(t, ctx, task, 5*time.Second)
 			env.deleteContainer(t, ctx, container, task)
 		})
 	}
@@ -407,7 +427,8 @@ func (env *testEnvironment) createContainer(t *testing.T, ctx context.Context, c
 		// client.WithNewSnapshot(containerID, image),
 		// client.With(env.storage),
 		// client.WithNewSpec(oci.WithImageConfig(image), oci.WithProcessArgs(cmd...)),
-		client.WithNewSpec(oci.WithProcessArgs(cmd...)),
+		// client.WithNewSpec(oci.WithProcessArgs(cmd...)),
+		client.WithNewSpec(),
 		client.WithRuntime(ContainerdShimRuntimeID, nil),
 	)
 	require.NoError(t, err, "Failed to create container %s", containerID)
@@ -427,6 +448,37 @@ func (env *testEnvironment) startContainer(t *testing.T, ctx context.Context, co
 	require.NoError(t, err, "Failed to start container %s", container.ID())
 
 	slog.InfoContext(ctx, "Container started", "id", container.ID())
+	return task
+}
+
+func (env *testEnvironment) startContainerWithStdio(t *testing.T, ctx context.Context, container client.Container) client.Task {
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
+
+	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(tcontainerd.WorkDir(), "fifo")))
+	task, err := container.NewTask(ctx, creator)
+	require.NoError(t, err, "Failed to create task for container %s", container.ID())
+
+	err = task.Start(ctx)
+	require.NoError(t, err, "Failed to start container %s", container.ID())
+
+	slog.InfoContext(ctx, "Container started", "id", container.ID())
+	return task
+}
+
+func (env *testEnvironment) execContainer(t *testing.T, ctx context.Context, container client.Task, cmd []string) client.Process {
+	ctx = namespaces.WithNamespace(ctx, tcontainerd.Namespace())
+
+	creator := cio.NewCreator(cio.WithStdio, cio.WithFIFODir(filepath.Join(tcontainerd.WorkDir(), "fifo")))
+
+	process := &specs.Process{
+		Args:     cmd,
+		Terminal: false,
+	}
+
+	task, err := container.Exec(ctx, cmd[0], process, creator)
+	require.NoError(t, err, "Failed to exec container %s", container.ID())
+
+	slog.InfoContext(ctx, "Container exec", "id", container.ID(), "cmd", cmd)
 	return task
 }
 

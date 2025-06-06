@@ -15,6 +15,7 @@ var (
 
 func WorkDir() string                  { return globalWorkDir }
 func ContainerdConfigTomlPath() string { return filepath.Join(WorkDir(), "containerd.toml") }
+func NerdctlConfigTomlPath() string    { return filepath.Join(WorkDir(), "nerdctl.toml") }
 func Namespace() string                { return namespace }
 func Address() string                  { return filepath.Join(WorkDir(), "containerd.sock") }
 func LockFile() string                 { return filepath.Join(WorkDir(), "lock.pid") }

@@ -14,6 +14,7 @@ import (
 	taskt "github.com/containerd/containerd/api/types/task"
 	"github.com/hashicorp/go-multierror"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
@@ -100,7 +101,7 @@ func (p *managedProcess) setup(ctx context.Context, rootfs string, stdin string,
 
 	p.io, err = setupIO(ctx, stdin, stdout, stderr)
 	if err != nil {
-		return err
+		return errors.Errorf("setting up IO: %w", err)
 	}
 
 	if len(p.spec.Args) <= 0 {

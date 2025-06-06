@@ -3,6 +3,7 @@ package virtio
 import (
 	"fmt"
 	"math"
+	"os"
 	"time"
 )
 
@@ -149,19 +150,52 @@ var _ VirtioDevice = &VirtioRng{}
 func (v *VirtioRng) isVirtioDevice() {}
 
 // VirtioSerial configures the virtual machine serial ports.
-type VirtioSerial struct {
-	LogFile   string `json:"logFile,omitempty"`
-	UsesStdio bool   `json:"usesStdio,omitempty"`
-	UsesPty   bool   `json:"usesPty,omitempty"`
-	// PtyName must not be set when creating the VM, from a user perspective, it's read-only,
-	// vfkit will set it during VM startup.
-	PtyName string  `json:"ptyName,omitempty"`
-	FD      uintptr `json:"fd,omitempty"`
+// type VirtioSerial struct {
+// 	LogFile   string `json:"logFile,omitempty"`
+// 	UsesStdio bool   `json:"usesStdio,omitempty"`
+// 	UsesPty   bool   `json:"usesPty,omitempty"`
+// 	// PtyName must not be set when creating the VM, from a user perspective, it's read-only,
+// 	// vfkit will set it during VM startup.
+// 	PtyName string `json:"ptyName,omitempty"`
+// 	// FD is the file descriptor of the pty.
+// 	// FD uintptr `json:"fd,omitempty"`
+// }
+
+var _ VirtioDevice = &VirtioSerialFifo{}
+
+func (v *VirtioSerialFifo) isVirtioDevice() {}
+
+type VirtioSerialFifo struct {
+	FD uintptr
 }
 
-var _ VirtioDevice = &VirtioSerial{}
+type VirtioSerialStdio struct {
+	Stdin  *os.File
+	Stdout *os.File
+}
 
-func (v *VirtioSerial) isVirtioDevice() {}
+type VirtioSerialPty struct {
+	// this will be reset by the hypervisor
+	InternalManagedName string
+	IsSystemConsole     bool
+}
+
+type VirtioSerialLogFile struct {
+	Path   string
+	Append bool
+}
+
+var _ VirtioDevice = &VirtioSerialStdio{}
+
+var _ VirtioDevice = &VirtioSerialPty{}
+
+var _ VirtioDevice = &VirtioSerialLogFile{}
+
+func (v *VirtioSerialStdio) isVirtioDevice() {}
+
+func (v *VirtioSerialPty) isVirtioDevice() {}
+
+func (v *VirtioSerialLogFile) isVirtioDevice() {}
 
 type NBDSynchronizationMode string
 
@@ -202,40 +236,40 @@ func USBMassStorageNewEmpty() (VirtioDevice, error) {
 // VirtioSerialNew creates a new serial device for the virtual machine. The
 // output the virtual machine sent to the serial port will be written to the
 // file at logFilePath.
-func VirtioSerialNew(logFilePath string) (VirtioDevice, error) {
-	return &VirtioSerial{
-		LogFile: logFilePath,
-	}, nil
-}
+// func VirtioSerialNew(logFilePath string) (VirtioDevice, error) {
+// 	return &VirtioSerial{
+// 		LogFile: logFilePath,
+// 	}, nil
+// }
 
-func VirtioSerialNewStdio() (VirtioDevice, error) {
-	return &VirtioSerial{
-		UsesStdio: true,
-	}, nil
-}
+// func VirtioSerialNewStdio() (VirtioDevice, error) {
+// 	return &VirtioSerial{
+// 		UsesStdio: true,
+// 	}, nil
+// }
 
-func VirtioSerialNewPty() (VirtioDevice, error) {
-	return &VirtioSerial{
-		UsesPty: true,
-	}, nil
-}
+// func VirtioSerialNewPty() (VirtioDevice, error) {
+// 	return &VirtioSerial{
+// 		UsesPty: true,
+// 	}, nil
+// }
 
-func (dev *VirtioSerial) validate() error {
-	if dev.LogFile != "" && dev.UsesStdio {
-		return fmt.Errorf("'logFilePath' and 'stdio' cannot be set at the same time")
-	}
-	if dev.LogFile != "" && dev.UsesPty {
-		return fmt.Errorf("'logFilePath' and 'pty' cannot be set at the same time")
-	}
-	if dev.UsesStdio && dev.UsesPty {
-		return fmt.Errorf("'stdio' and 'pty' cannot be set at the same time")
-	}
-	if dev.LogFile == "" && !dev.UsesStdio && !dev.UsesPty {
-		return fmt.Errorf("one of 'logFilePath', 'stdio' or 'pty' must be set")
-	}
+// func (dev *VirtioSerial) validate() error {
+// 	if dev.LogFile != "" && dev.UsesStdio {
+// 		return fmt.Errorf("'logFilePath' and 'stdio' cannot be set at the same time")
+// 	}
+// 	if dev.LogFile != "" && dev.UsesPty {
+// 		return fmt.Errorf("'logFilePath' and 'pty' cannot be set at the same time")
+// 	}
+// 	if dev.UsesStdio && dev.UsesPty {
+// 		return fmt.Errorf("'stdio' and 'pty' cannot be set at the same time")
+// 	}
+// 	if dev.LogFile == "" && !dev.UsesStdio && !dev.UsesPty {
+// 		return fmt.Errorf("one of 'logFilePath', 'stdio' or 'pty' must be set")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // VirtioInputNew creates a new input device for the virtual machine.
 // The inputType parameter is the type of virtio-input device that will be added

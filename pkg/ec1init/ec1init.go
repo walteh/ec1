@@ -10,5 +10,7 @@ const (
 	VsockPidFile          = "/ec1.vsock.pid"
 	ContainerCmdlineFile  = "/container-cmdline.json"
 	ContainerManifestFile = "/container-manifest.json"
+	ContainerSpecFile     = "/container-oci-spec.json"
+	ContainerMountsFile   = "/container-mounts.json"
 	TempVirtioTag         = "temp"
 )

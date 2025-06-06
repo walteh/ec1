@@ -24,8 +24,14 @@ func ApplyDevices(ctx context.Context, applier DeviceApplier, devices []VirtioDe
 			return applier.ApplyVirtioFs(ctx, dev)
 		case *VirtioRng:
 			return applier.ApplyVirtioRng(ctx, dev)
-		case *VirtioSerial:
-			return applier.ApplyVirtioSerial(ctx, dev)
+		case *VirtioSerialFifo:
+			return applier.ApplyVirtioSerialFifo(ctx, dev)
+		case *VirtioSerialStdio:
+			return applier.ApplyVirtioSerialStdio(ctx, dev)
+		case *VirtioSerialPty:
+			return applier.ApplyVirtioSerialPty(ctx, dev)
+		case *VirtioSerialLogFile:
+			return applier.ApplyVirtioSerialLogFile(ctx, dev)
 		case *VirtioBalloon:
 			return applier.ApplyVirtioBalloon(ctx, dev)
 		case *NetworkBlockDevice:
@@ -57,12 +63,15 @@ type DeviceApplier interface {
 	ApplyVirtioBlk(ctx context.Context, vmConfig *VirtioBlk) error
 	ApplyVirtioFs(ctx context.Context, vmConfig *VirtioFs) error
 	ApplyVirtioRng(ctx context.Context, vmConfig *VirtioRng) error
-	ApplyVirtioSerial(ctx context.Context, vmConfig *VirtioSerial) error
 	ApplyVirtioBalloon(ctx context.Context, vmConfig *VirtioBalloon) error
 	ApplyVirtioNetworkBlockDevice(ctx context.Context, vmConfig *NetworkBlockDevice) error
 	ApplyVirtioNVMExpressController(ctx context.Context, vmConfig *NVMExpressController) error
 	ApplyVirtioRosettaShare(ctx context.Context, vmConfig *RosettaShare) error
 	ApplyVirtioUsbMassStorage(ctx context.Context, vmConfig *USBMassStorage) error
+	ApplyVirtioSerialFifo(ctx context.Context, vmConfig *VirtioSerialFifo) error
+	ApplyVirtioSerialStdio(ctx context.Context, vmConfig *VirtioSerialStdio) error
+	ApplyVirtioSerialPty(ctx context.Context, vmConfig *VirtioSerialPty) error
+	ApplyVirtioSerialLogFile(ctx context.Context, vmConfig *VirtioSerialLogFile) error
 	// ApplyVirtioDiskStorage(ctx context.Context, vmConfig *DiskStorageConfig) error
 	// ApplyVirtioNetworkBlockStorage(ctx context.Context, vmConfig *NetworkBlockStorageConfig) error
 	// ApplyVirtioStorage(ctx context.Context, vmConfig *StorageConfig) error

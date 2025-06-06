@@ -9,13 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/containerd/containerd/v2/pkg/oci"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/pkg/ec1init"
@@ -24,6 +26,14 @@ import (
 	"github.com/walteh/ec1/pkg/streamexec/executor"
 	"github.com/walteh/ec1/pkg/streamexec/protocol"
 	"github.com/walteh/ec1/pkg/streamexec/transport"
+)
+
+type mode string
+
+const (
+	modeRootfs   mode = "rootfs"
+	modeOCI      mode = "oci"
+	modeManifest mode = "manifest"
 )
 
 func main() {
@@ -35,54 +45,75 @@ func main() {
 
 	ctx = logging.SetupSlogSimpleToWriterWithProcessName(ctx, os.Stdout, true, "harpoond")
 
-	ctx = slogctx.With(ctx, slog.Int("pid", pid))
+	ctx = slogctx.Append(ctx, slog.Int("pid", pid))
 
-	slog.InfoContext(ctx, "ec1init started", "args", os.Args)
+	if _, err := os.Stat(ec1init.Ec1AbsPath); err == nil {
+		ctx = slogctx.Append(ctx, slog.String("mode", string(modeRootfs)))
+		slog.InfoContext(ctx, "running in rootfs, gonna just wait to be killed")
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
 
-	if pid == 1 {
-		err := mountInitramfs(ctx)
-		if err != nil {
-			slog.ErrorContext(ctx, "problem mounting initramfs", "error", err)
+		for tick := range ticker.C {
+			slog.InfoContext(ctx, "still running in rootfs, waiting to be killed", "tick", tick)
+		}
+	}
+
+	// mount the ec1 virtiofs
+	err := execCmdForwardingStdio(ctx, "mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath)
+	if err != nil {
+		slog.ErrorContext(ctx, "problem mounting ec1 virtiofs", "error", err)
+		os.Exit(1)
+	}
+
+	spec, manifest, bindMounts, err := loadSpecOrManifest(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
+		os.Exit(1)
+	}
+
+	if spec != nil {
+		ctx = slogctx.Append(ctx, slog.String("mode", string(modeOCI)))
+
+		if bindMounts == nil {
+			slog.ErrorContext(ctx, "no bind mounts found")
 			os.Exit(1)
 		}
 
-		// if len(os.Args) > 1 && os.Args[1] == "vsock" {
-		ctx = slogctx.With(ctx, slog.String("mode", "primary_vsock"))
-
-		err = serveRawVsockChroot(ctx, ec1init.VsockPort)
+		err = mountRootfs(ctx, spec, bindMounts)
 		if err != nil {
-			slog.ErrorContext(ctx, "problem serving vsock", "error", err)
+			slog.ErrorContext(ctx, "problem mounting rootfs", "error", err)
 			os.Exit(1)
 		}
-		// } else {
-		// 	ctx = slogctx.With(ctx, slog.String("mode", "switch_root"))
-		// 	err := handOffToContainer(ctx)
-		// 	if err != nil {
-		// 		slog.ErrorContext(ctx, "problem initializing initramfs", "error", err)
-		// 		os.Exit(1)
-		// 	}
-		// }
 
-	} else if len(os.Args) > 1 && os.Args[1] == "vsock" {
-		ctx = slogctx.With(ctx, slog.String("mode", "secondary_vsock"))
+		err = switchRoot(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "problem switching root", "error", err)
+			os.Exit(1)
+		}
 
-		defer func() {
-			slog.InfoContext(ctx, "shutting down vsock server")
-		}()
+		os.Exit(0)
+	}
 
-		err := serveRawVsock(ctx, ec1init.VsockPort)
+	if manifest != nil {
+		ctx = slogctx.Append(ctx, slog.String("mode", string(modeManifest)))
+		err = serveRawVsockChroot(ctx, ec1init.VsockPort, manifest.Config.Entrypoint, manifest.Config.Env)
 		if err != nil {
 			slog.ErrorContext(ctx, "problem serving vsock", "error", err)
 			os.Exit(1)
 		}
 	}
+
+	slog.ErrorContext(ctx, "no spec or manifest found")
+	os.Exit(1)
+
 }
 
-func serveRawVsockChroot(ctx context.Context, port int) error {
+func serveRawVsockChroot(ctx context.Context, port int, entrypoint []string, env []string) error {
 
-	manifest, err := loadManifest(ctx)
+	err := mountInitramfs(ctx)
 	if err != nil {
-		return errors.Errorf("loading manifest: %w", err)
+		slog.ErrorContext(ctx, "problem mounting initramfs", "error", err)
+		os.Exit(1)
 	}
 
 	go func() {
@@ -100,7 +131,7 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 			return nil
 		}
 
-		entrypointString := strings.Join(manifest.Config.Entrypoint, " ")
+		entrypointString := strings.Join(entrypoint, " ")
 		fullCommand := strings.Join(parts, " ")
 
 		if !strings.HasPrefix(fullCommand, entrypointString) {
@@ -116,7 +147,7 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 		cmd.Dir = "/" // without this, we end up with a stderr sh: 0: getcwd() failed: No such file or directory
 
 		// Set the environment from the container manifest
-		env := manifest.Config.Env
+
 		// Ensure PATH is set correctly for the container
 		env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 		cmd.Env = env
@@ -139,36 +170,86 @@ func serveRawVsockChroot(ctx context.Context, port int) error {
 	return nil
 }
 
-func serveRawVsock(ctx context.Context, port int) error {
+// func serveRawVsock(ctx context.Context, port int) error {
 
-	tranport := transport.NewVSockTransport(0, uint32(port))
-	executor := executor.NewStreamingExecutor(1024)
-	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {
-		return protocol.NewFramedProtocol(conn)
-	})
+// 	tranport := transport.NewVSockTransport(0, uint32(port))
+// 	executor := executor.NewStreamingExecutor(1024)
+// 	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {
+// 		return protocol.NewFramedProtocol(conn)
+// 	})
 
-	return server.Serve()
-}
+// 	return server.Serve()
+// }
 
-func triggerSecondaryVsock(ctx context.Context) error {
-	pid, _, err := syscall.StartProcess(os.Args[0], append([]string{"vsock"}, os.Args[1:]...), &syscall.ProcAttr{
-		Env:   os.Environ(),
-		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
-	})
-	if err != nil {
-		return errors.Errorf("starting process: %w", err)
+// func triggerSecondaryVsock(ctx context.Context) error {
+// 	pid, _, err := syscall.StartProcess(os.Args[0], append([]string{"vsock"}, os.Args[1:]...), &syscall.ProcAttr{
+// 		Env:   os.Environ(),
+// 		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+// 	})
+// 	if err != nil {
+// 		return errors.Errorf("starting process: %w", err)
+// 	}
+
+// 	slog.InfoContext(ctx, "started vsock")
+
+// 	// // make a pid file, stdout and
+// 	pidFile, err := os.Create(filepath.Join(ec1init.Ec1AbsPath, ec1init.VsockPidFile))
+// 	if err != nil {
+// 		return errors.Errorf("creating pid file: %w", err)
+// 	}
+
+// 	pidFile.WriteString(strconv.Itoa(pid))
+// 	pidFile.Close()
+
+// 	return nil
+// }
+
+// 2025-06-06 11:37 49.8894 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"proc","Source":"proc","Target":"/proc","Options":["nosuid","noexec","nodev"]}
+// 2025-06-06 11:37 49.8894 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"tmpfs","Source":"tmpfs","Target":"/dev","Options":["nosuid","strictatime","mode=755","size=65536k"]}
+// 2025-06-06 11:37 49.8894 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"sysfs","Source":"sysfs","Target":"/sys","Options":["nosuid","noexec","nodev","ro"]}
+// 2025-06-06 11:37 49.8894 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"tmpfs","Source":"tmpfs","Target":"/run","Options":["nosuid","strictatime","mode=755","size=65536k"]}
+// 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"devpts","Source":"devpts","Target":"/dev/pts","Options":["nosuid","noexec","newinstance","ptmxmode=0666","mode=0620","gid=5"]}
+// 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"tmpfs","Source":"shm","Target":"/dev/shm","Options":["nosuid","noexec","nodev","mode=1777","size=65536k"]}
+// 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"mqueue","Source":"mqueue","Target":"/dev/mqueue","Options":["nosuid","noexec","nodev"]}
+// 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"bind","Source":"/var/lib/nerdctl/e0ce5476/containers/harpoon/8762c7401028e46f6692bf50ead961cabaaebb8c571c35a23ed8c8179eaf950d/resolv.conf","Target":"/etc/resolv.conf","Options":["bind",""]}
+// 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"bind","Source":"/var/lib/nerdctl/e0ce5476/etchosts/harpoon/8762c7401028e46f6692bf50ead961cabaaebb8c571c35a23ed8c8179eaf950d/hosts","Target":"/etc/hosts","Options":["bind",""]}
+func mountRootfs(ctx context.Context, spec *oci.Spec, customMounts []specs.Mount) error {
+	dirs := []string{}
+	cmds := [][]string{}
+
+	// first mount the rootfs
+	cmds = append(cmds, []string{"mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath})
+
+	// bind the ec1 mount to the rootfs
+	cmds = append(cmds, []string{"mount", "--bind", ec1init.Ec1AbsPath, filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath)})
+
+	// trying to figure out how to proerly do this to not skip things
+	for _, mount := range append(spec.Mounts, customMounts...) {
+		dest := filepath.Join(ec1init.NewRootAbsPath, mount.Destination)
+		dirs = append(dirs, dest)
+
+		switch mount.Type {
+		case "ec1-virtiofs":
+			cmds = append(cmds, []string{"mount", "-t", "virtiofs", mount.Source, dest, strings.Join(mount.Options, ",")})
+		case "bind":
+			continue
+		default:
+			cmds = append(cmds, []string{"mount", "-t", mount.Type, mount.Source, dest, strings.Join(mount.Options, ",")})
+		}
 	}
 
-	slog.InfoContext(ctx, "started vsock")
-
-	// // make a pid file, stdout and
-	pidFile, err := os.Create(filepath.Join(ec1init.Ec1AbsPath, ec1init.VsockPidFile))
+	// mkdir command
+	err := execCmdForwardingStdio(ctx, "mkdir", "-p", strings.Join(dirs, " "))
 	if err != nil {
-		return errors.Errorf("creating pid file: %w", err)
+		return errors.Errorf("making directories: %w", err)
 	}
 
-	pidFile.WriteString(strconv.Itoa(pid))
-	pidFile.Close()
+	for _, cmd := range cmds {
+		err := execCmdForwardingStdio(ctx, cmd...)
+		if err != nil {
+			return errors.Errorf("running command: %v: %w", cmd, err)
+		}
+	}
 
 	return nil
 }
@@ -184,17 +265,7 @@ func mountInitramfs(ctx context.Context) error {
 		{"mkdir", "-p", "/dev/pts"},
 		{"mount", "-t", "devpts", "devpts", "/dev/pts"},
 		{"mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath},
-
 		{"mount", "-t", "virtiofs", "-o", "ro", ec1init.RootfsVirtioTag, "/mnt/lower"},
-		// read only lower layer
-		// {"mount", "-t", "ext4", "-o", "ro", "/dev/vdb", "/mnt/lower"},
-		// {"ls", "-la", "/bin/mke2fs"},
-		// {"/bin/file", "/bin/mke2fs"},
-		// mkfs.ext4 -L upper -O has_journal /dev/vda
-		// {"truncate", "-s", "128M", ec1init.Ec1AbsPath + "upper.img"},
-		// {"/bin/mke2fs", "-t", "ext4", "-L", "upper", "-O", "has_journal", ec1init.Ec1AbsPath + "upper.img"},
-		// writable upper layer
-
 		{"mount", "-t", "tmpfs", "tmpfs", "/mnt/upper"},
 		{"mkdir", "-p", "/mnt/upper/upper", "/mnt/upper/work"},
 		{"mount", "-t", "overlay", "overlay", "-o", "lowerdir=/mnt/lower,upperdir=/mnt/upper/upper,workdir=/mnt/upper/work", ec1init.NewRootAbsPath},
@@ -231,110 +302,132 @@ func bindMountsToChroot(ctx context.Context) error {
 	return nil
 }
 
-func handOffToContainer(ctx context.Context) error {
+// func handOffToContainer(ctx context.Context) error {
 
-	slog.InfoContext(ctx, "triggering vsock")
+// 	slog.InfoContext(ctx, "triggering vsock")
 
-	err := triggerSecondaryVsock(ctx)
-	if err != nil {
-		return errors.Errorf("triggering vsock: %w", err)
-	}
+// 	err := triggerSecondaryVsock(ctx)
+// 	if err != nil {
+// 		return errors.Errorf("triggering vsock: %w", err)
+// 	}
 
-	slog.InfoContext(ctx, "loading manifest")
+// 	slog.InfoContext(ctx, "loading manifest")
 
-	manifest, err := loadManifest(ctx)
-	if err != nil {
-		return errors.Errorf("loading manifest: %w", err)
-	}
+// 	manifest, err := loadManifest(ctx)
+// 	if err != nil {
+// 		return errors.Errorf("loading manifest: %w", err)
+// 	}
 
-	slog.InfoContext(ctx, "loading init cmd line args")
+// 	slog.InfoContext(ctx, "loading init cmd line args")
 
-	// switch_root to the new rootfs, calling the entrypoint
+// 	// switch_root to the new rootfs, calling the entrypoint
 
-	cmd, err := loadInitCmdLineArgs(ctx)
-	if err != nil {
-		return errors.Errorf("loading init cmd line args: %w", err)
-	}
+// 	cmd, err := loadInitCmdLineArgs(ctx)
+// 	if err != nil {
+// 		return errors.Errorf("loading init cmd line args: %w", err)
+// 	}
 
-	moveMounts := [][]string{
-		{"mount", "-o", "move", "/dev", ec1init.NewRootAbsPath + "/dev"},
-		{"mount", "-o", "move", "/proc", ec1init.NewRootAbsPath + "/proc"},
-		{"mount", "-o", "move", "/sys", ec1init.NewRootAbsPath + "/sys"},
-		{"mount", "-o", "move", "/run", ec1init.NewRootAbsPath + "/run"},
-		{"mount", "-o", "move", "/ec1", ec1init.NewRootAbsPath + ec1init.Ec1AbsPath},
-	}
+// 	moveMounts := [][]string{
+// 		{"mount", "-o", "move", "/dev", ec1init.NewRootAbsPath + "/dev"},
+// 		{"mount", "-o", "move", "/proc", ec1init.NewRootAbsPath + "/proc"},
+// 		{"mount", "-o", "move", "/sys", ec1init.NewRootAbsPath + "/sys"},
+// 		{"mount", "-o", "move", "/run", ec1init.NewRootAbsPath + "/run"},
+// 		{"mount", "-o", "move", "/ec1", ec1init.NewRootAbsPath + ec1init.Ec1AbsPath},
+// 	}
 
-	for _, mount := range moveMounts {
-		err := execCmdForwardingStdio(ctx, mount...)
-		if err != nil {
-			return errors.Errorf("running command: %v: %w", mount, err)
-		}
-	}
+// 	for _, mount := range moveMounts {
+// 		err := execCmdForwardingStdio(ctx, mount...)
+// 		if err != nil {
+// 			return errors.Errorf("running command: %v: %w", mount, err)
+// 		}
+// 	}
 
-	err = switchRoot(ctx, manifest, cmd)
-	if err != nil {
-		return errors.Errorf("switching root: %w", err)
-	}
+// 	err = switchRoot(ctx, manifest, cmd)
+// 	if err != nil {
+// 		return errors.Errorf("switching root: %w", err)
+// 	}
 
-	panic("unreachable, we should have switched root")
-}
+// 	panic("unreachable, we should have switched root")
+// }
 
-func loadInitCmdLineArgs(ctx context.Context) ([]string, error) {
-	initCmdLineArgs, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerCmdlineFile))
-	if err != nil {
-		if os.IsNotExist(err) {
-			slog.WarnContext(ctx, "user provided cmdline not found, ignoring")
-			return []string{}, nil
-		}
-		return nil, errors.Errorf("loading user provided cmdline: %w", err)
-	}
+// func loadInitCmdLineArgs(ctx context.Context) ([]string, error) {
+// 	initCmdLineArgs, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerCmdlineFile))
+// 	if err != nil {
+// 		if os.IsNotExist(err) {
+// 			slog.WarnContext(ctx, "user provided cmdline not found, ignoring")
+// 			return []string{}, nil
+// 		}
+// 		return nil, errors.Errorf("loading user provided cmdline: %w", err)
+// 	}
 
-	var args []string
-	err = json.Unmarshal(initCmdLineArgs, &args)
-	if err != nil {
-		return nil, errors.Errorf("unmarshalling user provided cmdline: %w", err)
-	}
+// 	var args []string
+// 	err = json.Unmarshal(initCmdLineArgs, &args)
+// 	if err != nil {
+// 		return nil, errors.Errorf("unmarshalling user provided cmdline: %w", err)
+// 	}
 
-	return args, nil
-}
+// 	return args, nil
+// }
 
-func switchRoot(ctx context.Context, manifest *v1.Image, cmd []string) error {
+func switchRoot(ctx context.Context) error {
 
-	entrypoint := manifest.Config.Entrypoint
-	if len(cmd) == 0 {
-		cmd = manifest.Config.Cmd
-	}
+	entrypoint := []string{"/bin/sh"}
 
-	env := manifest.Config.Env
+	env := []string{}
 	env = append(env, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
 
 	argc := "/bin/busybox"
 	argv := append([]string{"switch_root", ec1init.NewRootAbsPath}, entrypoint...)
-	argv = append(argv, cmd...)
 
 	slog.InfoContext(ctx, "switching root - godspeed little process", "rootfs", ec1init.NewRootAbsPath, "argv", argv)
 
 	if err := syscall.Exec(argc, argv, env); err != nil {
-		return errors.Errorf("Failed to exec %v %v: %v", entrypoint, cmd, err)
+		return errors.Errorf("Failed to exec %v %v: %v", entrypoint, argv, err)
 	}
 
 	panic("unreachable, we hand off to the entrypoint")
 
 }
 
-func loadManifest(ctx context.Context) (*v1.Image, error) {
-	manifest, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerManifestFile))
+func loadSpecOrManifest(ctx context.Context) (spec *oci.Spec, manifest *v1.Image, bindMounts []specs.Mount, err error) {
+	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
 	if err != nil {
-		return nil, errors.Errorf("reading manifest: %w", err)
+		if !os.IsNotExist(err) {
+			return nil, nil, nil, errors.Errorf("reading spec: %w", err)
+		}
+	} else {
+		err = json.Unmarshal(specd, &spec)
+		if err != nil {
+			return nil, nil, nil, errors.Errorf("unmarshalling spec: %w", err)
+		}
 	}
 
-	var image v1.Image
-	err = json.Unmarshal(manifest, &image)
+	manifestd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerManifestFile))
 	if err != nil {
-		return nil, errors.Errorf("unmarshalling manifest: %w", err)
+		if !os.IsNotExist(err) {
+			return nil, nil, nil, errors.Errorf("reading manifest: %w", err)
+		}
+	} else {
+		var manifest v1.Image
+		err = json.Unmarshal(manifestd, &manifest)
+		if err != nil {
+			return nil, nil, nil, errors.Errorf("unmarshalling manifest: %w", err)
+		}
 	}
 
-	return &image, nil
+	bindMountsBytes, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerMountsFile))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, nil, nil, errors.Errorf("reading bind mounts: %w", err)
+		}
+	} else {
+		err = json.Unmarshal(bindMountsBytes, &bindMounts)
+		if err != nil {
+			return nil, nil, nil, errors.Errorf("unmarshalling bind mounts: %w", err)
+		}
+	}
+
+	return spec, manifest, bindMounts, nil
 }
 
 func execCmdForwardingStdio(ctx context.Context, cmds ...string) error {

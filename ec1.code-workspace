@@ -4,43 +4,6 @@
 			"name": "root",
 			"path": "."
 		},
-		// {
-		// 	"name": "ttrpc",
-		// 	"path": "../ttrpc"
-		// },
-		// {
-		// 	"name": "firecracker-containerd",
-		// 	"path": "../firecracker-containerd"
-		// },
-		// {
-		// 	"name": "stargz-snapshotter",
-		// 	"path": "../stargz-snapshotter"
-		// },
-
-		// {
-		// 	"name": "docker-fs",
-		// 	"path": "../docker-fs"
-		// }
-		// {
-		// 	"name": "vz",
-		// 	"path": "../vz"
-		// }
-		// {
-		// 	"name": "pui-pui",
-		// 	"path": "../puipui-linux"
-		// }
-		// {
-		// 	"name": "kata-containers",
-		// 	"path": "../kata-containers/src/runtime"
-		// },
-		// {
-		// 	"name": "nswrap",
-		// 	"path": "../../../git.wow.st/gmp/nswrap"
-		// },
-		// {
-		// 	"name": "gvisor",
-		// 	"path": "../gvisor"
-		// },
 		{
 			"name": "gvisor-tap-vsock",
 			"path": "../gvisor-tap-vsock"
@@ -61,18 +24,14 @@
 			"name": "buildkit",
 			"path": "../buildkit"
 		},
-		// {
-		// 	"name": "vsock-guest-exec",
-		// 	"path": "../vsock-guest-exec"
-		// },
 		{
 			"name": "rund",
 			"path": "../rund"
+		},
+		{
+			"name": "ttrpc",
+			"path": "../ttrpc"
 		}
-		// {
-		// 	"name": "wrk",
-		// 	"path": "../../../tmp/ksa2/wrk"
-		// }
 	],
 	"extensions": {
 		"recommendations": [

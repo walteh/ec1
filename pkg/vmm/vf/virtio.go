@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Code-Hex/vz/v3"
-	"github.com/crc-org/vfkit/pkg/util"
 
 	log "github.com/sirupsen/logrus"
 
@@ -238,112 +237,112 @@ func setRawMode(f *os.File) error {
 	return termios.Tcsetattr(f.Fd(), termios.TCSANOW, &attr)
 }
 
-func toVzVirtioSerial(dev *virtio.VirtioSerial) (*vz.VirtioConsoleDeviceSerialPortConfiguration, error) {
-	var serialPortAttachment vz.SerialPortAttachment
-	var retErr error
-	switch {
-	case dev.UsesStdio:
-		var stdin, stdout *os.File
-		if dev.FD != 0 {
-			fd1, fd2 := dev.FD, dev.FD
-			stdin = os.NewFile(uintptr(fd1), "stdin")
-			stdout = os.NewFile(uintptr(fd2), "stdout")
-		} else {
-			stdin = os.Stdin
-			stdout = os.Stdout
-		}
-		if err := setRawMode(stdin); err != nil {
-			return nil, err
-		}
-		serialPortAttachment, retErr = vz.NewFileHandleSerialPortAttachment(stdin, stdout)
-	default:
-		serialPortAttachment, retErr = vz.NewFileSerialPortAttachment(dev.LogFile, false)
-	}
-	if retErr != nil {
-		return nil, retErr
-	}
+// func toVzVirtioSerial(dev *virtio.VirtioSerial) (*vz.VirtioConsoleDeviceSerialPortConfiguration, error) {
+// 	var serialPortAttachment vz.SerialPortAttachment
+// 	var retErr error
+// 	switch {
+// 	case dev.UsesStdio:
+// 		var stdin, stdout *os.File
+// 		if dev.FD != 0 {
+// 			fd1, fd2 := dev.FD, dev.FD
+// 			stdin = os.NewFile(uintptr(fd1), "stdin")
+// 			stdout = os.NewFile(uintptr(fd2), "stdout")
+// 		} else {
+// 			stdin = os.Stdin
+// 			stdout = os.Stdout
+// 		}
+// 		if err := setRawMode(stdin); err != nil {
+// 			return nil, err
+// 		}
+// 		serialPortAttachment, retErr = vz.NewFileHandleSerialPortAttachment(stdin, stdout)
+// 	default:
+// 		serialPortAttachment, retErr = vz.NewFileSerialPortAttachment(dev.LogFile, false)
+// 	}
+// 	if retErr != nil {
+// 		return nil, retErr
+// 	}
 
-	return vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
-}
+// 	return vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+// }
 
-func toVzVirtioSerialPtyConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
-	master, slave, err := termios.Pty()
-	if err != nil {
-		return nil, err
-	}
+// func toVzVirtioSerialPtyConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
+// 	master, slave, err := termios.Pty()
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	// the master fd and slave fd must stay open for vfkit's lifetime
-	util.RegisterExitHandler(func() {
-		_ = master.Close()
-		_ = slave.Close()
-	})
+// 	// the master fd and slave fd must stay open for vfkit's lifetime
+// 	util.RegisterExitHandler(func() {
+// 		_ = master.Close()
+// 		_ = slave.Close()
+// 	})
 
-	dev.PtyName = slave.Name()
+// 	dev.PtyName = slave.Name()
 
-	if err := setRawMode(master); err != nil {
-		return nil, err
-	}
-	serialPortAttachment, retErr := vz.NewFileHandleSerialPortAttachment(master, master)
-	if retErr != nil {
-		return nil, retErr
-	}
-	return vz.NewVirtioConsolePortConfiguration(
-		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
-		vz.WithVirtioConsolePortConfigurationIsConsole(true))
-}
+// 	if err := setRawMode(master); err != nil {
+// 		return nil, err
+// 	}
+// 	serialPortAttachment, retErr := vz.NewFileHandleSerialPortAttachment(master, master)
+// 	if retErr != nil {
+// 		return nil, retErr
+// 	}
+// 	return vz.NewVirtioConsolePortConfiguration(
+// 		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
+// 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
+// }
 
-func toVzVirtioSerialRawConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
-	fd1, fd2 := dev.FD, dev.FD
-	stdin := os.NewFile(uintptr(fd1), "stdin")
-	stdout := os.NewFile(uintptr(fd2), "stdout")
+// func toVzVirtioSerialRawConsole(dev *virtio.VirtioSerial) (*vz.VirtioConsolePortConfiguration, error) {
+// 	fd1, fd2 := dev.FD, dev.FD
+// 	stdin := os.NewFile(uintptr(fd1), "stdin")
+// 	stdout := os.NewFile(uintptr(fd2), "stdout")
 
-	// Set raw mode on stdin
-	if err := setRawMode(stdin); err != nil {
-		return nil, err
-	}
+// 	// Set raw mode on stdin
+// 	if err := setRawMode(stdin); err != nil {
+// 		return nil, err
+// 	}
 
-	serialPortAttachment, retErr := vz.NewFileHandleSerialPortAttachment(stdin, stdout)
-	if retErr != nil {
-		return nil, retErr
-	}
-	return vz.NewVirtioConsolePortConfiguration(
-		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
-		vz.WithVirtioConsolePortConfigurationIsConsole(true))
-}
+// 	serialPortAttachment, retErr := vz.NewFileHandleSerialPortAttachment(stdin, stdout)
+// 	if retErr != nil {
+// 		return nil, retErr
+// 	}
+// 	return vz.NewVirtioConsolePortConfiguration(
+// 		vz.WithVirtioConsolePortConfigurationAttachment(serialPortAttachment),
+// 		vz.WithVirtioConsolePortConfigurationIsConsole(true))
+// }
 
-func (vmConfig *vzVirtioDeviceApplier) applyVirtioSerial(dev *virtio.VirtioSerial) error {
-	if dev.LogFile != "" {
-		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
-	}
-	// if dev.UsesStdio {
-	// 	log.Infof("Adding stdio console")
-	// }
-	if dev.PtyName != "" {
-		return fmt.Errorf("VirtioSerial.PtyName must be empty (current value: %s)", dev.PtyName)
-	}
+// func (vmConfig *vzVirtioDeviceApplier) applyVirtioSerial(dev *virtio.VirtioSerial) error {
+// 	if dev.LogFile != "" {
+// 		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
+// 	}
+// 	// if dev.UsesStdio {
+// 	// 	log.Infof("Adding stdio console")
+// 	// }
+// 	if dev.PtyName != "" {
+// 		return fmt.Errorf("VirtioSerial.PtyName must be empty (current value: %s)", dev.PtyName)
+// 	}
 
-	if dev.UsesStdio {
-		consoleConfig, err := toVzVirtioSerial(dev)
-		if err != nil {
-			return err
-		}
-		vmConfig.serialPortsToSet = append(vmConfig.serialPortsToSet, consoleConfig)
-	} else {
-		var consolePortConfig *vz.VirtioConsolePortConfiguration
-		var err error
-		if dev.FD != 0 {
-			consolePortConfig, err = toVzVirtioSerialRawConsole(dev)
-		} else {
-			consolePortConfig, err = toVzVirtioSerialPtyConsole(dev)
-		}
-		if err != nil {
-			return err
-		}
-		vmConfig.consolePortsToSet = append(vmConfig.consolePortsToSet, consolePortConfig)
-	}
+// 	if dev.UsesStdio {
+// 		consoleConfig, err := toVzVirtioSerial(dev)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		vmConfig.serialPortsToSet = append(vmConfig.serialPortsToSet, consoleConfig)
+// 	} else {
+// 		var consolePortConfig *vz.VirtioConsolePortConfiguration
+// 		var err error
+// 		if dev.FD != 0 {
+// 			consolePortConfig, err = toVzVirtioSerialRawConsole(dev)
+// 		} else {
+// 			consolePortConfig, err = toVzVirtioSerialPtyConsole(dev)
+// 		}
+// 		if err != nil {
+// 			return err
+// 		}
+// 		vmConfig.consolePortsToSet = append(vmConfig.consolePortsToSet, consolePortConfig)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // func (dev *VirtioVsock) AddToVirtualMachineConfig(vmConfig *vzVitualMachineConfigurationWrapper) error {
 // 	if len(vmConfig.socketDevicesConfiguration) != 0 {
