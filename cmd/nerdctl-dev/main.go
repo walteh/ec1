@@ -45,6 +45,7 @@ import (
 	"github.com/containerd/nerdctl/v2/pkg/store"
 	"github.com/containerd/nerdctl/v2/pkg/version"
 	"github.com/fatih/color"
+	"github.com/moby/sys/reexec"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -57,18 +58,31 @@ import (
 	ec1logging "github.com/walteh/ec1/pkg/logging"
 )
 
-var (
-	// To print Bold Text
-	Bold = color.New(color.Bold).SprintfFunc()
-)
+func init() {
+	tcontainerd.ShimReexecInit()
+
+	if reexec.Init() {
+		os.Exit(0)
+	}
+
+	err := tcontainerd.SetupReexec(context.Background(), true)
+	if err != nil {
+		log.L.Fatal("Failed to setup reexec", "error", err)
+	}
+}
 
 func init() {
 	logrusshim.ForwardLogrusToSlogGlobally()
 
 	os.Setenv("NERDCTL_TOML", tcontainerd.NerdctlConfigTomlPath())
 
-	os.Args = append(os.Args, "run", "--platform=linux/arm64", "--runtime=containerd.shim.harpoon.v2", "--network=host", "--rm", "alpine:latest", "echo", "'hi'")
+	// os.Args = append(os.Args, "run", "--platform=linux/arm64", "--runtime=containerd.shim.harpoon.v2", "--network=host", "--rm", "alpine:latest", "echo", "'hi'")
 }
+
+var (
+	// To print Bold Text
+	Bold = color.New(color.Bold).SprintfFunc()
+)
 
 func main() {
 	if err := xmain(); err != nil {

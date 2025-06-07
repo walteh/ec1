@@ -151,6 +151,7 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 
 	c := &container{
 		request:       request,
+		rootfs:        rootfs,
 		spec:          spec,
 		bundlePath:    request.Bundle,
 		dnsSocketPath: dnsSocketPath,

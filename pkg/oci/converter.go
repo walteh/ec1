@@ -49,11 +49,7 @@ func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Con
 		return nil, errors.Errorf("cleaning index: %w", err)
 	}
 
-	// Create image reference from the OCI layout
-	imgRef, err := layout.NewReference(ociLayoutPath, "")
-	if err != nil {
-		return nil, errors.Errorf("creating image reference: %w", err)
-	}
+	//
 
 	// Create system context with platform information
 	sysCtx := &types.SystemContext{
@@ -61,12 +57,31 @@ func (c *OCIFilesystemConverter) ConvertOCILayoutToRootfsAndExt4(ctx context.Con
 		ArchitectureChoice: platform.Arch(),
 	}
 
-	// Create image source
-	imgSrc, err := imgRef.NewImageSource(ctx, sysCtx)
+	// list
+	list, err := layout.List(ociLayoutPath)
 	if err != nil {
-		return nil, errors.Errorf("creating image source: %w", err)
+		return nil, errors.Errorf("listing images: %w", err)
 	}
-	defer imgSrc.Close()
+
+	var imgSrc types.ImageSource
+
+	for _, img := range list {
+		slog.InfoContext(ctx, "image", "image", img)
+		if img.ManifestDescriptor.Platform.OS != platform.OS() || img.ManifestDescriptor.Platform.Architecture != platform.Arch() {
+			continue
+		}
+
+		imgSrc, err = img.Reference.NewImageSource(ctx, sysCtx)
+		if err != nil {
+			return nil, errors.Errorf("creating image source: %w", err)
+		}
+		defer imgSrc.Close()
+
+	}
+
+	if imgSrc == nil {
+		return nil, errors.Errorf("no image source found for platform: %s", platform)
+	}
 
 	// Create image from source with better error handling for multi-platform
 	img, err := image.FromSource(ctx, sysCtx, imgSrc)

@@ -86,7 +86,7 @@ func wrap[I, O any](e *errTaskService, f func(context.Context, I) (O, error)) fu
 				slog.ErrorContext(ctx, "error logging success", "error", err)
 			}
 		}
-		return resp, errors.Errorf("errox in task service: %w", err)
+		return resp, nil
 	}
 }
 

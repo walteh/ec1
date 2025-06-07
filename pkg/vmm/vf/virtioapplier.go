@@ -2,6 +2,7 @@ package vf
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/pkg/term/termios"
@@ -97,6 +98,8 @@ func (v *vzVirtioDeviceApplier) Finalize(ctx context.Context) error {
 	}
 	if !valid {
 		return errors.New("invalid virtual machine configuration")
+	} else {
+		slog.InfoContext(ctx, "virtual machine configuration is valid")
 	}
 
 	return nil

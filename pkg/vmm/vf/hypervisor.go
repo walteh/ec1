@@ -32,6 +32,8 @@ type Hypervisor struct {
 }
 
 func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts *vmm.NewVMOptions, bl vmm.Bootloader) (*VirtualMachine, error) {
+	// drop privileges on the virtual machine
+
 	// Add extensive logging and validation before VZ calls
 	slog.InfoContext(ctx, "NewVirtualMachine: Starting VM creation",
 		"id", id,
@@ -61,23 +63,11 @@ func (hpv *Hypervisor) NewVirtualMachine(ctx context.Context, id string, opts *v
 	}
 
 	slog.InfoContext(ctx, "NewVirtualMachine: Applying virtio devices", "num_devices", len(opts.Devices))
+
 	if err := virtio.ApplyDevices(ctx, applier, opts.Devices); err != nil {
 		slog.ErrorContext(ctx, "NewVirtualMachine: Failed to apply virtio devices", "error", err)
 		return nil, errors.Errorf("applying virtio devices: %w", err)
 	}
-
-	slog.InfoContext(ctx, "NewVirtualMachine: Virtio devices applied successfully")
-
-	// Additional validation before calling VZ
-	if valid, err := cfg.Validate(); !valid || err != nil {
-		slog.ErrorContext(ctx, "NewVirtualMachine: VZ configuration validation failed", "valid", valid, "error", err)
-		return nil, errors.Errorf("VZ configuration validation failed: valid=%v, error=%v", valid, err)
-	}
-
-	slog.InfoContext(ctx, "NewVirtualMachine: VZ configuration validated successfully")
-
-	// Critical section - this is where SIGABRT occurs
-	slog.InfoContext(ctx, "creating vz virtual machine - ENTERING CRITICAL SECTION")
 
 	// Defer a recovery function in case VZ crashes
 	defer func() {
@@ -144,15 +134,15 @@ func (hpv *Hypervisor) buildConfig(ctx context.Context, opts *vmm.NewVMOptions, 
 		return nil, nil, errors.Errorf("Memory cannot be 0")
 	}
 
-	// Check for reasonable memory limits (VZ has specific requirements)
-	const minMemory = 512 * 1024 * 1024       // 512MB minimum
-	const maxMemory = 64 * 1024 * 1024 * 1024 // 64GB maximum
-	if memoryBytes < minMemory {
-		return nil, nil, errors.Errorf("Memory %d bytes is below minimum %d bytes (512MB)", memoryBytes, minMemory)
-	}
-	if memoryBytes > maxMemory {
-		return nil, nil, errors.Errorf("Memory %d bytes exceeds maximum %d bytes (64GB)", memoryBytes, maxMemory)
-	}
+	// // Check for reasonable memory limits (VZ has specific requirements)
+	// const minMemory = 512 * 1024 * 1024       // 512MB minimum
+	// const maxMemory = 64 * 1024 * 1024 * 1024 // 64GB maximum
+	// if memoryBytes < minMemory {
+	// 	return nil, nil, errors.Errorf("Memory %d bytes is below minimum %d bytes (512MB)", memoryBytes, minMemory)
+	// }
+	// if memoryBytes > maxMemory {
+	// 	return nil, nil, errors.Errorf("Memory %d bytes exceeds maximum %d bytes (64GB)", memoryBytes, maxMemory)
+	// }
 
 	slog.InfoContext(ctx, "buildConfig: VM parameters validated",
 		"vcpus", opts.Vcpus,

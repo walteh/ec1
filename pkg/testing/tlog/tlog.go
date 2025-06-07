@@ -25,14 +25,8 @@ func init() {
 }
 
 func SetupSlogForTestWithContext(t testing.TB, ctx context.Context) context.Context {
-	var simpctx context.Context
 
-	existing := slogctx.FromCtx(ctx)
-	if existing != nil {
-		simpctx = ctx
-	} else {
-		simpctx = logging.SetupSlogSimple(ctx)
-	}
+	simpctx := logging.SetupSlogSimpleToWriterWithProcessName(ctx, os.Stdout, true, "harpoon-test")
 
 	cached, err := host.CacheDirPrefix()
 	require.NoError(t, err)

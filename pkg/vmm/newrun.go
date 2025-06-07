@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/containers/common/pkg/strongunits"
-	"github.com/nxadm/tail"
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
@@ -90,25 +89,25 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 	devices = append(devices, &virtio.VirtioSerialLogFile{
 		Path:   filepath.Join(workingDir, "console.log"),
-		Append: true,
+		Append: false,
 	})
 
-	errgrp.Go(func() error {
-		t, err := tail.TailFile(filepath.Join(workingDir, "console.log"), tail.Config{
-			Follow:        true,
-			CompleteLines: true,
-			MustExist:     true,
-		})
-		if err != nil {
-			return errors.Errorf("tailing console.log: %w", err)
-		}
-		defer t.Cleanup()
-		slog.InfoContext(ctx, "tailing console.log")
-		for line := range t.Lines {
-			fmt.Fprintf(os.Stdout, "%s\n", line.Text)
-		}
-		return t.Err()
-	})
+	// errgrp.Go(func() error {
+	// 	t, err := tail.TailFile(filepath.Join(workingDir, "console.log"), tail.Config{
+	// 		Follow:        true,
+	// 		CompleteLines: true,
+	// 		MustExist:     true,
+	// 	})
+	// 	if err != nil {
+	// 		return errors.Errorf("tailing console.log: %w", err)
+	// 	}
+	// 	defer t.Cleanup()
+	// 	slog.InfoContext(ctx, "tailing console.log")
+	// 	for line := range t.Lines {
+	// 		fmt.Fprintf(os.Stdout, "%s\n", line.Text)
+	// 	}
+	// 	return t.Err()
+	// })
 
 	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
 	if err != nil {
@@ -125,6 +124,10 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 	vm, err := hpv.NewVirtualMachine(ctx, id, &opts, bootloader)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, errors.Errorf("ahhh context cancelled: %w", ctx.Err())
 	}
 
 	err = bootContainerVM(ctx, vm)
@@ -282,6 +285,7 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 		if err != nil {
 			return nil, nil, errors.Errorf("writing files: %w", err)
 		}
+		os.Chown(path, 1000, 1000)
 	}
 
 	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs

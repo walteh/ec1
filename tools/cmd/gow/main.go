@@ -205,6 +205,11 @@ func (cfg *GowConfig) execSafeGo(ctx context.Context, args ...string) error {
 
 	cmd := exec.CommandContext(ctx, goPath, args...)
 	cmd.Env = os.Environ()
+	pwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cmd.Dir = pwd
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.Stdin = stdin
@@ -443,9 +448,17 @@ func (cfg *GowConfig) buildCodesignExecArgs(mode string, entitlements []string, 
 		execArgs = append(execArgs, "-force")
 	}
 
-	execArgs = append(execArgs, "-quiet")
+	if !cfg.Verbose {
+		execArgs = append(execArgs, "-quiet")
+	}
+
 	execArgs = append(execArgs, additionalArgs...)
-	execArgs = append(execArgs, "--")
+
+	if mode == "sign" {
+		execArgs = append(execArgs, "-target")
+	} else {
+		execArgs = append(execArgs, "--")
+	}
 
 	return execArgs
 }
@@ -574,6 +587,12 @@ func main() {
 
 	// Handle special commands that need enhanced functionality
 	switch args[0] {
+	case "build":
+		if err := cfg.handleBuild(args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error running go build: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "test":
 		if err := cfg.handleTest(args); err != nil {
 			fmt.Fprintf(os.Stderr, "Error running tests: %v\n", err)
@@ -628,4 +647,64 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func (cfg *GowConfig) handleBuild(args []string) error {
+	ctx := context.Background()
+
+	realArgs := []string{}
+
+	// check if codesign is in the args
+	codesign := false
+	output := ""
+	for _, arg := range args {
+		if arg == "-codesign" {
+			codesign = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-o=") {
+			output = strings.TrimPrefix(arg, "-o=")
+
+		}
+		realArgs = append(realArgs, arg)
+	}
+
+	codesignEntitlements := []string{"virtualization"}
+	codesignIdentity := ""
+	codesignForce := false
+	codesignAdditionalArgs := []string{}
+
+	err := cfg.execSafeGo(ctx, realArgs...)
+	if err != nil {
+		return err
+	}
+
+	if codesign {
+		if output == "" {
+			return fmt.Errorf("'-output=/your/output/path' syntax is required for -codesign flag")
+		}
+
+		execArgs := cfg.buildCodesignExecArgs("sign", codesignEntitlements, codesignIdentity, codesignForce, codesignAdditionalArgs)
+		execArgs = append(execArgs, output)
+
+		if cfg.Verbose {
+			fmt.Printf("🚀 Running codesign with args: %s %s\n", execArgs[0], strings.Join(execArgs[1:], " "))
+		}
+
+		cmd := exec.Command(execArgs[0], execArgs[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		err := cmd.Run()
+
+		if cfg.Verbose {
+			fmt.Printf("🚀 Codesign output: %v\n", err)
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to exec codesign: %v", err)
+		}
+	}
+
+	return nil
 }

@@ -67,6 +67,10 @@ func ShimReexecInit() {
 // }
 
 func ShimMain() {
+	// if os.Getuid() == 0 {
+	// 	syscall.Setuid(1000)
+	// 	syscall.Setgid(1000)
+	// }
 
 	ctx := context.Background()
 
@@ -79,26 +83,60 @@ func ShimMain() {
 
 	ctx = logging.SetupSlogSimpleToWriterWithProcessName(ctx, proxySock, true, "shim")
 
-	ctx = slogctx.Append(ctx, slog.String("process", "shim"), slog.String("pid", strconv.Itoa(os.Getpid())))
+	ctx = slogctx.Append(ctx, slog.String("process", "shim"), slog.String("pid", strconv.Itoa(os.Getpid())), slog.String("parent_pid", strconv.Itoa(syscall.Getppid())))
+
+	slog.InfoContext(ctx, "SHIM_STARTING", "args", os.Args[1:])
 
 	// Set up panic and exit monitoring BEFORE anything else
 	defer func() {
 		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "FATAL: shim main panic", "panic", r, "stack", string(debug.Stack()))
+			slog.ErrorContext(ctx, "SHIM_EXIT_PANIC", "panic", r, "stack", string(debug.Stack()))
 			panic(r)
 		}
-		slog.InfoContext(ctx, "shim exiting normally")
-		slog.DebugContext(ctx, string(debug.Stack()))
+		slog.InfoContext(ctx, "SHIM_EXIT_NORMAL")
 	}()
+
+	if syscall.Getppid() == 1 {
+
+		var rusage syscall.Rusage
+		if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
+			slog.InfoContext(ctx, "SHIM_INITIAL_RESOURCE_USAGE",
+				"max_rss", rusage.Maxrss,
+				"user_time", rusage.Utime,
+				"sys_time", rusage.Stime)
+		}
+
+		// Start a goroutine to monitor resource usage
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					var rusage syscall.Rusage
+					if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
+						slog.InfoContext(ctx, "SHIM_RESOURCE_USAGE_CHECK",
+							"max_rss", rusage.Maxrss,
+							"user_time", rusage.Utime,
+							"sys_time", rusage.Stime,
+							"num_goroutines", runtime.NumGoroutine())
+					}
+				}
+			}
+		}()
+
+	}
 
 	// Monitor for unexpected signals and OS-level events
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
-		syscall.SIGKILL, syscall.SIGABRT, syscall.SIGSEGV, syscall.SIGBUS)
+	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGSEGV, syscall.SIGBUS)
 
 	go func() {
 		sig := <-signalChan
-		slog.ErrorContext(ctx, "FATAL: shim received unexpected signal", "signal", sig, "pid", os.Getpid())
+		slog.ErrorContext(ctx, "SHIM_EXIT_SIGNAL", "signal", sig)
 		// Log stack trace of all goroutines
 		buf := make([]byte, 64*1024)
 		n := runtime.Stack(buf, true)
@@ -108,66 +146,23 @@ func ShimMain() {
 		time.Sleep(1 * time.Second)
 	}()
 
-	slog.InfoContext(ctx, "starting shim run")
 	err = RunShim(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "FATAL: shim main failed", "error", err)
-		// Don't return here, let it exit normally to see if this is the cause
+		slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
 	}
-	slog.InfoContext(ctx, "shim run completed")
 }
 
 func RunShim(ctx context.Context) error {
 
 	logrusshim.SetLogrusLevel(logrus.DebugLevel)
 
-	if syscall.Getppid() == 1 {
-		// our parent died, we probably called ourselves directly
-		slog.WarnContext(ctx, "parent process is PID 1 - running as orphan")
-	}
-
-	slog.InfoContext(ctx, "shim starting with args", "args", os.Args[1:], "my_pid", syscall.Getpid(), "my_parent_pid", syscall.Getppid())
-
-	// Log resource limits
-	var rusage syscall.Rusage
-	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
-		slog.InfoContext(ctx, "initial resource usage",
-			"max_rss", rusage.Maxrss,
-			"user_time", rusage.Utime,
-			"sys_time", rusage.Stime)
-	}
-
-	// Start a goroutine to monitor resource usage
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				var rusage syscall.Rusage
-				if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
-					slog.InfoContext(ctx, "resource usage check",
-						"max_rss", rusage.Maxrss,
-						"user_time", rusage.Utime,
-						"sys_time", rusage.Stime,
-						"num_goroutines", runtime.NumGoroutine())
-				}
-			}
-		}
-	}()
-
 	registry.Reset()
 	containerd.RegisterPlugins()
 
-	slog.InfoContext(ctx, "calling shim.Run")
 	shim.Run(ctx, containerd.NewManager(shimRuntimeID), func(c *shim.Config) {
 		c.NoReaper = true
 		c.NoSetupLogger = true
 	})
-	slog.InfoContext(ctx, "shim.Run completed")
 
 	return nil
 }

@@ -358,6 +358,11 @@ func signBinary(ctx context.Context, target string, entitlements []string, ident
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if strings.Contains(string(output), "already signed") {
+			slog.InfoContext(ctx, "Binary already signed", slog.String("target", target))
+			return nil
+		}
+
 		return errors.Errorf("codesign failed: %w\nOutput: %s", err, string(output))
 	}
 

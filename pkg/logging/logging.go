@@ -43,6 +43,8 @@ func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool, proce
 	return SetupSlogSimpleToWriterWithProcessName(ctx, w, color, "", processor...)
 }
 
+var logWriter io.Writer
+
 func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
 
 	devHandler := tint.NewHandler(w, &tint.Options{
@@ -76,8 +78,16 @@ func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, co
 
 	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)
+	logWriter = w
 
 	return slogctx.NewCtx(ctx, mylogger)
+}
+
+func GetDefaultLogWriter() io.Writer {
+	if logWriter == nil {
+		return os.Stdout
+	}
+	return logWriter
 }
 
 func packageName(frame runtime.Frame) string {

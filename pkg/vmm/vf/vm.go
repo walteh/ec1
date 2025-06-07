@@ -60,7 +60,7 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 		errchan <- vm.vzvm.Start()
 	}()
 
-	timeout := time.NewTimer(10 * time.Second)
+	timeout := time.NewTimer(5 * time.Second)
 	defer timeout.Stop()
 
 	select {

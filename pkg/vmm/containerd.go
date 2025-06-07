@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -24,6 +26,7 @@ import (
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
+	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/virtio"
 )
@@ -54,7 +57,12 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	ctrconfig ContainerizedVMConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 
-	id := "harpoon-oci-" + ctrconfig.ID
+	// if os.Getuid() == 0 {
+	// 	syscall.Seteuid(1000)
+	// 	syscall.Setegid(1000)
+	// }
+
+	id := "harpoon-oci-" + ctrconfig.ID[:8]
 	errgrp, ctx := errgroup.WithContext(ctx)
 
 	startTime := time.Now()
@@ -63,6 +71,8 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	if err != nil {
 		return nil, err
 	}
+
+	os.Chown(workingDir, 1000, 1000)
 
 	err = os.MkdirAll(workingDir, 0755)
 	if err != nil {
@@ -79,13 +89,12 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	slog.InfoContext(ctx, "about to set up rootfs",
 		"ctrconfig.RootfsPath", ctrconfig.RootfsPath,
 		"ctrconfig.RootfsMounts", tint.NewPrettyValue(ctrconfig.RootfsMounts),
-		"bindMounts", tint.NewPrettyValue(bindMounts),
+		// "bindMounts", tint.NewPrettyValue(bindMounts),
 		"spec.Root.Path", ctrconfig.Spec.Root.Path,
 		"spec.Root.Readonly", ctrconfig.Spec.Root.Readonly,
 	)
 
-	// Create virtio devices using the existing rootfs directory
-	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, bindMounts, errgrp)
+	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, ctrconfig.RootfsPath, bindMounts, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating ec1 block device from rootfs: %w", err)
 	}
@@ -128,13 +137,13 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		}
 	}
 
-	// for all the bind mounts, we need to check if they are files or directories, bind the directories to the rootfs
-
 	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
 	}
 	devices = append(devices, netdev)
+
+	slog.InfoContext(ctx, "devices", "devices", tint.NewPrettyValue(devices))
 
 	opts := NewVMOptions{
 		Vcpus:   ctrconfig.VCPUs,
@@ -149,11 +158,17 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 
 	err = bootContainerVM(ctx, vm)
 	if err != nil {
+		if err := TryAppendingConsoleLog(ctx, workingDir); err != nil {
+			slog.ErrorContext(ctx, "error appending console log", "error", err)
+		}
 		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
 
 	runErrGroup, runCancel, err := runContainerVM(ctx, hpv, vm)
 	if err != nil {
+		if err := TryAppendingConsoleLog(ctx, workingDir); err != nil {
+			slog.ErrorContext(ctx, "error appending console log", "error", err)
+		}
 		return nil, errors.Errorf("running virtual machine: %w", err)
 	}
 
@@ -200,6 +215,29 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
 }
 
+func TryAppendingConsoleLog(ctx context.Context, workingDir string) error {
+	// log file
+	file, err := os.ReadFile(filepath.Join(workingDir, "console.log"))
+	if err != nil {
+		return errors.Errorf("opening console log file: %w", err)
+	}
+
+	writer := logging.GetDefaultLogWriter()
+
+	buf := bytes.NewBuffer(nil)
+	buf.Write([]byte("\n\n--------------------------------\n\n"))
+	buf.Write(file)
+	buf.Write([]byte("\n--------------------------------\n\n"))
+
+	_, err = io.Copy(writer, buf)
+	if err != nil {
+		slog.ErrorContext(ctx, "error copying console log", "error", err)
+		return errors.Errorf("copying console log: %w", err)
+	}
+
+	return nil
+}
+
 func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount, []virtio.VirtioDevice, error) {
 	bindMounts := []specs.Mount{}
 	devices := []virtio.VirtioDevice{}
@@ -216,7 +254,7 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 				hash := sha256.Sum256([]byte(dir))
 				tag := "bind-" + hex.EncodeToString(hash[:8])
 				// create a new fs direcotry share
-				shareDev, err := virtio.VirtioFsNew(mount.Source, tag)
+				shareDev, err := virtio.VirtioFsNew(filepath.Dir(mount.Source), tag)
 				if err != nil {
 					return nil, nil, errors.Errorf("creating share device: %w", err)
 				}
@@ -237,7 +275,7 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 }
 
 // PrepareContainerVirtioDevicesFromRootfs creates virtio devices using an existing rootfs directory
-func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string, ctrconfig *oci.Spec, bindMounts []specs.Mount, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string, ctrconfig *oci.Spec, rootfsPath string, bindMounts []specs.Mount, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
 
 	devices := []virtio.VirtioDevice{}
@@ -249,7 +287,7 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 
 	// i think the prob is that ctrconfig.Root.Path is set to 'rootfs'
 	// Create a VirtioFs device pointing to the existing rootfs directory
-	blkDev, err := virtio.VirtioFsNew(ctrconfig.Root.Path, ec1init.RootfsVirtioTag)
+	blkDev, err := virtio.VirtioFsNew(strings.TrimPrefix(rootfsPath, "/private"), ec1init.RootfsVirtioTag)
 	if err != nil {
 		return nil, errors.Errorf("creating rootfs virtio device: %w", err)
 	}

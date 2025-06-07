@@ -1,0 +1,256 @@
+{
+	"ociVersion": "1.2.1",
+	"process": {
+		"user": {
+			"uid": 0,
+			"gid": 0
+		},
+		"args": [
+			"echo",
+			"'hi'",
+			"run",
+			"--platform=linux/arm64",
+			"--runtime=containerd.shim.harpoon.v2",
+			"--network=host",
+			"--rm",
+			"alpine:latest",
+			"echo",
+			"'hi'"
+		],
+		"env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOSTNAME="],
+		"cwd": "/",
+		"capabilities": {
+			"bounding": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_MKNOD",
+				"CAP_NET_RAW",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETFCAP",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_SYS_CHROOT",
+				"CAP_KILL",
+				"CAP_AUDIT_WRITE"
+			],
+			"effective": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_MKNOD",
+				"CAP_NET_RAW",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETFCAP",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_SYS_CHROOT",
+				"CAP_KILL",
+				"CAP_AUDIT_WRITE"
+			],
+			"permitted": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_MKNOD",
+				"CAP_NET_RAW",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETFCAP",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_SYS_CHROOT",
+				"CAP_KILL",
+				"CAP_AUDIT_WRITE"
+			]
+		},
+		"rlimits": [
+			{
+				"type": "RLIMIT_NOFILE",
+				"hard": 1024,
+				"soft": 1024
+			}
+		],
+		"noNewPrivileges": true
+	},
+	"root": {
+		"path": "rootfs"
+	},
+	"mounts": [
+		{
+			"destination": "/proc",
+			"type": "proc",
+			"source": "proc",
+			"options": ["nosuid", "noexec", "nodev"]
+		},
+		{
+			"destination": "/dev",
+			"type": "tmpfs",
+			"source": "tmpfs",
+			"options": ["nosuid", "strictatime", "mode=755", "size=65536k"]
+		},
+		{
+			"destination": "/sys",
+			"type": "sysfs",
+			"source": "sysfs",
+			"options": ["nosuid", "noexec", "nodev", "ro"]
+		},
+		{
+			"destination": "/run",
+			"type": "tmpfs",
+			"source": "tmpfs",
+			"options": ["nosuid", "strictatime", "mode=755", "size=65536k"]
+		},
+		{
+			"destination": "/dev/pts",
+			"type": "devpts",
+			"source": "devpts",
+			"options": ["nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620", "gid=5"]
+		},
+		{
+			"destination": "/dev/shm",
+			"type": "tmpfs",
+			"source": "shm",
+			"options": ["nosuid", "noexec", "nodev", "mode=1777", "size=65536k"]
+		},
+		{
+			"destination": "/dev/mqueue",
+			"type": "mqueue",
+			"source": "mqueue",
+			"options": ["nosuid", "noexec", "nodev"]
+		},
+		{
+			"destination": "/etc/resolv.conf",
+			"type": "bind",
+			"source": "/var/lib/nerdctl/e0ce5476/containers/harpoon/082ca2d45a38104a3d70d187882105a1a2102fea96ac0c16bf31919619a49b07/resolv.conf",
+			"options": ["bind", ""]
+		},
+		{
+			"destination": "/etc/hosts",
+			"type": "bind",
+			"source": "/var/lib/nerdctl/e0ce5476/etchosts/harpoon/082ca2d45a38104a3d70d187882105a1a2102fea96ac0c16bf31919619a49b07/hosts",
+			"options": ["bind", ""]
+		}
+	],
+	"hooks": {
+		"createRuntime": [
+			{
+				"path": "/tmp/go-build1360053802/b001/exe/nerdctl-dev",
+				"args": ["/tmp/go-build1360053802/b001/exe/nerdctl-dev", "internal", "oci-hook", "createRuntime"],
+				"env": [
+					"SSH_AUTH_SOCK=/var/folders/8j/scdcg3yx02dc5pdf9g6188dm0000gn/T//ssh-ZKvAayCTznau/agent.2159",
+					"LC_TERMINAL_VERSION=3.5.14",
+					"COLORFGBG=15;0",
+					"LANG=en_US.UTF-8",
+					"LC_TERMINAL=iTerm2",
+					"COLORTERM=truecolor",
+					"TERM=xterm-256color",
+					"HOME=/Users/dub6ix",
+					"__CF_USER_TEXT_ENCODING=0x0:0:0",
+					"LSCOLORS=Gxfxcxdxbxegedabagacad",
+					"LS_COLORS=di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43",
+					"MAIL=/var/mail/root",
+					"LOGNAME=root",
+					"USER=root",
+					"SHELL=/bin/sh",
+					"SUDO_COMMAND=/opt/homebrew/bin/go run ./cmd/nerdctl-dev run --platform=linux/arm64 --network=host --runtime=containerd.shim.harpoon.v2 --rm docker.io/library/alpine:latest echo 'hi'",
+					"SUDO_USER=dub6ix",
+					"SUDO_UID=501",
+					"SUDO_GID=20",
+					"PATH=/opt/homebrew/Cellar/go/1.24.4/libexec/bin:/Users/dub6ix/.pyenv/shims:/opt/homebrew/opt/make/libexec/gnubin:/Users/dub6ix/.bun/bin:/Users/dub6ix/go/bin:/Users/dub6ix/.nvm/versions/node/v23.11.0/bin:/Users/dub6ix/.jenv/shims:/opt/homebrew/share/google-cloud-sdk/bin:/Users/dub6ix/.swiftly/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/usr/local/MacGPG2/bin:/Applications/Little Snitch.app/Contents/Components:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/munki:/Users/dub6ix/.cargo/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/dub6ix/.local/bin",
+					"NERDCTL_TOML=/tmp/tcontainerd/nerdctl.toml",
+					"PATH=/opt/homebrew/Cellar/go/1.24.4/libexec/bin:/Users/dub6ix/.pyenv/shims:/opt/homebrew/opt/make/libexec/gnubin:/Users/dub6ix/.bun/bin:/Users/dub6ix/go/bin:/Users/dub6ix/.nvm/versions/node/v23.11.0/bin:/Users/dub6ix/.jenv/shims:/opt/homebrew/share/google-cloud-sdk/bin:/Users/dub6ix/.swiftly/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/usr/local/MacGPG2/bin:/Applications/Little Snitch.app/Contents/Components:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/munki:/Users/dub6ix/.cargo/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/dub6ix/.local/bin:/usr/sbin:/sbin"
+				]
+			}
+		],
+		"poststop": [
+			{
+				"path": "/tmp/go-build1360053802/b001/exe/nerdctl-dev",
+				"args": ["/tmp/go-build1360053802/b001/exe/nerdctl-dev", "internal", "oci-hook", "postStop"],
+				"env": [
+					"SSH_AUTH_SOCK=/var/folders/8j/scdcg3yx02dc5pdf9g6188dm0000gn/T//ssh-ZKvAayCTznau/agent.2159",
+					"LC_TERMINAL_VERSION=3.5.14",
+					"COLORFGBG=15;0",
+					"LANG=en_US.UTF-8",
+					"LC_TERMINAL=iTerm2",
+					"COLORTERM=truecolor",
+					"TERM=xterm-256color",
+					"HOME=/Users/dub6ix",
+					"__CF_USER_TEXT_ENCODING=0x0:0:0",
+					"LSCOLORS=Gxfxcxdxbxegedabagacad",
+					"LS_COLORS=di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43",
+					"MAIL=/var/mail/root",
+					"LOGNAME=root",
+					"USER=root",
+					"SHELL=/bin/sh",
+					"SUDO_COMMAND=/opt/homebrew/bin/go run ./cmd/nerdctl-dev run --platform=linux/arm64 --network=host --runtime=containerd.shim.harpoon.v2 --rm docker.io/library/alpine:latest echo 'hi'",
+					"SUDO_USER=dub6ix",
+					"SUDO_UID=501",
+					"SUDO_GID=20",
+					"PATH=/opt/homebrew/Cellar/go/1.24.4/libexec/bin:/Users/dub6ix/.pyenv/shims:/opt/homebrew/opt/make/libexec/gnubin:/Users/dub6ix/.bun/bin:/Users/dub6ix/go/bin:/Users/dub6ix/.nvm/versions/node/v23.11.0/bin:/Users/dub6ix/.jenv/shims:/opt/homebrew/share/google-cloud-sdk/bin:/Users/dub6ix/.swiftly/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/usr/local/MacGPG2/bin:/Applications/Little Snitch.app/Contents/Components:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/munki:/Users/dub6ix/.cargo/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/dub6ix/.local/bin",
+					"NERDCTL_TOML=/tmp/tcontainerd/nerdctl.toml",
+					"PATH=/opt/homebrew/Cellar/go/1.24.4/libexec/bin:/Users/dub6ix/.pyenv/shims:/opt/homebrew/opt/make/libexec/gnubin:/Users/dub6ix/.bun/bin:/Users/dub6ix/go/bin:/Users/dub6ix/.nvm/versions/node/v23.11.0/bin:/Users/dub6ix/.jenv/shims:/opt/homebrew/share/google-cloud-sdk/bin:/Users/dub6ix/.swiftly/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/usr/local/MacGPG2/bin:/Applications/Little Snitch.app/Contents/Components:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/munki:/Users/dub6ix/.cargo/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/dub6ix/.local/bin:/usr/sbin:/sbin"
+				]
+			}
+		]
+	},
+	"annotations": {
+		"nerdctl/auto-remove": "true",
+		"nerdctl/dns": "{\"DNSServers\":null,\"DNSResolvConfOptions\":null,\"DNSSearchDomains\":null}",
+		"nerdctl/domainname": "",
+		"nerdctl/extraHosts": "[]",
+		"nerdctl/host-config": "{\"BlkioWeight\":0,\"CidFile\":\"\",\"Devices\":null}",
+		"nerdctl/hostname": "",
+		"nerdctl/log-config": "{\"driver\":\"json-file\",\"address\":\"unix:///tmp/tcontainerd/containerd.sock\"}",
+		"nerdctl/log-uri": "binary:///tmp/go-build1360053802/b001/exe/nerdctl-dev?_NERDCTL_INTERNAL_LOGGING=%2Fvar%2Flib%2Fnerdctl%2Fe0ce5476",
+		"nerdctl/name": "alpine-082ca",
+		"nerdctl/namespace": "harpoon",
+		"nerdctl/networks": "[\"host\"]",
+		"nerdctl/platform": "linux/arm64",
+		"nerdctl/state-dir": "/var/lib/nerdctl/e0ce5476/containers/harpoon/082ca2d45a38104a3d70d187882105a1a2102fea96ac0c16bf31919619a49b07"
+	},
+	"linux": {
+		"resources": {
+			"devices": [
+				{
+					"allow": false,
+					"access": "rwm"
+				}
+			]
+		},
+		"cgroupsPath": "/harpoon/082ca2d45a38104a3d70d187882105a1a2102fea96ac0c16bf31919619a49b07",
+		"namespaces": [
+			{
+				"type": "pid"
+			},
+			{
+				"type": "ipc"
+			},
+			{
+				"type": "uts"
+			},
+			{
+				"type": "mount"
+			}
+		],
+		"maskedPaths": [
+			"/proc/acpi",
+			"/proc/asound",
+			"/proc/kcore",
+			"/proc/keys",
+			"/proc/latency_stats",
+			"/proc/timer_list",
+			"/proc/timer_stats",
+			"/proc/sched_debug",
+			"/sys/firmware",
+			"/sys/devices/virtual/powercap",
+			"/proc/scsi"
+		],
+		"readonlyPaths": ["/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys", "/proc/sysrq-trigger"]
+	}
+}

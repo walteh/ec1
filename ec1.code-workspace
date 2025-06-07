@@ -31,6 +31,10 @@
 		{
 			"name": "ttrpc",
 			"path": "../ttrpc"
+		},
+		{
+			"name": "vz",
+			"path": "../vz"
 		}
 	],
 	"extensions": {

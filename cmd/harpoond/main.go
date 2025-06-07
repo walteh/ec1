@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/containerd/containerd/v2/pkg/oci"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/opencontainers/runtime-spec/specs-go"
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/pkg/ec1init"
@@ -56,6 +56,10 @@ func main() {
 		for tick := range ticker.C {
 			slog.InfoContext(ctx, "still running in rootfs, waiting to be killed", "tick", tick)
 		}
+	}
+
+	if _, err := os.Stat(ec1init.Ec1AbsPath); os.IsNotExist(err) {
+		os.MkdirAll(ec1init.Ec1AbsPath, 0755)
 	}
 
 	// mount the ec1 virtiofs
@@ -214,35 +218,76 @@ func serveRawVsockChroot(ctx context.Context, port int, entrypoint []string, env
 // 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"bind","Source":"/var/lib/nerdctl/e0ce5476/containers/harpoon/8762c7401028e46f6692bf50ead961cabaaebb8c571c35a23ed8c8179eaf950d/resolv.conf","Target":"/etc/resolv.conf","Options":["bind",""]}
 // 2025-06-06 11:37 49.8895 WRN [shim] containerd/service.go:280 [logrus] skipping mount: {"Type":"bind","Source":"/var/lib/nerdctl/e0ce5476/etchosts/harpoon/8762c7401028e46f6692bf50ead961cabaaebb8c571c35a23ed8c8179eaf950d/hosts","Target":"/etc/hosts","Options":["bind",""]}
 func mountRootfs(ctx context.Context, spec *oci.Spec, customMounts []specs.Mount) error {
-	dirs := []string{}
+	// dirs := []string{}
 	cmds := [][]string{}
 
-	// first mount the rootfs
-	cmds = append(cmds, []string{"mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath})
+	// mkdir and mount the rootfs
+	if err := os.MkdirAll(ec1init.NewRootAbsPath, 0755); err != nil {
+		return errors.Errorf("making directories: %w", err)
+	}
 
-	// bind the ec1 mount to the rootfs
-	cmds = append(cmds, []string{"mount", "--bind", ec1init.Ec1AbsPath, filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath)})
+	if err := execCmdForwardingStdio(ctx, "mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath); err != nil {
+		return errors.Errorf("mounting rootfs: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath), 0755); err != nil {
+		return errors.Errorf("making directories: %w", err)
+	}
+
+	if err := execCmdForwardingStdio(ctx, "mount", "--move", ec1init.Ec1AbsPath, filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath)); err != nil {
+		return errors.Errorf("mounting ec1: %w", err)
+	}
+
+	cmds = append(cmds, []string{"rm", "-rf", "/newroot/etc/hosts"})
+	cmds = append(cmds, []string{"rm", "-rf", "/newroot/etc/resolv.conf"})
+
+	if err := os.MkdirAll(filepath.Join(ec1init.NewRootAbsPath, "etc"), 0755); err != nil {
+		return errors.Errorf("making directories: %w", err)
+	}
+
+	// dirs = append(dirs, filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath))
 
 	// trying to figure out how to proerly do this to not skip things
 	for _, mount := range append(spec.Mounts, customMounts...) {
 		dest := filepath.Join(ec1init.NewRootAbsPath, mount.Destination)
-		dirs = append(dirs, dest)
+		if mount.Destination == "/etc/resolv.conf" || mount.Destination == "/etc/hosts" {
+			continue
+		}
+		cmds = append(cmds, []string{"mkdir", "-p", dest})
+		// if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		// 	return errors.Errorf("making directories: %w", err)
+		// }
+
+		if dest == "/newroot/ec1" {
+			continue
+		}
+
+		opts := []string{"-o", strings.Join(mount.Options, ",")}
+		if len(mount.Options) == 1 {
+			opts = []string{}
+		}
 
 		switch mount.Type {
 		case "ec1-virtiofs":
-			cmds = append(cmds, []string{"mount", "-t", "virtiofs", mount.Source, dest, strings.Join(mount.Options, ",")})
+			allOpts := []string{"mount", "-t", "virtiofs", mount.Source}
+			allOpts = append(allOpts, opts...)
+			allOpts = append(allOpts, dest)
+			cmds = append(cmds, allOpts)
 		case "bind":
 			continue
 		default:
-			cmds = append(cmds, []string{"mount", "-t", mount.Type, mount.Source, dest, strings.Join(mount.Options, ",")})
+			allOpts := []string{"mount", "-t", mount.Type, mount.Source}
+			allOpts = append(allOpts, opts...)
+			allOpts = append(allOpts, dest)
+			cmds = append(cmds, allOpts)
 		}
 	}
 
-	// mkdir command
-	err := execCmdForwardingStdio(ctx, "mkdir", "-p", strings.Join(dirs, " "))
-	if err != nil {
-		return errors.Errorf("making directories: %w", err)
-	}
+	// // mkdir command
+	// err := execCmdForwardingStdio(ctx, "mkdir", "-p", strings.Join(dirs, " "))
+	// if err != nil {
+	// 	return errors.Errorf("making directories: %w", err)
+	// }
 
 	for _, cmd := range cmds {
 		err := execCmdForwardingStdio(ctx, cmd...)
@@ -371,7 +416,16 @@ func bindMountsToChroot(ctx context.Context) error {
 
 func switchRoot(ctx context.Context) error {
 
-	entrypoint := []string{"/bin/sh"}
+	if err := execCmdForwardingStdio(ctx, "touch", "/newroot/harpoond"); err != nil {
+		return errors.Errorf("touching harpoond: %w", err)
+	}
+
+	// rename ourself to new root
+	if err := execCmdForwardingStdio(ctx, "mount", "--bind", os.Args[0], "/newroot/harpoond"); err != nil {
+		return errors.Errorf("renaming self: %w", err)
+	}
+
+	entrypoint := []string{"/harpoond"}
 
 	env := []string{}
 	env = append(env, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
