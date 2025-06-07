@@ -11,7 +11,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -22,6 +24,8 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
+
+	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
@@ -49,6 +53,28 @@ type ContainerizedVMConfig struct {
 	Platform     units.Platform
 }
 
+func appendContext(ctx context.Context, id string) context.Context {
+	var rlimit syscall.Rlimit
+	syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	groups, _ := syscall.Getgroups()
+
+	return slogctx.Append(ctx,
+		slog.String("uid", strconv.Itoa(syscall.Getuid())),
+		slog.String("gid", strconv.Itoa(syscall.Getgid())),
+		slog.Any("groups", groups),
+		slog.String("pgrp", strconv.Itoa(syscall.Getpgrp())),
+		slog.String("id", id),
+		slog.String("pid", strconv.Itoa(syscall.Getpid())),
+		slog.String("ppid", strconv.Itoa(syscall.Getppid())),
+		slog.String("egid", strconv.Itoa(syscall.Getegid())),
+		slog.String("euid", strconv.Itoa(syscall.Geteuid())),
+		slog.String("page_size", strconv.Itoa(syscall.Getpagesize())),
+		slog.String("rlimit_cur", strconv.Itoa(int(rlimit.Cur))),
+		slog.String("rlimit_max", strconv.Itoa(int(rlimit.Max))),
+		slog.String("table_size", strconv.Itoa(syscall.Getdtablesize())),
+	)
+}
+
 // NewContainerizedVirtualMachineFromRootfs creates a VM using an already-prepared rootfs directory
 // This is used by container runtimes like containerd that have already prepared the rootfs
 func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
@@ -57,13 +83,10 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	ctrconfig ContainerizedVMConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 
-	// if os.Getuid() == 0 {
-	// 	syscall.Seteuid(1000)
-	// 	syscall.Setegid(1000)
-	// }
-
 	id := "harpoon-oci-" + ctrconfig.ID[:8]
 	errgrp, ctx := errgroup.WithContext(ctx)
+
+	ctx = appendContext(ctx, id)
 
 	startTime := time.Now()
 
@@ -71,8 +94,6 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	if err != nil {
 		return nil, err
 	}
-
-	os.Chown(workingDir, 1000, 1000)
 
 	err = os.MkdirAll(workingDir, 0755)
 	if err != nil {
@@ -164,7 +185,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
 
-	runErrGroup, runCancel, err := runContainerVM(ctx, hpv, vm)
+	runErrGroup, runCancel, err := runContainerVM(ctx, vm)
 	if err != nil {
 		if err := TryAppendingConsoleLog(ctx, workingDir); err != nil {
 			slog.ErrorContext(ctx, "error appending console log", "error", err)

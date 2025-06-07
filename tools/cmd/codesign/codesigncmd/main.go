@@ -226,6 +226,15 @@ func testMode(ctx context.Context, config *Config) error {
 		return errors.Errorf("signing binary before execution: %w", err)
 	}
 
+	// fakeBinary := filepath.Join("/tmp/tcontainerd", filepath.Base(binary)+".signed")
+
+	// os.Remove(fakeBinary)
+
+	// // create a symlink to the binary in the same directory
+	// if err := os.Symlink(binary, fakeBinary); err != nil {
+	// 	return errors.Errorf("creating symlink: %w", err)
+	// }
+
 	// wrapAddress := os.Getenv("GOW_DAP_WRAP_ADDRESS")
 
 	// if config.DapListen != "" {
@@ -265,6 +274,15 @@ func testMode(ctx context.Context, config *Config) error {
 	if err := syscall.Exec(binary, append([]string{binary}, args...), os.Environ()); err != nil {
 		return errors.Errorf("executing signed binary: %w", err)
 	}
+
+	// cmd := exec.Command(fakeBinary, args...)
+	// cmd.Stdin = os.Stdin
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
+
+	// if err := cmd.Run(); err != nil {
+	// 	return errors.Errorf("executing signed binary: %w", err)
+	// }
 
 	return nil
 }

@@ -3,6 +3,7 @@ package virtio
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"gitlab.com/tozd/go/errors"
 )
@@ -10,77 +11,78 @@ import (
 func ApplyDevices(ctx context.Context, applier DeviceApplier, devices []VirtioDevice) error {
 
 	for _, dev := range devices {
+		slog.InfoContext(ctx, "applying virtio device", "device", fmt.Sprintf("%T", dev))
 		switch dev := dev.(type) {
 		case *VirtioNet:
 			if err := applier.ApplyVirtioNet(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio net: %w", err)
 			}
 		case *VirtioInput:
 			if err := applier.ApplyVirtioInput(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio input: %w", err)
 			}
 		case *VirtioGPU:
 			if err := applier.ApplyVirtioGPU(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio gpu: %w", err)
 			}
 		case *VirtioVsock:
 			if err := applier.ApplyVirtioVsock(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio vsock: %w", err)
 			}
 		case *VirtioBlk:
 			if err := applier.ApplyVirtioBlk(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio blk: %w", err)
 			}
 		case *VirtioFs:
 			if err := applier.ApplyVirtioFs(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio fs: %w", err)
 			}
 		case *VirtioRng:
 			if err := applier.ApplyVirtioRng(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio rng: %w", err)
 			}
 		case *VirtioSerialFifo:
 			if err := applier.ApplyVirtioSerialFifo(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio serial fifo: %w", err)
 			}
 		case *VirtioSerialStdio:
 			if err := applier.ApplyVirtioSerialStdio(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio serial stdio: %w", err)
 			}
 		case *VirtioSerialPty:
 			if err := applier.ApplyVirtioSerialPty(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio serial pty: %w", err)
 			}
 		case *VirtioSerialLogFile:
 			if err := applier.ApplyVirtioSerialLogFile(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio serial log file: %w", err)
 			}
 		case *VirtioBalloon:
 			if err := applier.ApplyVirtioBalloon(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio balloon: %w", err)
 			}
 		case *NetworkBlockDevice:
 			if err := applier.ApplyVirtioNetworkBlockDevice(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio network block device: %w", err)
 			}
 		case *NVMExpressController:
 			if err := applier.ApplyVirtioNVMExpressController(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio nvme express controller: %w", err)
 			}
 		case *RosettaShare:
 			if err := applier.ApplyVirtioRosettaShare(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio rosetta share: %w", err)
 			}
 		case *USBMassStorage:
 			if err := applier.ApplyVirtioUsbMassStorage(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio usb mass storage: %w", err)
 			}
 		case *VirtioSerialFifoFile:
 			if err := applier.ApplyVirtioSerialFifoFile(ctx, dev); err != nil {
-				return err
+				return errors.Errorf("applying virtio serial fifo file: %w", err)
 			}
 		default:
-			return fmt.Errorf("unsupported device type: %T", dev)
+			return errors.Errorf("unsupported device type: %T", dev)
 		}
 	}
 

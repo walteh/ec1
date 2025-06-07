@@ -146,6 +146,7 @@ require (
 	github.com/intel/goresctrl v0.8.0 // indirect
 	github.com/jm33-m0/arc/v2 v2.0.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/k0kubun/pp/v3 v3.4.1 // indirect
 	github.com/mattn/go-shellwords v1.0.12 // indirect
 	github.com/mattn/go-sqlite3 v1.14.27 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect

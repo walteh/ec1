@@ -5,12 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -19,11 +17,6 @@ import (
 	"github.com/rs/xid"
 	"gitlab.com/tozd/go/errors"
 
-	"github.com/walteh/ec1/gen/harpoon/harpoon_initramfs_amd64"
-	"github.com/walteh/ec1/gen/harpoon/harpoon_initramfs_arm64"
-	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_amd64"
-	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_arm64"
-	"github.com/walteh/ec1/pkg/binembed"
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
@@ -52,8 +45,11 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 	cache oci.ImageFetchConverter,
 	imageConfig ConatinerImageConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
+
 	id := "vm-" + xid.New().String()
 	errgrp, ctx := errgroup.WithContext(ctx)
+
+	ctx = appendContext(ctx, id)
 
 	startTime := time.Now()
 
@@ -135,7 +131,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		return nil, errors.Errorf("booting virtual machine: %w", err)
 	}
 
-	runErrGroup, runCancel, err := runContainerVM(ctx, hpv, vm)
+	runErrGroup, runCancel, err := runContainerVM(ctx, vm)
 	if err != nil {
 		return nil, errors.Errorf("running virtual machine: %w", err)
 	}
@@ -241,65 +237,6 @@ func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConf
 	return devices, nil
 }
 
-func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (Bootloader, []virtio.VirtioDevice, error) {
-	targetVmLinuxPath := filepath.Join(wrkdir, "vmlinux")
-	targetInitramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
-
-	extraArgs := ""
-	extraInitArgs := ""
-
-	devices := []virtio.VirtioDevice{}
-
-	var kernelXz, initramfsGz io.Reader
-	var err error
-
-	startTime := time.Now()
-
-	if imageConfig.Platform.Arch() == "arm64" {
-		kernelXz, err = binembed.GetDecompressed(harpoon_vmlinux_arm64.BinaryXZChecksum)
-		if err != nil {
-			return nil, nil, errors.Errorf("getting kernel: %w", err)
-		}
-		initramfsGz, err = binembed.GetDecompressed(harpoon_initramfs_arm64.BinaryXZChecksum)
-		if err != nil {
-			return nil, nil, errors.Errorf("getting initramfs: %w", err)
-		}
-	} else {
-		kernelXz, err = binembed.GetDecompressed(harpoon_vmlinux_amd64.BinaryXZChecksum)
-		if err != nil {
-			return nil, nil, errors.Errorf("getting kernel: %w", err)
-		}
-		initramfsGz, err = binembed.GetDecompressed(harpoon_initramfs_amd64.BinaryXZChecksum)
-		if err != nil {
-			return nil, nil, errors.Errorf("getting initramfs: %w", err)
-		}
-	}
-
-	files := map[string]io.Reader{
-		targetVmLinuxPath:   kernelXz,
-		targetInitramfsPath: initramfsGz,
-	}
-
-	for path, reader := range files {
-		err = osx.WriteFileFromReaderAsync(ctx, path, reader, 0644, wg)
-		if err != nil {
-			return nil, nil, errors.Errorf("writing files: %w", err)
-		}
-		os.Chown(path, 1000, 1000)
-	}
-
-	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-	cmdLine := strings.TrimSpace(" console=hvc0 " + extraArgs + " -- " + extraInitArgs)
-
-	slog.InfoContext(ctx, "linux boot loader ready", "duration", time.Since(startTime))
-
-	return &LinuxBootloader{
-		InitrdPath:    targetInitramfsPath,
-		VmlinuzPath:   targetVmLinuxPath,
-		KernelCmdLine: cmdLine,
-	}, devices, nil
-}
-
 func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 	bootCtx, bootCancel := context.WithCancel(ctx)
 	errGroup, ctx := errgroup.WithContext(bootCtx)
@@ -335,7 +272,7 @@ func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 	return nil
 }
 
-func runContainerVM[VM VirtualMachine](ctx context.Context, hpv Hypervisor[VM], vm VM) (*errgroup.Group, func(), error) {
+func runContainerVM[VM VirtualMachine](ctx context.Context, vm VM) (*errgroup.Group, func(), error) {
 	runCtx, bootCancel := context.WithCancel(ctx)
 	errGroup, ctx := errgroup.WithContext(runCtx)
 

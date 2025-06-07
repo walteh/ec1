@@ -6,7 +6,6 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -129,8 +128,8 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 	slog.InfoContext(ctx, "createVM: Starting VM creation", "id", id, "execID", execID, "rootfs", rootfs)
 
 	// Extract configuration from the OCI spec
-	memory := strongunits.MiB(512).ToBytes() // Use 512MB minimum for VZ compatibility
-	vcpus := uint64(1)                       // Default, TODO: Extract from spec.Process or other location
+	memory := strongunits.MiB(64).ToBytes() // Use 512MB minimum for VZ compatibility
+	vcpus := uint64(1)                      // Default, TODO: Extract from spec.Process or other location
 
 	slog.InfoContext(ctx, "createVM: VM configuration", "memory", memory, "vcpus", vcpus)
 
@@ -181,12 +180,12 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 		return errors.Errorf("creating VM from rootfs: %w", err)
 	}
 
-	to := time.NewTimer(10 * time.Second)
-	defer to.Stop()
+	// to := time.NewTimer(10 * time.Second)
+	// defer to.Stop()
 
-	if err := vmm.WaitForVMState(ctx, vm.VM(), vmm.VirtualMachineStateTypeRunning, to.C); err != nil {
-		return errors.Errorf("timeout waiting for VM to start: %w", err)
-	}
+	// if err := vmm.WaitForVMState(ctx, vm.VM(), vmm.VirtualMachineStateTypeRunning, to.C); err != nil {
+	// 	return errors.Errorf("timeout waiting for VM to start: %w", err)
+	// }
 
 	slog.InfoContext(ctx, "createVM: VM created successfully")
 	c.vm = vm

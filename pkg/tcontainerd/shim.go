@@ -16,6 +16,7 @@ import (
 	"github.com/containerd/plugin/registry"
 	"github.com/moby/sys/reexec"
 	"github.com/sirupsen/logrus"
+
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v2/containerd"
@@ -70,6 +71,20 @@ func ShimMain() {
 	// if os.Getuid() == 0 {
 	// 	syscall.Setuid(1000)
 	// 	syscall.Setgid(1000)
+	// }
+
+	// if os.Getppid() == 1 {
+	// 	// run myself as a child process and wait so i don't have pid as 1
+	// 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	// 	cmd.Stdout = os.Stdout
+	// 	cmd.Stderr = os.Stderr
+	// 	cmd.Stdin = os.Stdin
+	// 	err := cmd.Run()
+	// 	if err != nil {
+	// 		slog.Error("Failed to run myself as a child process", "error", err)
+	// 		os.Exit(1)
+	// 	}
+	// 	os.Exit(0)
 	// }
 
 	ctx := context.Background()
@@ -150,6 +165,7 @@ func ShimMain() {
 	if err != nil {
 		slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
 	}
+
 }
 
 func RunShim(ctx context.Context) error {
