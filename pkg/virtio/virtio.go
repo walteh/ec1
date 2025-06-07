@@ -169,6 +169,10 @@ type VirtioSerialFifo struct {
 	FD uintptr
 }
 
+type VirtioSerialFifoFile struct {
+	Path string
+}
+
 type VirtioSerialStdio struct {
 	Stdin  *os.File
 	Stdout *os.File
@@ -191,11 +195,15 @@ var _ VirtioDevice = &VirtioSerialPty{}
 
 var _ VirtioDevice = &VirtioSerialLogFile{}
 
+var _ VirtioDevice = &VirtioSerialFifoFile{}
+
 func (v *VirtioSerialStdio) isVirtioDevice() {}
 
 func (v *VirtioSerialPty) isVirtioDevice() {}
 
 func (v *VirtioSerialLogFile) isVirtioDevice() {}
+
+func (v *VirtioSerialFifoFile) isVirtioDevice() {}
 
 type NBDSynchronizationMode string
 

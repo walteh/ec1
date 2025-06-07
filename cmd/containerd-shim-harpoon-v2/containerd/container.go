@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/containerd/containerd/api/runtime/task/v3"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/errdefs"
@@ -31,6 +32,7 @@ type container struct {
 	bundlePath    string
 	rootfs        string
 	dnsSocketPath string
+	request       *task.CreateTaskRequest
 
 	// VMM-specific fields
 	vm         *vmm.RunningVM[*vf.VirtualMachine]
@@ -156,34 +158,23 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 		slog.WarnContext(ctx, "createVM: Failed to parse platform, using fallback", "platformStr", platformStr, "fallback", platform)
 	}
 
-	slog.InfoContext(ctx, "createVM: Platform determined", "platform", platform)
-
-	slog.InfoContext(ctx, "createVM: Calling NewContainerizedVirtualMachineFromRootfs")
-
-	// The critical call that might be causing the process to exit
-	vm, err := func() (*vmm.RunningVM[*vf.VirtualMachine], error) {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "FATAL: NewContainerizedVirtualMachineFromRootfs panic", "panic", r)
-				panic(r)
-			}
-		}()
-
-		vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
-			ID:         id,
-			ExecID:     execID,
-			RootfsPath: c.rootfs,
-			StderrFD:   stdio.stderrFD,
-			StdoutFD:   stdio.stdoutFD,
-			StdinFD:    stdio.stdinFD,
-			Spec:       spec,
-			Platform:   platform,
-			Memory:     memory,
-			VCPUs:      vcpus,
-		})
-
-		return vm, err
-	}()
+	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
+		ID:           id,
+		ExecID:       execID,
+		RootfsPath:   c.rootfs,
+		RootfsMounts: c.request.Rootfs,
+		StderrFD:     stdio.stderrFD,
+		StdoutFD:     stdio.stdoutFD,
+		StdinFD:      stdio.stdinFD,
+		DNSPath:      c.dnsSocketPath,
+		StdinPath:    c.request.Stdin,
+		StdoutPath:   c.request.Stdout,
+		StderrPath:   c.request.Stderr,
+		Spec:         spec,
+		Platform:     platform,
+		Memory:       memory,
+		VCPUs:        vcpus,
+	})
 
 	if err != nil {
 		slog.ErrorContext(ctx, "createVM: Failed to create VM", "error", err)

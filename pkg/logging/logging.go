@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	// "github.com/golang-cz/devslog"
 	"github.com/lmittmann/tint"
 	"gitlab.com/tozd/go/errors"
 
@@ -44,7 +45,7 @@ func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool, proce
 
 func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
 
-	tintHandler := tint.NewHandler(w, &tint.Options{
+	devHandler := tint.NewHandler(w, &tint.Options{
 		Level:      slog.LevelDebug,
 		TimeFormat: "2006-01-02 15:04 05.0000",
 		AddSource:  true,
@@ -56,7 +57,22 @@ func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, co
 		ProcessName: processName,
 	})
 
-	ctxHandler := slogctx.NewHandler(tintHandler, &slogctx.HandlerOptions{})
+	// opts := slog.HandlerOptions{
+	// 	Level:     slog.LevelDebug,
+	// 	AddSource: true,
+	// 	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+	// 		a = formatErrorStacks(groups, a)
+	// 		return Redact(groups, a)
+	// 	},
+	// }
+
+	// devHandler := devslog.NewHandler(w, &devslog.Options{
+	// 	HandlerOptions:      &opts,
+	// 	NewLineAfterLog:     true,
+	// 	SameSourceInfoColor: color,
+	// })
+
+	ctxHandler := slogctx.NewHandler(devHandler, &slogctx.HandlerOptions{})
 
 	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)

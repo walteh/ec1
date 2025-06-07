@@ -14,8 +14,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/containerd/containerd/api/types"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containers/common/pkg/strongunits"
+	"github.com/lmittmann/tint"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
@@ -27,16 +29,21 @@ import (
 )
 
 type ContainerizedVMConfig struct {
-	ID         string
-	ExecID     string
-	RootfsPath string
-	StderrFD   int
-	StdoutFD   int
-	StdinFD    int
-	Spec       *oci.Spec
-	Memory     strongunits.B
-	VCPUs      uint64
-	Platform   units.Platform
+	ID           string
+	ExecID       string
+	RootfsMounts []*types.Mount
+	RootfsPath   string
+	StderrFD     int
+	StdoutFD     int
+	StdinFD      int
+	DNSPath      string
+	StdinPath    string
+	StdoutPath   string
+	StderrPath   string
+	Spec         *oci.Spec
+	Memory       strongunits.B
+	VCPUs        uint64
+	Platform     units.Platform
 }
 
 // NewContainerizedVirtualMachineFromRootfs creates a VM using an already-prepared rootfs directory
@@ -68,6 +75,14 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	}
 
 	devices = append(devices, mountDevices...)
+
+	slog.InfoContext(ctx, "about to set up rootfs",
+		"ctrconfig.RootfsPath", ctrconfig.RootfsPath,
+		"ctrconfig.RootfsMounts", tint.NewPrettyValue(ctrconfig.RootfsMounts),
+		"bindMounts", tint.NewPrettyValue(bindMounts),
+		"spec.Root.Path", ctrconfig.Spec.Root.Path,
+		"spec.Root.Readonly", ctrconfig.Spec.Root.Readonly,
+	)
 
 	// Create virtio devices using the existing rootfs directory
 	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, bindMounts, errgrp)
@@ -102,14 +117,14 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 			Path:   filepath.Join(workingDir, "console.log"),
 			Append: false,
 		})
-		if ctrconfig.StdinFD != 0 {
-			devices = append(devices, &virtio.VirtioSerialFifo{FD: uintptr(ctrconfig.StdinFD)})
+		if ctrconfig.StdinPath != "" {
+			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StdinPath})
 		}
-		if ctrconfig.StdoutFD != 0 {
-			devices = append(devices, &virtio.VirtioSerialFifo{FD: uintptr(ctrconfig.StdoutFD)})
+		if ctrconfig.StdoutPath != "" {
+			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StdoutPath})
 		}
-		if ctrconfig.StderrFD != 0 {
-			devices = append(devices, &virtio.VirtioSerialFifo{FD: uintptr(ctrconfig.StderrFD)})
+		if ctrconfig.StderrPath != "" {
+			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StderrPath})
 		}
 	}
 

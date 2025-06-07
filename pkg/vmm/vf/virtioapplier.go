@@ -148,6 +148,22 @@ func (v *vzVirtioDeviceApplier) ApplyVirtioRosettaShare(ctx context.Context, dev
 	return v.applyRosettaShare(dev)
 }
 
+// ApplyVirtioSerialFifoFile implements virtio.DeviceApplier.
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFifoFile(ctx context.Context, dev *virtio.VirtioSerialFifoFile) error {
+	serialPortAttachment, err := vz.NewFileSerialPortAttachment(dev.Path, false)
+	if err != nil {
+		return errors.Errorf("creating file serial port attachment: %w", err)
+	}
+
+	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+	if err != nil {
+		return errors.Errorf("creating virtio console device serial port configuration: %w", err)
+	}
+
+	v.serialPortsToSet = append(v.serialPortsToSet, serialPort)
+	return nil
+}
+
 // ApplyVirtioSerialFifo implements virtio.DeviceApplier.
 func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFifo(ctx context.Context, dev *virtio.VirtioSerialFifo) error {
 	fifoRead := os.NewFile(uintptr(dev.FD), "fifo-read")

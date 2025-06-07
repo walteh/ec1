@@ -6,6 +6,7 @@ import (
 	"github.com/containerd/containerd/v2/plugins"
 	"github.com/containerd/plugin"
 	"github.com/containerd/plugin/registry"
+	"gitlab.com/tozd/go/errors"
 )
 
 func init() {
@@ -30,7 +31,13 @@ func RegisterPlugins() {
 			if err != nil {
 				return nil, err
 			}
-			return NewTaskService(ic.Context, pp.(shim.Publisher), ss.(shutdown.Service))
+
+			s, err := NewTaskService(ic.Context, pp.(shim.Publisher), ss.(shutdown.Service))
+			if err != nil {
+				return nil, errors.Errorf("failed to create task service: %w", err)
+			}
+
+			return WrapTaskServiceWithErrorLogging(s), nil
 		},
 	})
 }

@@ -53,6 +53,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/k0kubun/pp/v3 v3.4.1
 	github.com/lima-vm/go-qcow2reader v0.6.0
 	github.com/lmittmann/tint v1.1.1
 	github.com/mdlayher/vsock v1.2.1

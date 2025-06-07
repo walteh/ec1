@@ -86,8 +86,8 @@ func (s *DevContainerdServer) Start(ctx context.Context) error {
 		"containerd",
 		"--config", ContainerdConfigTomlPath(),
 		"--address", Address(),
-		"--state", filepath.Join(WorkDir(), "state"),
-		"--root", filepath.Join(WorkDir(), "root"),
+		"--state", ContainerdStateDir(),
+		"--root", ContainerdRootDir(),
 		"--log-level", func() string {
 			if s.debug {
 				return "debug"
@@ -214,6 +214,7 @@ func (s *DevContainerdServer) EnsureOnlyOneInstanceRunning(ctx context.Context) 
 
 	// write the pid to the lock file
 	pid := os.Getpid()
+	os.MkdirAll(filepath.Dir(LockFile()), 0755)
 	err := os.WriteFile(LockFile(), []byte(strconv.Itoa(pid)), 0644)
 	if err != nil {
 		return errors.Errorf("failed to write lock file: %w", err)

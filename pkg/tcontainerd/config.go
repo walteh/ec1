@@ -47,12 +47,13 @@ debug          = %[1]v
 debug_full     = %[1]v
 address        = "unix://%[2]s"
 namespace      = "%[3]s"
-snapshotter    = "native"
+snapshotter    = "%[4]s"
+# pull_policy    = "%[5]s"
 # cgroup_manager = "cgroupfs"
 # hosts_dir      = ["/etc/containerd/certs.d", "/etc/docker/certs.d"]
 experimental   = true
 # userns_remap   = ""
-	`, logLevel == "debug", Address(), Namespace())
+	`, logLevel == "debug", Address(), Namespace(), Snapshotter(), PullPolicy())
 
 	if err := os.WriteFile(NerdctlConfigTomlPath(), []byte(configContent), 0644); err != nil {
 		return errors.Errorf("writing nerdctl config: %w", err)
@@ -97,7 +98,10 @@ state  = "%[2]s"
 
 # Snapshotter config
 [plugins."io.containerd.snapshotter.v1.overlayfs"]
-  root_path = "%[7]s"
+  root_path = "%[7]s/overlayfs"
+
+[plugins."io.containerd.snapshotter.v1.native"]
+  root_path = "%[7]s/native"
 
 # Content store config
 [plugins."io.containerd.content.v1.content"]
@@ -115,14 +119,14 @@ state  = "%[2]s"
 [plugins."io.containerd.metadata.v1.bolt"]
   content_sharing_policy = "shared"
 `,
-		filepath.Join(WorkDir(), "root"),      // %[1]s
-		filepath.Join(WorkDir(), "state"),     // %[2]s
-		Address(),                             // %[3]s
-		logLevel,                              // %[4]s
-		shimRuntimeID,                         // %[5]s
-		ShimSimlinkPath(),                     // %[6]s
-		filepath.Join(WorkDir(), "snapshots"), // %[7]s
-		filepath.Join(WorkDir(), "content"),   // %[8]s
+		ContainerdRootDir(),      // %[1]s
+		ContainerdStateDir(),     // %[2]s
+		Address(),                // %[3]s
+		logLevel,                 // %[4]s
+		shimRuntimeID,            // %[5]s
+		ShimSimlinkPath(),        // %[6]s
+		ContainerdSnapshotsDir(), // %[7]s
+		ContainerdContentDir(),   // %[8]s
 	)
 
 	if err := os.WriteFile(ContainerdConfigTomlPath(), []byte(configContent), 0644); err != nil {

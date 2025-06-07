@@ -42,6 +42,8 @@ func ApplyDevices(ctx context.Context, applier DeviceApplier, devices []VirtioDe
 			return applier.ApplyVirtioRosettaShare(ctx, dev)
 		case *USBMassStorage:
 			return applier.ApplyVirtioUsbMassStorage(ctx, dev)
+		case *VirtioSerialFifoFile:
+			return applier.ApplyVirtioSerialFifoFile(ctx, dev)
 		default:
 			return fmt.Errorf("unsupported device type: %T", dev)
 		}
@@ -72,6 +74,7 @@ type DeviceApplier interface {
 	ApplyVirtioSerialStdio(ctx context.Context, vmConfig *VirtioSerialStdio) error
 	ApplyVirtioSerialPty(ctx context.Context, vmConfig *VirtioSerialPty) error
 	ApplyVirtioSerialLogFile(ctx context.Context, vmConfig *VirtioSerialLogFile) error
+	ApplyVirtioSerialFifoFile(ctx context.Context, vmConfig *VirtioSerialFifoFile) error
 	// ApplyVirtioDiskStorage(ctx context.Context, vmConfig *DiskStorageConfig) error
 	// ApplyVirtioNetworkBlockStorage(ctx context.Context, vmConfig *NetworkBlockStorageConfig) error
 	// ApplyVirtioStorage(ctx context.Context, vmConfig *StorageConfig) error

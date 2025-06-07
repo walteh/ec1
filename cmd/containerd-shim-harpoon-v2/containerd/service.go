@@ -3,6 +3,7 @@ package containerd
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"os"
 	"path"
@@ -27,6 +28,7 @@ import (
 	"github.com/containerd/ttrpc"
 	"github.com/containerd/typeurl/v2"
 	"github.com/creack/pty"
+	"github.com/lmittmann/tint"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
@@ -36,7 +38,7 @@ import (
 	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
-func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (task.TTRPCTaskService, error) {
+func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskService, error) {
 	s := service{
 		containers: make(map[string]*container),
 		sd:         sd,
@@ -129,6 +131,8 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 		return nil, errors.Errorf("reading spec at %s/: %w", specPath, err)
 	}
 
+	slog.InfoContext(ctx, "CREATE", "request", tint.NewPrettyValue(request))
+
 	rootfs, err := mount.CanonicalizePath(spec.Root.Path)
 	if err != nil {
 		return nil, errors.Errorf("canonicalizing rootfs at %s/: %w", rootfs, err)
@@ -146,9 +150,9 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 	defer s.mu.Unlock()
 
 	c := &container{
+		request:       request,
 		spec:          spec,
 		bundlePath:    request.Bundle,
-		rootfs:        rootfs,
 		dnsSocketPath: dnsSocketPath,
 		hypervisor:    vf.NewHypervisor(),
 		primary: managedProcess{
@@ -172,8 +176,6 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 	if err = c.primary.setup(ctx, c.rootfs, request.Stdin, request.Stdout, request.Stderr); err != nil {
 		return nil, errors.Errorf("setting up primary process: %w", err)
 	}
-
-	log.G(ctx).WithField("request", request).Info("CREATE_SETUP_DONE")
 
 	mounts, err := processMounts(c.rootfs, request.Rootfs, spec.Mounts)
 	if err != nil {
@@ -256,13 +258,13 @@ func processMount(rootfs, mtype, source, target string, options []string) (*moun
 	case "bind":
 		stat, err := os.Stat(source)
 		if err != nil {
-			return nil, errors.Errorf("statting source: %w", err)
+			return nil, errors.Errorf("statting source '%s': %w", source, err)
 		}
 
 		if stat.IsDir() {
 			fullPath := filepath.Join(rootfs, target)
 			if err = os.MkdirAll(fullPath, 0o755); err != nil {
-				return nil, errors.Errorf("creating directory %s: %w", fullPath, err)
+				return nil, errors.Errorf("creating directory '%s' to mount '%s': %w", fullPath, source, err)
 			}
 
 			return m, nil
