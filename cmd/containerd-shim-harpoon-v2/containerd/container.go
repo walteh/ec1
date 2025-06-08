@@ -115,13 +115,68 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 // createVM creates and starts a new microVM for this container using the already-prepared rootfs
 func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, execID string, rootfs string, stdio stdio) (retErr error) {
 	// containerd has already prepared the rootfs for us at c.rootfs
-	// We just need to create a VM that uses this existing rootfs directory
+	// We just need to create a VM that uses this existing rootfs directory\
+
+	// if false {
+
+	// this is a sample with another set of cfode that works during a test but does not in the shim
+
+	// 	hpv := vf.NewHypervisor()
+
+	// 	dir, err := os.MkdirTemp("", "ec1-test-cache")
+	// 	if err != nil {
+	// 		return errors.Errorf("creating temp dir: %w", err)
+	// 	}
+
+	// 	memMapFetcher := ec1oci.NewMemoryMapFetcher(dir, toci.Registry())
+	// 	fetcher := ec1oci.NewImageCache(dir, memMapFetcher, ec1oci.NewOCIFilesystemConverter())
+
+	// 	slog.InfoContext(ctx, "createVM: Running VM", "id", id, "execID", execID, "rootfs", rootfs)
+
+	// 	rvm, err := vmm.NewContainerizedVirtualMachine(ctx, hpv, fetcher, vmm.ConatinerImageConfig{
+	// 		ImageRef: oci_image_cache.ALPINE_LATEST.String(),
+	// 		Platform: units.PlatformLinuxARM64,
+	// 		Memory:   strongunits.MiB(64).ToBytes(),
+	// 		VCPUs:    1,
+	// 	})
+	// 	if err != nil {
+	// 		return errors.Errorf("creating VM: %w", err)
+	// 	}
+
+	// 	go func() {
+	// 		slog.DebugContext(ctx, "vm running, waiting for vm to stop")
+	// 		err := rvm.WaitOnVmStopped()
+	// 		if err != nil {
+	// 			slog.ErrorContext(ctx, "error waiting for VM to stop", "error", err)
+	// 		}
+	// 	}()
+
+	// 	defer func() {
+	// 		slog.DebugContext(ctx, "stopping vm")
+	// 		rvm.VM().HardStop(ctx)
+	// 	}()
+
+	// 	err = vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
+	// 	if err != nil {
+	// 		return errors.Errorf("timeout waiting for vm to be running: %w", err)
+	// 	}
+
+	// 	select {
+	// 	case <-rvm.WaitOnVMReadyToExec():
+	// 	case <-time.After(3 * time.Second):
+	// 		return errors.Errorf("timeout waiting for vm to be ready to exec")
+	// 	}
+
+	// 	c.vm = rvm
+	// 	return nil
+	// }
 
 	// Add panic recovery for VM creation
 	defer func() {
 		if r := recover(); r != nil {
 			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", id, "execID", execID)
 			retErr = errors.Errorf("VM creation panicked: %v", r)
+			panic(r)
 		}
 	}()
 
@@ -176,7 +231,6 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 	})
 
 	if err != nil {
-		slog.ErrorContext(ctx, "createVM: Failed to create VM", "error", err)
 		return errors.Errorf("creating VM from rootfs: %w", err)
 	}
 

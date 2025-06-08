@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nxadm/tail"
+
 	"github.com/walteh/ec1/tools/cmd/codesign/codesigncmd"
 )
 
@@ -43,13 +45,15 @@ func (a *arrayFlags) Set(value string) error {
 
 // GowConfig holds configuration for the Go wrapper
 type GowConfig struct {
-	Verbose           bool
-	PipeStdioToFile   bool
-	WorkspaceRoot     string
-	GoExecutable      string
-	MaxLines          int
-	ErrorsToSuppress  []string
-	StdoutsToSuppress []string
+	LogFileToAppendIn  string
+	LogFileToAppendOut string
+	Verbose            bool
+	PipeStdioToFile    bool
+	WorkspaceRoot      string
+	GoExecutable       string
+	MaxLines           int
+	ErrorsToSuppress   []string
+	StdoutsToSuppress  []string
 }
 
 // NewGowConfig creates a new configuration with defaults
@@ -57,11 +61,13 @@ func NewGowConfig() *GowConfig {
 	workspaceRoot := findWorkspaceRoot()
 
 	return &GowConfig{
-		Verbose:         false,
-		PipeStdioToFile: false,
-		WorkspaceRoot:   workspaceRoot,
-		GoExecutable:    "",
-		MaxLines:        1000,
+		Verbose:            false,
+		PipeStdioToFile:    false,
+		WorkspaceRoot:      workspaceRoot,
+		LogFileToAppendIn:  "",
+		LogFileToAppendOut: "",
+		GoExecutable:       "",
+		MaxLines:           1000,
 		ErrorsToSuppress: []string{
 			"plugin.proto#L122",
 			"# github.com/lima-vm/lima/cmd/limactl",
@@ -105,7 +111,8 @@ func findWorkspaceRoot() string {
 
 // setupStdioLogging wraps global stdio to pipe to log file
 func (cfg *GowConfig) setupStdioLogging(command string, args []string) error {
-	logDir := filepath.Join(cfg.WorkspaceRoot, ".log", "gow")
+
+	logDir := filepath.Join(cfg.WorkspaceRoot, ".logs", "gow")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
@@ -113,6 +120,10 @@ func (cfg *GowConfig) setupStdioLogging(command string, args []string) error {
 	// Use microseconds and process ID for unique timestamps
 	timestamp := fmt.Sprintf("%s_%d", time.Now().Format("2006-01-02_15-04-05.000000"), os.Getpid())
 	logFile := filepath.Join(logDir, fmt.Sprintf("%s_stdio-pipe.log", timestamp))
+
+	if cfg.LogFileToAppendOut != "" {
+		logFile = cfg.LogFileToAppendOut
+	}
 
 	file, err := os.Create(logFile)
 	if err != nil {
@@ -190,6 +201,69 @@ func (cfg *GowConfig) findSafeGo() (string, error) {
 	}
 
 	return "", fmt.Errorf("could not find go executable")
+}
+
+func (cfg *GowConfig) execSafeGoWithTail(ctx context.Context, args ...string) error {
+	goPath, err := cfg.findSafeGo()
+	if err != nil {
+		return err
+	}
+
+	if cfg.Verbose {
+		fmt.Printf("executing go command: %s %v\n", goPath, args)
+	}
+
+	// If the user supplied a logfile, start tail -F
+	if cfg.LogFileToAppendIn != "" {
+		file := filepath.Join(cfg.WorkspaceRoot, cfg.LogFileToAppendIn)
+
+		if cfg.Verbose {
+			fmt.Printf("tailing log file: %s\n", file)
+		}
+
+		t, err := tail.TailFile(
+			file, tail.Config{Follow: true, ReOpen: true, Poll: true, Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}})
+		if err != nil {
+			return fmt.Errorf("failed to tail log file: %w", err)
+		}
+
+		go func() {
+			for line := range t.Lines {
+				fmt.Fprintf(stdout, "%s\n", line.Text)
+			}
+		}()
+
+		// tailCmd = exec.CommandContext(ctx, "tail", "-n", "0", "-F", file)
+		// tailOut, err := tailCmd.StdoutPipe()
+		// if err != nil {
+		// 	return fmt.Errorf("failed to pipe tail stdout: %w", err)
+		// }
+		// if err := tailCmd.Start(); err != nil {
+		// 	return fmt.Errorf("failed to start tail: %w", err)
+		// }
+		// // Merge tail output into ours
+		// go func() {
+		// 	io.Copy(stdout, tailOut)
+		// }()
+
+		// go func() {
+		// 	err := tailCmd.Wait()
+		// 	if err != nil {
+		// 		fmt.Printf("error waiting for tail: %s\n", err)
+		// 	}
+		// }()
+
+	}
+
+	// Prepare the real `go` command
+	cmd := exec.CommandContext(ctx, goPath, args...)
+	cmd.Env = os.Environ()
+	cmd.Dir, _ = os.Getwd()
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Stdin = stdin
+
+	return cmd.Run()
 }
 
 // execSafeGo executes the real go command with given arguments using exec.Command
@@ -549,7 +623,7 @@ func (cfg *GowConfig) handleRun(args []string) error {
 		fmt.Printf("🚀 Running go run with args: %v\n", goArgs)
 	}
 
-	return cfg.execSafeGo(ctx, goArgs...)
+	return cfg.execSafeGoWithTail(ctx, goArgs...)
 }
 
 func main() {
@@ -565,6 +639,10 @@ func main() {
 			cfg.Verbose = true
 		} else if arg == "-pipe-stdio-to-file" || arg == "--pipe-stdio-to-file" {
 			cfg.PipeStdioToFile = true
+		} else if strings.HasPrefix(arg, "-log-file-to-append-in=") {
+			cfg.LogFileToAppendIn = strings.TrimPrefix(arg, "-log-file-to-append-in=")
+		} else if strings.HasPrefix(arg, "-log-file-to-append-out=") {
+			cfg.LogFileToAppendOut = strings.TrimPrefix(arg, "-log-file-to-append-out=")
 		} else {
 			filteredArgs = append(filteredArgs, arg)
 		}

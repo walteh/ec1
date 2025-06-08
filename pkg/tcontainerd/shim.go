@@ -20,6 +20,7 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v2/containerd"
+	libdispatch "github.com/walteh/ec1/pkg/libdipatch"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/logging/logrusshim"
 )
@@ -68,6 +69,9 @@ func ShimReexecInit() {
 // }
 
 func ShimMain() {
+	// runtime.LockOSThread()
+	// defer runtime.UnlockOSThread()
+
 	// if os.Getuid() == 0 {
 	// 	syscall.Setuid(1000)
 	// 	syscall.Setgid(1000)
@@ -98,7 +102,7 @@ func ShimMain() {
 
 	ctx = logging.SetupSlogSimpleToWriterWithProcessName(ctx, proxySock, true, "shim")
 
-	ctx = slogctx.Append(ctx, slog.String("process", "shim"), slog.String("pid", strconv.Itoa(os.Getpid())), slog.String("parent_pid", strconv.Itoa(syscall.Getppid())))
+	ctx = slogctx.Append(ctx, slog.String("process", "shim"), slog.String("pid", strconv.Itoa(os.Getpid())), slog.String("ppid", strconv.Itoa(syscall.Getppid())))
 
 	slog.InfoContext(ctx, "SHIM_STARTING", "args", os.Args[1:])
 
@@ -112,6 +116,18 @@ func ShimMain() {
 	}()
 
 	if syscall.Getppid() == 1 {
+
+		// runtime.LockOSThread() // ensures main() stays on the true main thread
+		// defer runtime.UnlockOSThread()
+		// go func() {
+		// 	defer func() {
+		// 		if r := recover(); r != nil {
+		// 			slog.ErrorContext(ctx, "panic in DispatchMain", "panic", r)
+		// 			panic(r)
+		// 		}
+		// 	}()
+		// 	libdispatch.DispatchMain()
+		// }()
 
 		var rusage syscall.Rusage
 		if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
@@ -135,8 +151,8 @@ func ShimMain() {
 					if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
 						slog.InfoContext(ctx, "SHIM_RESOURCE_USAGE_CHECK",
 							"max_rss", rusage.Maxrss,
-							"user_time", rusage.Utime,
-							"sys_time", rusage.Stime,
+							"user_time", float64(rusage.Utime.Usec)/1000000,
+							"sys_time", float64(rusage.Stime.Usec)/1000000,
 							"num_goroutines", runtime.NumGoroutine())
 					}
 				}
@@ -161,10 +177,28 @@ func ShimMain() {
 		time.Sleep(1 * time.Second)
 	}()
 
-	err = RunShim(ctx)
-	if err != nil {
-		slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
+	errc := make(chan error)
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	go func() {
+		errc <- RunShim(ctx)
+	}()
+
+	if syscall.Getppid() == 1 {
+		slog.InfoContext(ctx, "SHIM_DISPATCH_MAIN")
+		libdispatch.DispatchMain()
+	} else {
+		select {
+		case err := <-errc:
+			slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
+		case <-time.After(30 * time.Second):
+			slog.ErrorContext(ctx, "SHIM_MAIN_TIMEOUT")
+		}
 	}
+
+	// <-time.After(30 * time.Second)
 
 }
 

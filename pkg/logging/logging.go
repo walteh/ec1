@@ -45,6 +45,25 @@ func SetupSlogSimpleToWriter(ctx context.Context, w io.Writer, color bool, proce
 
 var logWriter io.Writer
 
+func SetupSlogSimpleToWriterWithProcessNameJSON(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
+	devHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
+		Level:     slog.LevelDebug,
+		AddSource: true,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			a = formatErrorStacks(groups, a)
+			return Redact(groups, a)
+		},
+	})
+
+	ctxHandler := slogctx.NewHandler(devHandler, &slogctx.HandlerOptions{})
+
+	mylogger := slog.New(ctxHandler)
+	slog.SetDefault(mylogger)
+	logWriter = w
+
+	return slogctx.NewCtx(ctx, mylogger)
+}
+
 func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
 
 	devHandler := tint.NewHandler(w, &tint.Options{

@@ -241,11 +241,16 @@ func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 	bootCtx, bootCancel := context.WithCancel(ctx)
 	errGroup, ctx := errgroup.WithContext(bootCtx)
 	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in bootContainerVM", "panic", r)
+			panic(r)
+		}
 		// clean up the boot provisioners - this shouldn't throw an error because they prob are going to throw something
 		bootCancel()
 		if err := errGroup.Wait(); err != nil {
 			slog.DebugContext(ctx, "error running boot provisioners", "error", err)
 		}
+
 	}()
 
 	go func() {

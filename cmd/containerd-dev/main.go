@@ -34,13 +34,20 @@ func main() {
 
 	background := false
 	debug := true
+	json := false
 	flag.BoolVar(&background, "background", false, "Run in background (daemon mode)")
 	flag.BoolVar(&debug, "debug", true, "Run in debug mode")
 	flag.Var(&ctrCommands, "ctr-command", "Command to run in ctr")
-
+	flag.BoolVar(&json, "json", false, "Run in JSON mode")
 	flag.Parse()
 
-	ctx := logging.SetupSlogSimpleToWriterWithProcessName(context.Background(), os.Stdout, debug, "containerd")
+	var ctx context.Context
+
+	if json {
+		ctx = logging.SetupSlogSimpleToWriterWithProcessNameJSON(context.Background(), os.Stdout, debug, "containerd")
+	} else {
+		ctx = logging.SetupSlogSimpleToWriterWithProcessName(context.Background(), os.Stdout, debug, "containerd")
+	}
 
 	ctx = slogctx.Append(ctx, slog.String("process", "containerd"), slog.String("pid", strconv.Itoa(os.Getpid())))
 

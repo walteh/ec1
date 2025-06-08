@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -71,6 +70,8 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 
 	devices := []virtio.VirtioDevice{}
 
+	groupErrs := errgroup.Group{}
+
 	var kernelXz, initramfsGz io.Reader
 	var err error
 
@@ -102,15 +103,20 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 	}
 
 	for path, reader := range files {
-		err = osx.WriteFileFromReaderAsync(ctx, path, reader, 0644, wg)
+		err = osx.WriteFileFromReaderAsync(ctx, path, reader, 0644, &groupErrs)
 		if err != nil {
 			return nil, nil, errors.Errorf("writing files: %w", err)
 		}
-		os.Chown(path, 1000, 1000)
+		// os.Chown(path, 1000, 1000)
 	}
 
 	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
 	cmdLine := strings.TrimSpace(" console=hvc0 " + extraArgs + " -- " + extraInitArgs)
+
+	err = groupErrs.Wait()
+	if err != nil {
+		return nil, nil, errors.Errorf("error waiting for errgroup: %w", err)
+	}
 
 	slog.InfoContext(ctx, "linux boot loader ready", "duration", time.Since(startTime))
 

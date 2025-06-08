@@ -57,6 +57,19 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 
 	errchan := make(chan error)
 	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "panic in Start", "panic", r)
+				panic(r)
+			}
+		}()
+		// runtime.LockOSThread()
+		// defer runtime.UnlockOSThread()
+
+		// libdispatch.DispatchMain()
+
+		slog.InfoContext(ctx, "dispatching main done")
 		err := vm.vzvm.Start()
 		if err != nil {
 			errchan <- errors.Errorf("starting virtual machine: %w", err)

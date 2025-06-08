@@ -35,7 +35,7 @@ type errTaskService struct {
 
 // RegisterTTRPC implements shim.TTRPCService.
 func (e *errTaskService) RegisterTTRPC(s *ttrpc.Server) error {
-	s.SetDebugging(true)
+	// s.SetDebugging(true)
 	task.RegisterTTRPCTaskService(s, e)
 	return nil
 }

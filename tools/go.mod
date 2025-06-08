@@ -164,6 +164,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.13.0 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
+	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/opencontainers/runc v1.3.0 // indirect
 	github.com/opencontainers/runtime-spec v1.2.1 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20250303011046-260e151b8552 // indirect
@@ -219,6 +220,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	k8s.io/api v0.32.3 // indirect
 	k8s.io/apimachinery v0.32.3 // indirect

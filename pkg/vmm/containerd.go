@@ -11,9 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -54,24 +52,30 @@ type ContainerizedVMConfig struct {
 }
 
 func appendContext(ctx context.Context, id string) context.Context {
-	var rlimit syscall.Rlimit
-	syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
-	groups, _ := syscall.Getgroups()
+	// var rlimit syscall.Rlimit
+	// syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	// groups, _ := syscall.Getgroups()
 
 	return slogctx.Append(ctx,
-		slog.String("uid", strconv.Itoa(syscall.Getuid())),
-		slog.String("gid", strconv.Itoa(syscall.Getgid())),
-		slog.Any("groups", groups),
-		slog.String("pgrp", strconv.Itoa(syscall.Getpgrp())),
-		slog.String("id", id),
-		slog.String("pid", strconv.Itoa(syscall.Getpid())),
-		slog.String("ppid", strconv.Itoa(syscall.Getppid())),
-		slog.String("egid", strconv.Itoa(syscall.Getegid())),
-		slog.String("euid", strconv.Itoa(syscall.Geteuid())),
-		slog.String("page_size", strconv.Itoa(syscall.Getpagesize())),
-		slog.String("rlimit_cur", strconv.Itoa(int(rlimit.Cur))),
-		slog.String("rlimit_max", strconv.Itoa(int(rlimit.Max))),
-		slog.String("table_size", strconv.Itoa(syscall.Getdtablesize())),
+		slog.String("vmid", id),
+		// slog.String("pid", strconv.Itoa(syscall.Getpid())),
+		// slog.String("ppid", strconv.Itoa(syscall.Getppid())),
+		// slog.String("uid", strconv.Itoa(syscall.Getuid())),
+		// slog.String("gid", strconv.Itoa(syscall.Getgid())),
+		// slog.String("egid", strconv.Itoa(syscall.Getegid())),
+		// slog.String("euid", strconv.Itoa(syscall.Geteuid())),
+		// slog.String("page_size", strconv.Itoa(syscall.Getpagesize())),
+		// slog.Any("groups", groups),
+		// slog.String("pgrp", strconv.Itoa(syscall.Getpgrp())),
+		// slog.String("id", id),
+		// slog.String("pid", strconv.Itoa(syscall.Getpid())),
+		// slog.String("ppid", strconv.Itoa(syscall.Getppid())),
+		// slog.String("egid", strconv.Itoa(syscall.Getegid())),
+		// slog.String("euid", strconv.Itoa(syscall.Geteuid())),
+		// slog.String("page_size", strconv.Itoa(syscall.Getpagesize())),
+		// slog.String("rlimit_cur", strconv.Itoa(int(rlimit.Cur))),
+		// slog.String("rlimit_max", strconv.Itoa(int(rlimit.Max))),
+		// slog.String("table_size", strconv.Itoa(syscall.Getdtablesize())),
 	)
 }
 

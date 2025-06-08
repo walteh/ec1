@@ -6,7 +6,7 @@ import "github.com/walteh/ec1/pkg/binembed"
 //go:embed harpoond.xz
 var BinaryXZ []byte
 
-const BinaryXZChecksum = "c2de37e6f0c6a86879e46a012f52eecbe5577c5dcb3478161d7a4aa32c530359"
+const BinaryXZChecksum = "f2cbcb82b492d1752d14c354c01ffbbff718ffcf43a7c6ce59c68c0c2c42af88"
 
 func init() {
 	binembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)

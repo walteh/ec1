@@ -30,6 +30,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/lmittmann/tint"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
 
 	taskt "github.com/containerd/containerd/api/types/task"
@@ -322,13 +323,17 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	}
 
 	// Set a fake PID for compatibility (VM processes don't have host PIDs)
-	p.pid = 1
+	p.pid = os.Getpid()
 	p.status = taskt.Status_RUNNING // Set as running immediately
 
 	// Start VM creation asynchronously with better error handling
 	go func() {
 		// Use background context since the request context might be cancelled
 		vmCtx := context.Background()
+		attrs := slogctx.ExtractAppended(ctx, time.Now(), slog.LevelDebug, "start_vm_done")
+		for _, attr := range attrs {
+			vmCtx = slogctx.Append(vmCtx, attr)
+		}
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -351,7 +356,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 					close(p.waitblock)
 				}
 			}
-			log.G(ctx).WithField("pid", p.pid).Info("START_VM_WAIT_DONE")
+			log.G(ctx).Info("START_VM_WAIT_DONE")
 		}()
 
 		log.G(ctx).Info("Starting VM creation")
@@ -616,6 +621,8 @@ func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.Wa
 	}
 
 	log.G(ctx).WithField("request", request).Info("WAIT_BLOCK_START")
+
+	// libdispatch.DispatchMain()
 
 	<-p.waitblock
 

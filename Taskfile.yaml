@@ -3,7 +3,6 @@ version: "3"
 vars:
     GO_MODULES:
         sh: cat go.work | grep -oEh  '\t+(\./*[^[:space:]]*)' | tr -d '\t'
-
     GO_ROOT_PKG:
         sh: cat go.mod | grep -oE '^module[^\S]+' | cut -d' ' -f2
     GO_COMMAND: ./gow
@@ -130,6 +129,10 @@ tasks:
             BIN: harpoond
             PACKAGE: harpoon_harpoond_{{ .ARCH }}
             OUT_DIR: ./gen/harpoon/{{.PACKAGE}}
+        generates:
+          - ./gen/harpoon/harpoon_harpoond_{{ .ARCH }}/**
+        sources:
+          - ./cmd/harpoond/**
 
         cmds:
           - cmd: rm -rf {{.OUT_DIR}}
@@ -155,35 +158,43 @@ tasks:
         label: 'harpoon:kernel:{{.ARCH}}'
         requires: {vars: [ARCH]}
         desc: builds the kernel
+        sources:
+          - ./harpoon/kernel/**
+        generates:
+          - ./gen/harpoon/harpoon_vmlinux_{{ .ARCH }}/**
         vars:
             KERNEL_VERSION: 6.15-rc7
             ARCH: "{{index .MATCH 0}}"
             PACKAGE: harpoon_vmlinux_{{ .ARCH }}
             OUT_DIR: ./gen/harpoon/{{.PACKAGE}}
+            TMP_DIR:
+                sh: mktemp -d
         cmds:
-          - cmd: rm -rf {{.OUT_DIR}}
-          - cmd: mkdir -p {{.OUT_DIR}}
+          - defer: rm -rf {{.TMP_DIR}}
+          - cmd: mkdir -p {{.TMP_DIR}}
           - |-
             docker buildx build \
                 --platform=linux/{{.ARCH}} \
                 --build-arg KERNEL_VERSION=6.15-rc7 \
                 --build-arg KERNEL_CONFIG=harpoon-{{.ARCH}}.config \
                 --target export \
-                --output type=local,dest={{.OUT_DIR}} \
+                --output type=local,dest={{.TMP_DIR}} \
                 harpoon/kernel
-          - cmd: xz -k {{.OUT_DIR}}/vmlinux
-          - cmd: sha256sum {{.OUT_DIR}}/vmlinux.xz > {{.OUT_DIR}}/vmlinux.xz.sha256
-          - cmd: sha256sum {{.OUT_DIR}}/config-{{.KERNEL_VERSION}} > {{.OUT_DIR}}/config-{{.KERNEL_VERSION}}.sha256
-          - cmd: rm {{.OUT_DIR}}/vmlinux
+          - cmd: xz -k {{.TMP_DIR}}/vmlinux
+          - cmd: sha256sum {{.TMP_DIR}}/vmlinux.xz > {{.TMP_DIR}}/vmlinux.xz.sha256
+          - cmd: sha256sum {{.TMP_DIR}}/config-{{.KERNEL_VERSION}} > {{.TMP_DIR}}/config-{{.KERNEL_VERSION}}.sha256
+          - cmd: rm {{.TMP_DIR}}/vmlinux
           - cmd: |-
-                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\nimport \"github.com/walteh/ec1/pkg/binembed\"\n" > {{.OUT_DIR}}/embed.gen.go
-                echo -e "//go:embed vmlinux.xz\nvar BinaryXZ []byte\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "const BinaryXZChecksum = \"$(cat {{.OUT_DIR}}/vmlinux.xz.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "const Version = \"{{.KERNEL_VERSION}}\"\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "//go:embed config-{{.KERNEL_VERSION}}\n\nvar Config []byte\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "const ConfigChecksum = \"$(cat {{.OUT_DIR}}/config-{{.KERNEL_VERSION}}.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n\tbinembed.RegisterRaw(ConfigChecksum, Config)\n}\n" >> {{.OUT_DIR}}/embed.gen.go
-          - cmd: go fmt {{.OUT_DIR}}/embed.gen.go
+                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\nimport \"github.com/walteh/ec1/pkg/binembed\"\n" > {{.TMP_DIR}}/embed.gen.go
+                echo -e "//go:embed vmlinux.xz\nvar BinaryXZ []byte\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "const BinaryXZChecksum = \"$(cat {{.TMP_DIR}}/vmlinux.xz.sha256 | awk '{print $1}')\"\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "const Version = \"{{.KERNEL_VERSION}}\"\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "//go:embed config-{{.KERNEL_VERSION}}\n\nvar Config []byte\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "const ConfigChecksum = \"$(cat {{.TMP_DIR}}/config-{{.KERNEL_VERSION}}.sha256 | awk '{print $1}')\"\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n\tbinembed.RegisterRaw(ConfigChecksum, Config)\n}\n" >> {{.TMP_DIR}}/embed.gen.go
+          - cmd: go fmt {{.TMP_DIR}}/embed.gen.go
+          - cmd: mkdir -p $(dirname {{.OUT_DIR}})
+          - cmd: mv -f {{.TMP_DIR}}/* {{.OUT_DIR}}
 
     harpoon:kernel:
         desc: builds the kernel
@@ -195,32 +206,40 @@ tasks:
         label: 'harpoon:initramfs:{{.ARCH}}'
         requires: {vars: [ARCH]}
         desc: builds the initramfs
+        sources:
+          - ./harpoon/initramfs/**
+        generates:
+          - ./gen/harpoon/harpoon_initramfs_{{ .ARCH }}/**
         vars:
             BUSYBOX_VERSION: 1.37.0
             ARCH: "{{index .MATCH 0}}"
             PACKAGE: harpoon_initramfs_{{ .ARCH }}
             OUT_DIR: ./gen/harpoon/{{.PACKAGE}}
+            TMP_DIR:
+                sh: mktemp -d
         cmds:
           - task: harpoon:harpoond:{{.ARCH}}
-          - cmd: rm -rf {{.OUT_DIR}}
-          - cmd: mkdir -p {{.OUT_DIR}}
+          - defer: rm -rf {{.TMP_DIR}}
+          - cmd: mkdir -p {{.TMP_DIR}}
           - |-
             docker buildx build \
                 --platform=linux/{{.ARCH}} \
                 --build-arg BUSYBOX_VERSION={{.BUSYBOX_VERSION}} \
                 --target export \
-                --output type=local,dest={{.OUT_DIR}} \
+                --output type=local,dest={{.TMP_DIR}} \
                 --build-context=harpoond=./gen/harpoon/harpoon_harpoond_{{ .ARCH }} \
                 harpoon/initramfs
-          - cmd: xz -k {{.OUT_DIR}}/initramfs.cpio.gz
-          - cmd: sha256sum {{.OUT_DIR}}/initramfs.cpio.gz.xz > {{.OUT_DIR}}/initramfs.cpio.gz.xz.sha256
-          - cmd: rm {{.OUT_DIR}}/initramfs.cpio.gz
+          - cmd: xz -k {{.TMP_DIR}}/initramfs.cpio.gz
+          - cmd: sha256sum {{.TMP_DIR}}/initramfs.cpio.gz.xz > {{.TMP_DIR}}/initramfs.cpio.gz.xz.sha256
+          - cmd: rm {{.TMP_DIR}}/initramfs.cpio.gz
           - cmd: |-
-                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\nimport \"github.com/walteh/ec1/pkg/binembed\"\n" > {{.OUT_DIR}}/embed.gen.go
-                echo -e "//go:embed initramfs.cpio.gz.xz\nvar BinaryXZ []byte\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "const BinaryXZChecksum = \"$(cat {{.OUT_DIR}}/initramfs.cpio.gz.xz.sha256 | awk '{print $1}')\"\n" >> {{.OUT_DIR}}/embed.gen.go
-                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n}\n" >> {{.OUT_DIR}}/embed.gen.go
-          - cmd: go fmt {{.OUT_DIR}}/embed.gen.go
+                echo -e "package {{.PACKAGE}}\n\nimport _ \"embed\"\nimport \"github.com/walteh/ec1/pkg/binembed\"\n" > {{.TMP_DIR}}/embed.gen.go
+                echo -e "//go:embed initramfs.cpio.gz.xz\nvar BinaryXZ []byte\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "const BinaryXZChecksum = \"$(cat {{.TMP_DIR}}/initramfs.cpio.gz.xz.sha256 | awk '{print $1}')\"\n" >> {{.TMP_DIR}}/embed.gen.go
+                echo -e "func init() {\n\tbinembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)\n}\n" >> {{.TMP_DIR}}/embed.gen.go
+          - cmd: go fmt {{.TMP_DIR}}/embed.gen.go
+          - cmd: mkdir -p $(dirname {{.OUT_DIR}})
+          - cmd: mv -f {{.TMP_DIR}}/* {{.OUT_DIR}}
 
     harpoon:initramfs:
         desc: builds the initramfs
@@ -293,3 +312,23 @@ tasks:
                     {{.ITEM | trimPrefix "docker.io/library/" | trimPrefix "docker.io/" | replace "/" "_" | replace ":" "_" | lower | replace "-" "_" | replace "." "_" | replace "+" "_" }}
           - cmd: go fmt {{.DIRECTORY}}/oci_image_cache.gen.go
 
+    dev:shim:killall:
+        desc: kills all running containers
+        cmds:
+          - cmd: sudo -A killall -9 containerd-shim-harpoon-v2 || true
+          - cmd: sudo -A killall -9 nerdctl-dev || true
+
+    dev:2025-06-08:01:
+        desc: runs the shim for 2025-06-08
+        cmds:
+          - task: dev:shim:killall
+          - task: harpoon:initramfs:arm64
+          - cmd: |-
+                ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
+                    --platform=linux/arm64 \
+                    --network=host \
+                    --runtime=containerd.shim.harpoon.v2 \
+                    --pull=missing \
+                    --rm \
+                    docker.io/library/alpine:latest \
+                    "echo" "'hi'"
