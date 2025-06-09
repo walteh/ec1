@@ -16,7 +16,7 @@ import (
 	"github.com/mholt/archives"
 	"github.com/nxadm/tail"
 
-	vzplugin "github.com/walteh/ec1/cmd/proc-demo/plugin/vz"
+	vzplugin "github.com/walteh/ec1/cmd/vz-main-thread-debug/plugin/vz"
 
 	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_arm64"
 	"github.com/walteh/ec1/pkg/ext/osx"

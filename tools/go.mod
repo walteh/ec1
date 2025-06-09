@@ -71,7 +71,10 @@ require (
 	gitlab.com/tozd/go/errors v0.10.0
 )
 
-require github.com/lmittmann/tint v1.1.1
+require (
+	github.com/lmittmann/tint v1.1.1
+	github.com/nxadm/tail v1.4.11
+)
 
 require (
 	github.com/Microsoft/hcsshim v0.13.0 // indirect
@@ -164,7 +167,6 @@ require (
 	github.com/multiformats/go-multiaddr v0.13.0 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/nwaples/rardecode/v2 v2.1.0 // indirect
-	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/opencontainers/runc v1.3.0 // indirect
 	github.com/opencontainers/runtime-spec v1.2.1 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20250303011046-260e151b8552 // indirect

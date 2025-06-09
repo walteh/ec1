@@ -428,7 +428,7 @@ func runLegacyMode(ctx context.Context) error {
 
 	config := &Config{
 		Target:       target,
-		Entitlements: []string{"virtualization", "inherit"}, // Default for backward compatibility
+		Entitlements: []string{"virtualization"}, // Default for backward compatibility
 		Identity:     "-",
 		Force:        false,
 		ExecArgs:     execArgs,
