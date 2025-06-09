@@ -21,29 +21,54 @@ type CommandExecutor interface {
 	ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error
 }
 
-// StreamingExecutor implements CommandExecutor using a Protocol for streaming
-type StreamingExecutor struct {
+// type SimpleExecutor struct {
+// 	mu                  sync.Mutex
+// 	bufferSize          int
+// 	commandCreationFunc func(ctx context.Context, name string) error
+// }
+
+// func NewSimpleExecutor(commandCreationFunc func(ctx context.Context, name string, payload []byte) ([]byte, error)) *SimpleExecutor {
+// 	return &SimpleExecutor{
+// 		commandCreationFunc: commandCreationFunc,
+// 	}
+// }
+
+// func (e *SimpleExecutor) ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error {
+
+// 	// grab stdin, stdout, stderr
+
+// 	inputPayload, err := proto.ReadMessage(protocol.Stdin)
+// 	if err != nil {
+// 		return errors.Errorf("reading stdin: %w", err)
+// 	}
+
+// 	outputPayload, err := proto.ReadMessage(protocol.Stdout)
+
+// }
+
+// StreamingCmdExecutor implements CommandExecutor using a Protocol for streaming
+type StreamingCmdExecutor struct {
 	mu                  sync.Mutex
 	bufferSize          int
 	commandCreationFunc func(ctx context.Context, command string) *exec.Cmd
 }
 
 // NewStreamingExecutor creates a new StreamingExecutor
-func NewStreamingExecutor(bufferSize int) *StreamingExecutor {
-	return &StreamingExecutor{
+func NewStreamingExecutor(bufferSize int) *StreamingCmdExecutor {
+	return &StreamingCmdExecutor{
 		bufferSize: bufferSize,
 	}
 }
 
-func NewStreamingExecutorWithCommandCreationFunc(bufferSize int, commandCreationFunc func(ctx context.Context, command string) *exec.Cmd) *StreamingExecutor {
-	return &StreamingExecutor{
+func NewStreamingExecutorWithCommandCreationFunc(bufferSize int, commandCreationFunc func(ctx context.Context, command string) *exec.Cmd) *StreamingCmdExecutor {
+	return &StreamingCmdExecutor{
 		bufferSize:          bufferSize,
 		commandCreationFunc: commandCreationFunc,
 	}
 }
 
 // ExecuteCommand executes a command and streams stdin/stdout/stderr through the protocol
-func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error {
+func (e *StreamingCmdExecutor) ExecuteCommand(ctx context.Context, proto protocol.Protocol, command string) error {
 
 	if e.commandCreationFunc != nil {
 		cmd := e.commandCreationFunc(ctx, command)
@@ -72,7 +97,7 @@ func (e *StreamingExecutor) ExecuteCommand(ctx context.Context, proto protocol.P
 }
 
 // setupAndRunCommand sets up pipes for a command and runs it
-func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protocol.Protocol, cmd *exec.Cmd) error {
+func (e *StreamingCmdExecutor) setupAndRunCommand(ctx context.Context, proto protocol.Protocol, cmd *exec.Cmd) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -152,12 +177,21 @@ func (e *StreamingExecutor) setupAndRunCommand(ctx context.Context, proto protoc
 // 	}
 // }
 
-func (e *StreamingExecutor) streamOutput2(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
+func (e *StreamingCmdExecutor) streamOutput2(r io.Reader, msgType protocol.MessageType, proto protocol.Protocol) {
 	_, err := io.Copy(NewWrappedWriter(proto, msgType), r)
 	if err != nil {
 		log.Printf("Error copying output: %v", err)
 	}
 }
+
+// read stdin from the protocol
+// func (e *StreamingCmdExecutor) streamInput(w io.Writer, proto protocol.Protocol) error {
+// 	payload, err := proto.ReadMessage(protocol.Stdin)
+// 	if err != nil {
+// 		return errors.Errorf("reading stdin: %w", err)
+// 	}
+// 	return bytes.NewReader(payload), nil
+// }
 
 type WrappedWriter struct {
 	protocol protocol.Protocol
@@ -178,3 +212,23 @@ func (w *WrappedWriter) Write(p []byte) (n int, err error) {
 	}
 	return len(p), nil
 }
+
+// type WrappedReader struct {
+// 	protocol protocol.Protocol
+// 	msgType  protocol.MessageType
+// }
+
+// func NewWrappedReader(protocol protocol.Protocol, msgType protocol.MessageType) *WrappedReader {
+// 	return &WrappedReader{
+// 		protocol: protocol,
+// 		msgType:  msgType,
+// 	}
+// }
+
+// func (w *WrappedReader) Read(p []byte) (n int, err error) {
+// 	payload, err := w.protocol.ReadMessage(w.msgType)
+// 	if err != nil {
+// 		return 0, errors.Errorf("reading message: %w", err)
+// 	}
+// 	return payload, nil
+// }

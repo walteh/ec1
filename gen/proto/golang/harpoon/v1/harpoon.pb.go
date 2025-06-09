@@ -607,22 +607,204 @@ func (*execResponse_Exit_) isExecResponse_Response() {}
 
 func (*execResponse_Error_) isExecResponse_Response() {}
 
+type TimeSyncRequest struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UnixTimeNs  uint64                 `protobuf:"varint,1,opt,name=unix_time_ns,json=unixTimeNs"`
+	xxx_hidden_Timezone    *string                `protobuf:"bytes,2,opt,name=timezone"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *TimeSyncRequest) Reset() {
+	*x = TimeSyncRequest{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TimeSyncRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TimeSyncRequest) ProtoMessage() {}
+
+func (x *TimeSyncRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *TimeSyncRequest) GetUnixTimeNs() uint64 {
+	if x != nil {
+		return x.xxx_hidden_UnixTimeNs
+	}
+	return 0
+}
+
+func (x *TimeSyncRequest) GetTimezone() string {
+	if x != nil {
+		if x.xxx_hidden_Timezone != nil {
+			return *x.xxx_hidden_Timezone
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *TimeSyncRequest) SetUnixTimeNs(v uint64) {
+	x.xxx_hidden_UnixTimeNs = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *TimeSyncRequest) SetTimezone(v string) {
+	x.xxx_hidden_Timezone = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+}
+
+func (x *TimeSyncRequest) HasUnixTimeNs() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *TimeSyncRequest) HasTimezone() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *TimeSyncRequest) ClearUnixTimeNs() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UnixTimeNs = 0
+}
+
+func (x *TimeSyncRequest) ClearTimezone() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Timezone = nil
+}
+
+type TimeSyncRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UnixTimeNs *uint64
+	Timezone   *string
+}
+
+func (b0 TimeSyncRequest_builder) Build() *TimeSyncRequest {
+	m0 := &TimeSyncRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UnixTimeNs != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_UnixTimeNs = *b.UnixTimeNs
+	}
+	if b.Timezone != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_Timezone = b.Timezone
+	}
+	return m0
+}
+
+type TimeSyncResponse struct {
+	state                     protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_PreviousTimeNs uint64                 `protobuf:"varint,1,opt,name=previous_time_ns,json=previousTimeNs"`
+	XXX_raceDetectHookData    protoimpl.RaceDetectHookData
+	XXX_presence              [1]uint32
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *TimeSyncResponse) Reset() {
+	*x = TimeSyncResponse{}
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TimeSyncResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TimeSyncResponse) ProtoMessage() {}
+
+func (x *TimeSyncResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *TimeSyncResponse) GetPreviousTimeNs() uint64 {
+	if x != nil {
+		return x.xxx_hidden_PreviousTimeNs
+	}
+	return 0
+}
+
+func (x *TimeSyncResponse) SetPreviousTimeNs(v uint64) {
+	x.xxx_hidden_PreviousTimeNs = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *TimeSyncResponse) HasPreviousTimeNs() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *TimeSyncResponse) ClearPreviousTimeNs() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_PreviousTimeNs = 0
+}
+
+type TimeSyncResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	PreviousTimeNs *uint64
+}
+
+func (b0 TimeSyncResponse_builder) Build() *TimeSyncResponse {
+	m0 := &TimeSyncResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.PreviousTimeNs != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_PreviousTimeNs = *b.PreviousTimeNs
+	}
+	return m0
+}
+
 type ExecRequest_Start struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Argc          *string                `protobuf:"bytes,1,opt,name=argc"`
-	xxx_hidden_Argv          []string               `protobuf:"bytes,2,rep,name=argv"`
-	xxx_hidden_EnvVars       map[string]string      `protobuf:"bytes,3,rep,name=env_vars,json=envVars" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	xxx_hidden_UseEntrypoint bool                   `protobuf:"varint,4,opt,name=use_entrypoint,json=useEntrypoint"`
-	xxx_hidden_Stdin         bool                   `protobuf:"varint,5,opt,name=stdin"`
-	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
-	XXX_presence             [1]uint32
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Argc        *string                `protobuf:"bytes,1,opt,name=argc"`
+	xxx_hidden_Argv        []string               `protobuf:"bytes,2,rep,name=argv"`
+	xxx_hidden_EnvVars     map[string]string      `protobuf:"bytes,3,rep,name=env_vars,json=envVars" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	xxx_hidden_Stdin       bool                   `protobuf:"varint,4,opt,name=stdin"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ExecRequest_Start) Reset() {
 	*x = ExecRequest_Start{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -634,7 +816,7 @@ func (x *ExecRequest_Start) String() string {
 func (*ExecRequest_Start) ProtoMessage() {}
 
 func (x *ExecRequest_Start) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[3]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,13 +851,6 @@ func (x *ExecRequest_Start) GetEnvVars() map[string]string {
 	return nil
 }
 
-func (x *ExecRequest_Start) GetUseEntrypoint() bool {
-	if x != nil {
-		return x.xxx_hidden_UseEntrypoint
-	}
-	return false
-}
-
 func (x *ExecRequest_Start) GetStdin() bool {
 	if x != nil {
 		return x.xxx_hidden_Stdin
@@ -685,7 +860,7 @@ func (x *ExecRequest_Start) GetStdin() bool {
 
 func (x *ExecRequest_Start) SetArgc(v string) {
 	x.xxx_hidden_Argc = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 4)
 }
 
 func (x *ExecRequest_Start) SetArgv(v []string) {
@@ -696,14 +871,9 @@ func (x *ExecRequest_Start) SetEnvVars(v map[string]string) {
 	x.xxx_hidden_EnvVars = v
 }
 
-func (x *ExecRequest_Start) SetUseEntrypoint(v bool) {
-	x.xxx_hidden_UseEntrypoint = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
-}
-
 func (x *ExecRequest_Start) SetStdin(v bool) {
 	x.xxx_hidden_Stdin = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
 }
 
 func (x *ExecRequest_Start) HasArgc() bool {
@@ -713,18 +883,11 @@ func (x *ExecRequest_Start) HasArgc() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *ExecRequest_Start) HasUseEntrypoint() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
-}
-
 func (x *ExecRequest_Start) HasStdin() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
 }
 
 func (x *ExecRequest_Start) ClearArgc() {
@@ -732,13 +895,8 @@ func (x *ExecRequest_Start) ClearArgc() {
 	x.xxx_hidden_Argc = nil
 }
 
-func (x *ExecRequest_Start) ClearUseEntrypoint() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
-	x.xxx_hidden_UseEntrypoint = false
-}
-
 func (x *ExecRequest_Start) ClearStdin() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
 	x.xxx_hidden_Stdin = false
 }
 
@@ -751,8 +909,6 @@ type ExecRequest_Start_builder struct {
 	Argv []string
 	// the environment variables to set for the executable
 	EnvVars map[string]string
-	// whether to append the entrypoint to argc
-	UseEntrypoint *bool
 	// whether to read stdin from the client
 	Stdin *bool
 }
@@ -762,17 +918,13 @@ func (b0 ExecRequest_Start_builder) Build() *ExecRequest_Start {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Argc != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 4)
 		x.xxx_hidden_Argc = b.Argc
 	}
 	x.xxx_hidden_Argv = b.Argv
 	x.xxx_hidden_EnvVars = b.EnvVars
-	if b.UseEntrypoint != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
-		x.xxx_hidden_UseEntrypoint = *b.UseEntrypoint
-	}
 	if b.Stdin != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
 		x.xxx_hidden_Stdin = *b.Stdin
 	}
 	return m0
@@ -789,7 +941,7 @@ type ExecRequest_Terminate struct {
 
 func (x *ExecRequest_Terminate) Reset() {
 	*x = ExecRequest_Terminate{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +953,7 @@ func (x *ExecRequest_Terminate) String() string {
 func (*ExecRequest_Terminate) ProtoMessage() {}
 
 func (x *ExecRequest_Terminate) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[4]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +1017,7 @@ type ExecResponse_Exit struct {
 
 func (x *ExecResponse_Exit) Reset() {
 	*x = ExecResponse_Exit{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -877,7 +1029,7 @@ func (x *ExecResponse_Exit) String() string {
 func (*ExecResponse_Exit) ProtoMessage() {}
 
 func (x *ExecResponse_Exit) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[6]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -940,7 +1092,7 @@ type ExecResponse_Error struct {
 
 func (x *ExecResponse_Error) Reset() {
 	*x = ExecResponse_Error{}
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[7]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1104,7 @@ func (x *ExecResponse_Error) String() string {
 func (*ExecResponse_Error) ProtoMessage() {}
 
 func (x *ExecResponse_Error) ProtoReflect() protoreflect.Message {
-	mi := &file_harpoon_v1_harpoon_proto_msgTypes[7]
+	mi := &file_harpoon_v1_harpoon_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,17 +1168,16 @@ const file_harpoon_v1_harpoon_proto_rawDesc = "" +
 	"\n" +
 	"Bytestream\x12\x1a\n" +
 	"\x04data\x18\x01 \x01(\fB\x06\xbaH\x03\xc8\x01\x01R\x04data\x12\x1a\n" +
-	"\x04done\x18\x02 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x04done\"\x87\x04\n" +
+	"\x04done\x18\x02 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x04done\"\xd8\x03\n" +
 	"\vExecRequest\x125\n" +
 	"\x05start\x18\x01 \x01(\v2\x1d.harpoon.v1.ExecRequest.StartH\x00R\x05start\x12.\n" +
 	"\x05stdin\x18\x02 \x01(\v2\x16.harpoon.v1.BytestreamH\x00R\x05stdin\x12A\n" +
-	"\tterminate\x18\x03 \x01(\v2!.harpoon.v1.ExecRequest.TerminateH\x00R\tterminate\x1a\x97\x02\n" +
+	"\tterminate\x18\x03 \x01(\v2!.harpoon.v1.ExecRequest.TerminateH\x00R\tterminate\x1a\xe8\x01\n" +
 	"\x05Start\x12\x1a\n" +
 	"\x04argc\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04argc\x12\x1a\n" +
 	"\x04argv\x18\x02 \x03(\tB\x06\xbaH\x03\xc8\x01\x01R\x04argv\x12M\n" +
-	"\benv_vars\x18\x03 \x03(\v2*.harpoon.v1.ExecRequest.Start.EnvVarsEntryB\x06\xbaH\x03\xc8\x01\x01R\aenvVars\x12-\n" +
-	"\x0euse_entrypoint\x18\x04 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\ruseEntrypoint\x12\x1c\n" +
-	"\x05stdin\x18\x05 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x05stdin\x1a:\n" +
+	"\benv_vars\x18\x03 \x03(\v2*.harpoon.v1.ExecRequest.Start.EnvVarsEntryB\x06\xbaH\x03\xc8\x01\x01R\aenvVars\x12\x1c\n" +
+	"\x05stdin\x18\x04 \x01(\bB\x06\xbaH\x03\xc8\x01\x01R\x05stdin\x1a:\n" +
 	"\fEnvVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a)\n" +
@@ -1043,40 +1194,51 @@ const file_harpoon_v1_harpoon_proto_rawDesc = "" +
 	"\x05Error\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05errorB\n" +
 	"\n" +
-	"\bresponse2M\n" +
+	"\bresponse\"_\n" +
+	"\x0fTimeSyncRequest\x12(\n" +
+	"\funix_time_ns\x18\x01 \x01(\x04B\x06\xbaH\x03\xc8\x01\x01R\n" +
+	"unixTimeNs\x12\"\n" +
+	"\btimezone\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\btimezone\"D\n" +
+	"\x10TimeSyncResponse\x120\n" +
+	"\x10previous_time_ns\x18\x01 \x01(\x04B\x06\xbaH\x03\xc8\x01\x01R\x0epreviousTimeNs2\x94\x01\n" +
 	"\fGuestService\x12=\n" +
-	"\x04Exec\x12\x17.harpoon.v1.ExecRequest\x1a\x18.harpoon.v1.ExecResponse(\x010\x01B\xac\x01\n" +
+	"\x04Exec\x12\x17.harpoon.v1.ExecRequest\x1a\x18.harpoon.v1.ExecResponse(\x010\x01\x12E\n" +
+	"\bTimeSync\x12\x1b.harpoon.v1.TimeSyncRequest\x1a\x1c.harpoon.v1.TimeSyncResponseB\xac\x01\n" +
 	"\x0ecom.harpoon.v1B\fHarpoonProtoP\x01Z;github.com/walteh/ec1/gen/proto/golang/harpoon/v1;harpoonv1\xa2\x02\x03HXX\xaa\x02\n" +
 	"Harpoon.V1\xca\x02\n" +
 	"Harpoon\\V1\xe2\x02\x16Harpoon\\V1\\GPBMetadata\xea\x02\vHarpoon::V1\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
-var file_harpoon_v1_harpoon_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_harpoon_v1_harpoon_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_harpoon_v1_harpoon_proto_goTypes = []any{
 	(*Bytestream)(nil),            // 0: harpoon.v1.Bytestream
 	(*ExecRequest)(nil),           // 1: harpoon.v1.ExecRequest
 	(*ExecResponse)(nil),          // 2: harpoon.v1.ExecResponse
-	(*ExecRequest_Start)(nil),     // 3: harpoon.v1.ExecRequest.Start
-	(*ExecRequest_Terminate)(nil), // 4: harpoon.v1.ExecRequest.Terminate
-	nil,                           // 5: harpoon.v1.ExecRequest.Start.EnvVarsEntry
-	(*ExecResponse_Exit)(nil),     // 6: harpoon.v1.ExecResponse.Exit
-	(*ExecResponse_Error)(nil),    // 7: harpoon.v1.ExecResponse.Error
+	(*TimeSyncRequest)(nil),       // 3: harpoon.v1.TimeSyncRequest
+	(*TimeSyncResponse)(nil),      // 4: harpoon.v1.TimeSyncResponse
+	(*ExecRequest_Start)(nil),     // 5: harpoon.v1.ExecRequest.Start
+	(*ExecRequest_Terminate)(nil), // 6: harpoon.v1.ExecRequest.Terminate
+	nil,                           // 7: harpoon.v1.ExecRequest.Start.EnvVarsEntry
+	(*ExecResponse_Exit)(nil),     // 8: harpoon.v1.ExecResponse.Exit
+	(*ExecResponse_Error)(nil),    // 9: harpoon.v1.ExecResponse.Error
 }
 var file_harpoon_v1_harpoon_proto_depIdxs = []int32{
-	3, // 0: harpoon.v1.ExecRequest.start:type_name -> harpoon.v1.ExecRequest.Start
-	0, // 1: harpoon.v1.ExecRequest.stdin:type_name -> harpoon.v1.Bytestream
-	4, // 2: harpoon.v1.ExecRequest.terminate:type_name -> harpoon.v1.ExecRequest.Terminate
-	0, // 3: harpoon.v1.ExecResponse.stdout:type_name -> harpoon.v1.Bytestream
-	0, // 4: harpoon.v1.ExecResponse.stderr:type_name -> harpoon.v1.Bytestream
-	6, // 5: harpoon.v1.ExecResponse.exit:type_name -> harpoon.v1.ExecResponse.Exit
-	7, // 6: harpoon.v1.ExecResponse.error:type_name -> harpoon.v1.ExecResponse.Error
-	5, // 7: harpoon.v1.ExecRequest.Start.env_vars:type_name -> harpoon.v1.ExecRequest.Start.EnvVarsEntry
-	1, // 8: harpoon.v1.GuestService.Exec:input_type -> harpoon.v1.ExecRequest
-	2, // 9: harpoon.v1.GuestService.Exec:output_type -> harpoon.v1.ExecResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	5,  // 0: harpoon.v1.ExecRequest.start:type_name -> harpoon.v1.ExecRequest.Start
+	0,  // 1: harpoon.v1.ExecRequest.stdin:type_name -> harpoon.v1.Bytestream
+	6,  // 2: harpoon.v1.ExecRequest.terminate:type_name -> harpoon.v1.ExecRequest.Terminate
+	0,  // 3: harpoon.v1.ExecResponse.stdout:type_name -> harpoon.v1.Bytestream
+	0,  // 4: harpoon.v1.ExecResponse.stderr:type_name -> harpoon.v1.Bytestream
+	8,  // 5: harpoon.v1.ExecResponse.exit:type_name -> harpoon.v1.ExecResponse.Exit
+	9,  // 6: harpoon.v1.ExecResponse.error:type_name -> harpoon.v1.ExecResponse.Error
+	7,  // 7: harpoon.v1.ExecRequest.Start.env_vars:type_name -> harpoon.v1.ExecRequest.Start.EnvVarsEntry
+	1,  // 8: harpoon.v1.GuestService.Exec:input_type -> harpoon.v1.ExecRequest
+	3,  // 9: harpoon.v1.GuestService.TimeSync:input_type -> harpoon.v1.TimeSyncRequest
+	2,  // 10: harpoon.v1.GuestService.Exec:output_type -> harpoon.v1.ExecResponse
+	4,  // 11: harpoon.v1.GuestService.TimeSync:output_type -> harpoon.v1.TimeSyncResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_harpoon_v1_harpoon_proto_init() }
@@ -1101,7 +1263,7 @@ func file_harpoon_v1_harpoon_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_harpoon_v1_harpoon_proto_rawDesc), len(file_harpoon_v1_harpoon_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

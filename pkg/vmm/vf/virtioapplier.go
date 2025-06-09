@@ -74,6 +74,7 @@ func (v *vzVirtioDeviceApplier) Finalize(ctx context.Context) error {
 		if err != nil {
 			return errors.Errorf("creating memory balloon device configuration: %w", err)
 		}
+
 		v.SetMemoryBalloonDevicesVirtualMachineConfiguration([]vz.MemoryBalloonDeviceConfiguration{bal})
 	}
 

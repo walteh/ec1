@@ -11,6 +11,7 @@ import (
 	cruntime "github.com/containerd/containerd/v2/core/runtime/v2"
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/ttrpc"
+	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/containerd/containerd/api/runtime/task/v3"
@@ -50,16 +51,19 @@ func WrapTaskServiceWithErrorLogging(s taskService) taskService {
 
 func wrap[I, O any](e *errTaskService, f func(context.Context, I) (O, error)) func(context.Context, I) (O, error) {
 
+	pc, _, _, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	realNameS := strings.Split(filepath.Base(funcName), ".")
+	realName := realNameS[len(realNameS)-1]
+
 	return func(ctx context.Context, req I) (O, error) {
 		start := time.Now()
+
+		ctx = slogctx.Append(ctx, slog.String("ttrpc_method", realName))
 
 		resp, err := f(ctx, req)
 
 		end := time.Now()
-		pc, _, _, _ := runtime.Caller(1)
-		funcName := runtime.FuncForPC(pc).Name()
-		realNameS := strings.Split(filepath.Base(funcName), ".")
-		realName := realNameS[len(realNameS)-1]
 
 		if err != nil && e.enableLogErrors {
 			if trac, ok := err.(errors.E); ok {

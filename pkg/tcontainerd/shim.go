@@ -66,7 +66,7 @@ func ShimMain() {
 
 		// Start a goroutine to monitor resource usage
 		go func() {
-			ticker := time.NewTicker(5 * time.Second)
+			ticker := time.NewTicker(60 * time.Second)
 			defer ticker.Stop()
 
 			for {

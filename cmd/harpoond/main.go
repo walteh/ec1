@@ -14,13 +14,17 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/ttrpc"
+	"github.com/mdlayher/vsock"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	slogctx "github.com/veqryn/slog-context"
 
+	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 	"github.com/walteh/ec1/pkg/ec1init"
+	"github.com/walteh/ec1/pkg/harpoon"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/streamexec"
 	"github.com/walteh/ec1/pkg/streamexec/executor"
@@ -48,14 +52,12 @@ func main() {
 	ctx = slogctx.Append(ctx, slog.Int("pid", pid))
 
 	if _, err := os.Stat(ec1init.Ec1AbsPath); err == nil {
-		ctx = slogctx.Append(ctx, slog.String("mode", string(modeRootfs)))
-		slog.InfoContext(ctx, "running in rootfs, gonna just wait to be killed")
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-
-		for tick := range ticker.C {
-			slog.InfoContext(ctx, "still running in rootfs, waiting to be killed", "tick", tick)
+		err := runContainerd(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "problem running containerd", "error", err)
+			os.Exit(1)
 		}
+		os.Exit(0)
 	}
 
 	if _, err := os.Stat(ec1init.Ec1AbsPath); os.IsNotExist(err) {
@@ -74,6 +76,35 @@ func main() {
 		slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
 		os.Exit(1)
 	}
+
+	// timesyncFile := filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerTimesyncFile)
+	// dat, err := os.ReadFile(timesyncFile)
+	// if err != nil {
+	// 	slog.ErrorContext(ctx, "problem reading timesync file", "error", err)
+	// 	os.Exit(1)
+	// }
+
+	// parts := strings.Split(string(dat), ":")
+
+	// timesync, err := strconv.Atoi(parts[0])
+	// if err != nil {
+	// 	slog.ErrorContext(ctx, "problem parsing timesync file", "error", err)
+	// 	os.Exit(1)
+	// }
+
+	// zoneoffset, err := strconv.Atoi(parts[1])
+	// if err != nil {
+	// 	slog.ErrorContext(ctx, "problem parsing timesync file", "error", err)
+	// 	os.Exit(1)
+	// }
+
+	// tv := unix.NsecToTimeval(int64(timesync)) // helper to build Timeval
+
+	// if err := unix.Settimeofday(&tv); err != nil {
+	// 	slog.ErrorContext(ctx, "Settimeofday failed", "error", err)
+	// }
+
+	// slog.InfoContext(ctx, "setting time", "time", tv)
 
 	if spec != nil {
 		ctx = slogctx.Append(ctx, slog.String("mode", string(modeOCI)))
@@ -100,7 +131,7 @@ func main() {
 
 	if manifest != nil {
 		ctx = slogctx.Append(ctx, slog.String("mode", string(modeManifest)))
-		err = serveRawVsockChroot(ctx, ec1init.VsockPort, manifest.Config.Entrypoint, manifest.Config.Env)
+		err = runManifest(ctx, ec1init.VsockPort, manifest.Config.Entrypoint, manifest.Config.Env)
 		if err != nil {
 			slog.ErrorContext(ctx, "problem serving vsock", "error", err)
 			os.Exit(1)
@@ -112,7 +143,45 @@ func main() {
 
 }
 
-func serveRawVsockChroot(ctx context.Context, port int, entrypoint []string, env []string) error {
+func runContainerd(ctx context.Context) error {
+	ctx = slogctx.Append(ctx, slog.String("mode", string(modeRootfs)))
+	slog.InfoContext(ctx, "running in rootfs, gonna just wait to be killed")
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	go func() {
+		err := runTtrpc(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "problem serving ttrpc", "error", err)
+		}
+	}()
+
+	go func() {
+		for tick := range ticker.C {
+			slog.InfoContext(ctx, "still running in rootfs, waiting to be killed", "tick", tick)
+		}
+	}()
+
+	select {}
+}
+
+func runTtrpc(ctx context.Context) error {
+	ttrpcServe, err := ttrpc.NewServer()
+	if err != nil {
+		return errors.Errorf("creating ttrpc server: %w", err)
+	}
+
+	harpoonv1.RegisterTTRPCGuestServiceService(ttrpcServe, harpoon.NewAgentService())
+
+	listener, err := vsock.ListenContextID(3, uint32(ec1init.VsockPort), nil)
+	if err != nil {
+		return errors.Errorf("dialing vsock: %w", err)
+	}
+
+	return ttrpcServe.Serve(ctx, listener)
+}
+
+func runManifest(ctx context.Context, port int, entrypoint []string, env []string) error {
 
 	err := mountInitramfs(ctx)
 	if err != nil {
@@ -128,8 +197,7 @@ func serveRawVsockChroot(ctx context.Context, port int, entrypoint []string, env
 		}
 	}()
 
-	tranport := transport.NewVSockTransport(0, uint32(port))
-	executor := executor.NewStreamingExecutorWithCommandCreationFunc(1024, func(ctx context.Context, command string) *exec.Cmd {
+	vsockFunc := func(ctx context.Context, command string) *exec.Cmd {
 		parts := strings.Fields(command)
 		if len(parts) == 0 {
 			return nil
@@ -159,14 +227,27 @@ func serveRawVsockChroot(ctx context.Context, port int, entrypoint []string, env
 		slog.DebugContext(ctx, "executing chrooted command", "command", fullCommand, "env", env)
 
 		return cmd
-	})
+	}
+
+	err = runVsock(ctx, port, vsockFunc)
+	if err != nil {
+		slog.ErrorContext(ctx, "problem serving vsock", "error", err)
+		return errors.Errorf("serving vsock: %w", err)
+	}
+
+	return nil
+}
+
+func runVsock(ctx context.Context, port int, f func(ctx context.Context, command string) *exec.Cmd) error {
+	tranport := transport.NewVSockTransport(0, uint32(port))
+	executor := executor.NewStreamingExecutorWithCommandCreationFunc(1024, f)
 	server := streamexec.NewServer(ctx, tranport, executor, func(conn io.ReadWriter) protocol.Protocol {
 		return protocol.NewFramedProtocol(conn)
 	})
 
 	slog.InfoContext(ctx, "serving vsock", "port", port)
 
-	err = server.Serve()
+	err := server.Serve()
 	if err != nil {
 		return errors.Errorf("serving vsock: %w", err)
 	}

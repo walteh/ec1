@@ -12,5 +12,7 @@ const (
 	ContainerManifestFile = "/container-manifest.json"
 	ContainerSpecFile     = "/container-oci-spec.json"
 	ContainerMountsFile   = "/container-mounts.json"
+	ContainerTimesyncFile = "/timesync"
+	ContainerReadyFile    = "/ready"
 	TempVirtioTag         = "temp"
 )

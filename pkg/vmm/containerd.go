@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,11 +21,13 @@ import (
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/lmittmann/tint"
+	"github.com/nxadm/tail"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
 	slogctx "github.com/veqryn/slog-context"
 
+	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
@@ -162,6 +165,8 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		}
 	}
 
+	// add vsock and memory devices
+
 	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
@@ -169,6 +174,9 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	devices = append(devices, netdev)
 
 	slog.InfoContext(ctx, "devices", "devices", tint.NewPrettyValue(devices))
+
+	devices = append(devices, &virtio.VirtioVsock{})
+	devices = append(devices, &virtio.VirtioBalloon{})
 
 	opts := NewVMOptions{
 		Vcpus:   ctrconfig.VCPUs,
@@ -195,6 +203,11 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 			slog.ErrorContext(ctx, "error appending console log", "error", err)
 		}
 		return nil, errors.Errorf("running virtual machine: %w", err)
+	}
+
+	err = TailConsoleLog(ctx, workingDir)
+	if err != nil {
+		slog.ErrorContext(ctx, "error tailing console log", "error", err)
 	}
 
 	// For container runtimes, we want the VM to stay running, not wait for it to stop
@@ -237,8 +250,26 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		}
 	}()
 
-	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
+	runner := NewRunningContainerdVM(ctx, vm, hostIPPort, startTime, errCh)
+
+	connection, err := runner.guestService(ctx)
+	if err != nil {
+		return nil, errors.Errorf("failed to get guest service: %w", err)
+	}
+
+	response, err := connection.TimeSync(ctx, harpoonv1.NewTimeSyncRequest(func(b *harpoonv1.TimeSyncRequest_builder) {
+		b.UnixTimeNs = ptr(uint64(time.Now().UnixNano()))
+	}))
+	if err != nil {
+		return nil, errors.Errorf("failed to time sync: %w", err)
+	}
+
+	slog.InfoContext(ctx, "time sync", "response", response)
+
+	return runner, nil
 }
+
+func ptr[T any](v T) *T { return &v }
 
 func TryAppendingConsoleLog(ctx context.Context, workingDir string) error {
 	// log file
@@ -261,6 +292,33 @@ func TryAppendingConsoleLog(ctx context.Context, workingDir string) error {
 		slog.ErrorContext(ctx, "error copying console log", "error", err)
 		return errors.Errorf("copying console log: %w", err)
 	}
+
+	return nil
+}
+
+func TailConsoleLog(ctx context.Context, workingDir string) error {
+	dat, err := os.ReadFile(filepath.Join(workingDir, "console.log"))
+	if err != nil {
+		slog.ErrorContext(ctx, "error reading console log file", "error", err)
+		return errors.Errorf("reading console log file: %w", err)
+	}
+
+	writer := logging.GetDefaultLogWriter()
+
+	for _, line := range strings.Split(string(dat), "\n") {
+		fmt.Fprintf(writer, "%s\n", line)
+	}
+
+	go func() {
+		t, err := tail.TailFile(filepath.Join(workingDir, "console.log"), tail.Config{Follow: true, Location: &tail.SeekInfo{Offset: int64(len(dat)), Whence: io.SeekStart}})
+		if err != nil {
+			slog.ErrorContext(ctx, "error tailing log file", "error", err)
+			return
+		}
+		for line := range t.Lines {
+			fmt.Fprintf(writer, "%s\n", line.Text)
+		}
+	}()
 
 	return nil
 }
@@ -353,6 +411,46 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 			return nil, errors.Errorf("writing file to block device: %w", err)
 		}
 	}
+
+	timesyncFile := filepath.Join(ec1DataPath, "timesync")
+
+	_, zoneoffset := time.Now().Zone()
+
+	wg.Go(func() error {
+		timez := strconv.Itoa(int(time.Now().UnixNano()))
+		timez += ":" + strconv.Itoa(zoneoffset)
+		// write once
+		err := os.WriteFile(timesyncFile, []byte(timez), 0644)
+		if err != nil {
+			slog.ErrorContext(ctx, "error writing timesync file", "error", err)
+		}
+		return nil
+	})
+
+	timeout := time.NewTimer(1 * time.Second)
+
+	// create a temporary timesync file
+	go func() {
+
+		for {
+			select {
+			case <-timeout.C:
+				err := os.WriteFile(timesyncFile, []byte("done"), 0644)
+				if err != nil {
+					slog.ErrorContext(ctx, "error writing timesync file", "error", err)
+				}
+				return
+			default:
+				timez := strconv.Itoa(int(time.Now().UnixNano()))
+				timez += ":" + strconv.Itoa(zoneoffset)
+				// slog.InfoContext(ctx, "writing timesync file", "time", timez)
+				err := os.WriteFile(timesyncFile, []byte(timez), 0644)
+				if err != nil {
+					slog.ErrorContext(ctx, "error writing timesync file", "error", err)
+				}
+			}
+		}
+	}()
 
 	ec1Dev, err := virtio.VirtioFsNew(ec1DataPath, ec1init.Ec1VirtioTag)
 	if err != nil {

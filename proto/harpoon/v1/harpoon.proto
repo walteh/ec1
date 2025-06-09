@@ -9,6 +9,12 @@ option features.(pb.go).api_level = API_OPAQUE;
 
 service GuestService {
 	rpc Exec(stream ExecRequest) returns (stream ExecResponse);
+
+
+	rpc TimeSync(TimeSyncRequest) returns (TimeSyncResponse);
+
+
+	rpc Readiness(ReadinessRequest) returns (ReadinessResponse);
 }
 
 message Bytestream {
@@ -39,13 +45,8 @@ message ExecRequest {
 			(buf.validate.field).required = true
 		];
 
-		// whether to append the entrypoint to argc
-		bool use_entrypoint = 4 [
-			(buf.validate.field).required = true
-		];
-
 		// whether to read stdin from the client
-		bool stdin = 5 [
+		bool stdin = 4 [
 			(buf.validate.field).required = true
 		];
 	}
@@ -80,4 +81,27 @@ message ExecResponse {
 		Exit       exit   = 3;
 		Error      error  = 4;
 	}
+}
+
+message TimeSyncRequest {
+	uint64 unix_time_ns = 1 [
+		(buf.validate.field).required = true
+	];
+	string timezone     = 2 [
+		(buf.validate.field).required = true
+	];
+}
+
+message TimeSyncResponse {
+	uint64 previous_time_ns = 1 [
+		(buf.validate.field).required = true
+	];
+}
+
+message ReadinessRequest {}
+
+message ReadinessResponse {
+	bool ready = 1 [
+		(buf.validate.field).required = true
+	];
 }

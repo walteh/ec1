@@ -203,10 +203,13 @@ tasks:
           - task: harpoon:kernel:amd64
 
     harpoon:initramfs:*:
+        deps:
+          - harpoon:harpoond:{{.ARCH}}
         label: 'harpoon:initramfs:{{.ARCH}}'
         requires: {vars: [ARCH]}
         desc: builds the initramfs
         sources:
+          - ./gen/harpoon/harpoon_harpoond_{{ .ARCH }}/**
           - ./harpoon/initramfs/**
         generates:
           - ./gen/harpoon/harpoon_initramfs_{{ .ARCH }}/**
@@ -218,7 +221,6 @@ tasks:
             TMP_DIR:
                 sh: mktemp -d
         cmds:
-          - task: harpoon:harpoond:{{.ARCH}}
           - defer: rm -rf {{.TMP_DIR}}
           - cmd: mkdir -p {{.TMP_DIR}}
           - |-

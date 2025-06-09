@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"os/exec"
+	"time"
 
 	"gitlab.com/tozd/go/errors"
+	"golang.org/x/sys/unix"
 
 	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 )
 
 type AgentService struct {
-	currentContainerEntrypoint []string
+	// currentContainerEntrypoint []string
 }
 
 var (
@@ -23,45 +26,25 @@ func NewAgentService() *AgentService {
 	return &AgentService{}
 }
 
-// streamOutput handles reading from a source and streaming it to the client
-func streamOutput(
-	reader io.Reader,
-	server harpoonv1.TTRPCGuestService_ExecServer,
-	responseBuilder func(func(*harpoonv1.Bytestream_builder)) (*harpoonv1.ExecResponse, error),
-	errch chan<- error,
-	done chan<- struct{},
-	streamType string,
-) {
-	defer close(done)
-	for {
-		buf := make([]byte, 1024)
-		n, err := reader.Read(buf)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			errch <- errors.Errorf("reading %s from command: %w", streamType, err)
-			return
-		}
+func (s *AgentService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequest) (*harpoonv1.TimeSyncResponse, error) {
 
-		resp, err := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
-			b.Data = buf[:n]
-			b.Done = ptr(false)
-		})
-		if err != nil {
-			errch <- errors.Errorf("building %s response: %w", streamType, err)
-			return
-		}
+	nowNano := uint64(time.Now().UnixNano())
+	updateNano := uint64(req.GetUnixTimeNs())
 
-		err = server.Send(resp)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			errch <- errors.Errorf("sending %s to client: %w", streamType, err)
-			return
-		}
+	tv := unix.NsecToTimeval(int64(updateNano))
+
+	if err := unix.Settimeofday(&tv); err != nil {
+		slog.ErrorContext(ctx, "Settimeofday failed", "error", err)
+		return nil, errors.Errorf("unix.Settimeofday failed: %w", err)
 	}
+
+	offset := int64(nowNano) - int64(updateNano)
+
+	slog.InfoContext(ctx, "time sync", "update", time.Unix(0, int64(updateNano)).UTC().Format(time.RFC3339), "ns_diff", time.Duration(offset))
+
+	return harpoonv1.NewTimeSyncResponse(func(b *harpoonv1.TimeSyncResponse_builder) {
+		b.PreviousTimeNs = &nowNano
+	}), nil
 }
 
 func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) error {
@@ -123,11 +106,11 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 
 	argv := start.GetArgv()
 	argc := start.GetArgc()
-	if start.GetUseEntrypoint() {
-		full := append(s.currentContainerEntrypoint, append([]string{argc}, argv...)...)
-		argv = full[1:]
-		argc = full[0]
-	}
+	// if start.GetUseEntrypoint() {
+	// 	full := append(s.currentContainerEntrypoint, append([]string{argc}, argv...)...)
+	// 	argv = full[1:]
+	// 	argc = full[0]
+	// }
 
 	cmd := exec.CommandContext(ctx, argc, argv...)
 	cmd.Stdout = stdout
@@ -210,4 +193,45 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	allerrs := errors.Join(errs...)
 
 	return allerrs
+}
+
+// streamOutput handles reading from a source and streaming it to the client
+func streamOutput(
+	reader io.Reader,
+	server harpoonv1.TTRPCGuestService_ExecServer,
+	responseBuilder func(func(*harpoonv1.Bytestream_builder)) (*harpoonv1.ExecResponse, error),
+	errch chan<- error,
+	done chan<- struct{},
+	streamType string,
+) {
+	defer close(done)
+	for {
+		buf := make([]byte, 1024)
+		n, err := reader.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			errch <- errors.Errorf("reading %s from command: %w", streamType, err)
+			return
+		}
+
+		resp, err := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
+			b.Data = buf[:n]
+			b.Done = ptr(false)
+		})
+		if err != nil {
+			errch <- errors.Errorf("building %s response: %w", streamType, err)
+			return
+		}
+
+		err = server.Send(resp)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			errch <- errors.Errorf("sending %s to client: %w", streamType, err)
+			return
+		}
+	}
 }

@@ -282,3 +282,35 @@ func NewValidatedExecResponse_Error(f func(*ExecResponse_Error_builder)) (*ExecR
 	}
 	return m, nil
 }
+
+// NewTimeSyncRequest creates a new TimeSyncRequest using the builder pattern
+func NewTimeSyncRequest(f func(*TimeSyncRequest_builder)) *TimeSyncRequest {
+	b := &TimeSyncRequest_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedTimeSyncRequest creates a new TimeSyncRequest using the builder pattern with validation
+func NewValidatedTimeSyncRequest(f func(*TimeSyncRequest_builder)) (*TimeSyncRequest, error) {
+	m := NewTimeSyncRequest(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewTimeSyncResponse creates a new TimeSyncResponse using the builder pattern
+func NewTimeSyncResponse(f func(*TimeSyncResponse_builder)) *TimeSyncResponse {
+	b := &TimeSyncResponse_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedTimeSyncResponse creates a new TimeSyncResponse using the builder pattern with validation
+func NewValidatedTimeSyncResponse(f func(*TimeSyncResponse_builder)) (*TimeSyncResponse, error) {
+	m := NewTimeSyncResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}

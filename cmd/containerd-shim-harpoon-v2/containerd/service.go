@@ -32,6 +32,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	taskt "github.com/containerd/containerd/api/types/task"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
@@ -69,19 +70,20 @@ func (s *service) forward(ctx context.Context, publisher shim.Publisher) {
 	_ = publisher.Close()
 }
 
-func (s *service) getContainer(id string) (*container, error) {
+func (s *service) getContainer(ctx context.Context, id string) (*container, error) {
 	c := s.containers[id]
 	if c == nil {
+		slog.ErrorContext(ctx, "container not found", "id", id)
 		return nil, errgrpc.ToGRPCf(errdefs.ErrNotFound, "container not created")
 	}
 	return c, nil
 }
 
-func (s *service) getContainerL(id string) (*container, error) {
+func (s *service) getContainerL(ctx context.Context, id string) (*container, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.getContainer(id)
+	return s.getContainer(ctx, id)
 }
 
 func (s *service) RegisterTTRPC(server *ttrpc.Server) error {
@@ -93,20 +95,24 @@ func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.
 	log.G(ctx).WithField("request", request).Info("STATE")
 	defer log.G(ctx).Info("STATE_DONE")
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(request.ExecID)
+	p, err := c.getProcessL(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
 
-	// For VM-based processes, we use the stored pid
 	var pid int = p.pid
+	var exitedAtPB *timestamppb.Timestamp = nil
 
-	return &task.StateResponse{
+	if !p.exitedAt.IsZero() {
+		exitedAtPB = protobuf.ToTimestamp(p.exitedAt)
+	}
+
+	resp := &task.StateResponse{
 		ID:         request.ID,
 		Bundle:     c.bundlePath,
 		Pid:        uint32(pid),
@@ -115,10 +121,16 @@ func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.
 		Stdout:     p.io.stdoutPath,
 		Stderr:     p.io.stderrPath,
 		Terminal:   c.spec.Process.Terminal,
-		ExitedAt:   protobuf.ToTimestamp(p.exitedAt),
+		ExitedAt:   exitedAtPB,
 		ExitStatus: p.exitStatus,
 		ExecID:     request.ExecID,
-	}, nil
+	}
+
+	slog.InfoContext(ctx, "STATE", "response", tint.NewPrettyValue(resp), "pid", p.pid, "status", p.status)
+
+	// For VM-based processes, we use the stored pid
+
+	return resp, nil
 }
 
 func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (_ *task.CreateTaskResponse, retErr error) {
@@ -309,7 +321,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	c, err := s.getContainer(request.ID)
+	c, err := s.getContainer(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
@@ -317,7 +329,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	p, err := c.getProcess(request.ExecID)
+	p, err := c.getProcess(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
@@ -336,6 +348,10 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 		}
 
 		defer func() {
+			defer func() {
+				close(p.waitblock)
+			}()
+
 			if r := recover(); r != nil {
 				log.G(ctx).WithField("panic", r).WithField("pid", p.pid).Error("PANIC in VM creation")
 				p.status = taskt.Status_STOPPED
@@ -418,7 +434,7 @@ func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*tas
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	c, err := s.getContainer(request.ID)
+	c, err := s.getContainer(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
@@ -427,7 +443,7 @@ func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*tas
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
-		p, err := c.getProcess(request.ExecID)
+		p, err := c.getProcess(ctx, request.ExecID)
 		if err != nil {
 			return nil, errors.Errorf("getting process: %w", err)
 		}
@@ -468,21 +484,25 @@ func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*tas
 
 func (s *service) Pids(ctx context.Context, request *task.PidsRequest) (*task.PidsResponse, error) {
 	log.G(ctx).WithField("request", request).Info("PIDS")
+
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Pause(ctx context.Context, request *task.PauseRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("PAUSE")
+
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Resume(ctx context.Context, request *task.ResumeRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("RESUME")
+
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Checkpoint(ctx context.Context, request *task.CheckpointTaskRequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("CHECKPOINT")
+
 	return nil, errdefs.ErrNotImplemented
 }
 
@@ -490,18 +510,21 @@ func (s *service) Kill(ctx context.Context, request *task.KillRequest) (*ptypes.
 	log.G(ctx).WithField("request", request).Info("KILL")
 	defer log.G(ctx).Info("KILL_DONE")
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(request.ExecID)
-	if err != nil {
-		return nil, errors.Errorf("getting process: %w", err)
-	}
+	if request.ExecID != "" {
+		p, err := c.getProcessL(ctx, request.ExecID)
+		if err != nil {
+			return nil, errors.Errorf("getting process: %w", err)
+		}
 
-	// TODO: Do we care about error here?
-	_ = p.kill(syscall.Signal(request.Signal))
+		// TODO: Do we care about error here?
+		_ = p.kill(syscall.Signal(request.Signal))
+
+	}
 
 	return &ptypes.Empty{}, nil
 }
@@ -521,7 +544,7 @@ func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_
 		return nil, errors.Errorf("mismatched type for spec")
 	}
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
@@ -562,12 +585,12 @@ func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest)
 	log.G(ctx).WithField("request", request).Info("RESIZEPTY")
 	defer log.G(ctx).Info("RESIZEPTY_DONE")
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(request.ExecID)
+	p, err := c.getProcessL(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
@@ -584,12 +607,12 @@ func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest)
 func (s *service) CloseIO(ctx context.Context, request *task.CloseIORequest) (*ptypes.Empty, error) {
 	log.G(ctx).WithField("request", request).Info("CLOSEIO")
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(request.ExecID)
+	p, err := c.getProcessL(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
@@ -610,12 +633,12 @@ func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.Wa
 	log.G(ctx).WithField("request", request).Info("WAIT")
 	defer log.G(ctx).Info("WAIT_DONE")
 
-	c, err := s.getContainerL(request.ID)
+	c, err := s.getContainerL(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(request.ExecID)
+	p, err := c.getProcessL(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
@@ -644,7 +667,7 @@ func (s *service) Connect(ctx context.Context, request *task.ConnectRequest) (*t
 	defer log.G(ctx).Info("CONNECT_DONE")
 
 	var pid int
-	if c, err := s.getContainerL(request.ID); err == nil {
+	if c, err := s.getContainerL(ctx, request.ID); err == nil {
 		pid = c.primary.pid
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -258,11 +259,11 @@ func runStart(mode string) error {
 	go func() {
 		t, err := tail.TailFile(logFile, tail.Config{Follow: true})
 		if err != nil {
-			fmt.Printf("main_error=%v\n", fmt.Errorf("tailing log file: %w", err))
+			slog.ErrorContext(ctx, "error tailing log file", "error", err)
 			return
 		}
 		for line := range t.Lines {
-			fmt.Printf("%s\n", line.Text)
+			fmt.Fprintf(logging.GetDefaultLogWriter(), "%s\n", line.Text)
 		}
 	}()
 

@@ -91,14 +91,14 @@ func (c *container) destroy() (retErr error) {
 	return
 }
 
-func (c *container) getProcessL(execID string) (*managedProcess, error) {
+func (c *container) getProcessL(ctx context.Context, execID string) (*managedProcess, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.getProcess(execID)
+	return c.getProcess(ctx, execID)
 }
 
-func (c *container) getProcess(execID string) (*managedProcess, error) {
+func (c *container) getProcess(ctx context.Context, execID string) (*managedProcess, error) {
 	if execID == "" {
 		return &c.primary, nil
 	}
@@ -106,6 +106,7 @@ func (c *container) getProcess(execID string) (*managedProcess, error) {
 	p := c.auxiliary[execID]
 
 	if p == nil {
+		slog.ErrorContext(ctx, "exec not found", "execID", execID)
 		return nil, errgrpc.ToGRPCf(errdefs.ErrNotFound, "exec not found: %s", execID)
 	}
 

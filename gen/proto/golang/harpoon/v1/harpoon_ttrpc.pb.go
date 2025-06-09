@@ -9,6 +9,7 @@ import (
 
 type TTRPCGuestServiceService interface {
 	Exec(context.Context, TTRPCGuestService_ExecServer) error
+	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
 }
 
 type TTRPCGuestService_ExecServer interface {
@@ -35,6 +36,15 @@ func (x *ttrpcguestserviceExecServer) Recv() (*ExecRequest, error) {
 
 func RegisterTTRPCGuestServiceService(srv *ttrpc.Server, svc TTRPCGuestServiceService) {
 	srv.RegisterService("harpoon.v1.GuestService", &ttrpc.ServiceDesc{
+		Methods: map[string]ttrpc.Method{
+			"TimeSync": func(ctx context.Context, unmarshal func(interface{}) error) (interface{}, error) {
+				var req TimeSyncRequest
+				if err := unmarshal(&req); err != nil {
+					return nil, err
+				}
+				return svc.TimeSync(ctx, &req)
+			},
+		},
 		Streams: map[string]ttrpc.Stream{
 			"Exec": {
 				Handler: func(ctx context.Context, stream ttrpc.StreamServer) (interface{}, error) {
@@ -49,6 +59,7 @@ func RegisterTTRPCGuestServiceService(srv *ttrpc.Server, svc TTRPCGuestServiceSe
 
 type TTRPCGuestServiceClient interface {
 	Exec(context.Context) (TTRPCGuestService_ExecClient, error)
+	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
 }
 
 type ttrpcguestserviceClient struct {
@@ -93,4 +104,12 @@ func (x *ttrpcguestserviceExecClient) Recv() (*ExecResponse, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (c *ttrpcguestserviceClient) TimeSync(ctx context.Context, req *TimeSyncRequest) (*TimeSyncResponse, error) {
+	var resp TimeSyncResponse
+	if err := c.client.Call(ctx, "harpoon.v1.GuestService", "TimeSync", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
