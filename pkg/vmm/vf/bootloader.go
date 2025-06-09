@@ -2,23 +2,25 @@ package vf
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
 func toVzLinuxBootloader(bootloader *vmm.LinuxBootloader) (vz.BootLoader, error) {
-	// if runtime.GOARCH == "arm64" {
-	// 	uncompressed, err := host.IsKernelUncompressed(bootloader.VmlinuzPath)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	if !uncompressed {
-	// 		return nil, fmt.Errorf("kernel must be uncompressed, %s is a compressed file", bootloader.VmlinuzPath)
-	// 	}
-	// }
+	if runtime.GOARCH == "arm64" {
+		uncompressed, err := host.IsKernelUncompressed(bootloader.VmlinuzPath)
+		if err != nil {
+			return nil, err
+		}
+		if !uncompressed {
+			return nil, fmt.Errorf("kernel must be uncompressed, %s is a compressed file", bootloader.VmlinuzPath)
+		}
+	}
 
 	opts := []vz.LinuxBootLoaderOption{}
 	if bootloader.InitrdPath != "" {

@@ -21,16 +21,18 @@ import (
 )
 
 func init() {
-	tcontainerd.ShimReexecInit()
 
-	if reexec.Init() {
-		os.Exit(0)
-	}
 }
 
 var ctrCommands = FlagArray[string]{}
 
 func main() {
+
+	tcontainerd.ShimReexecInit()
+
+	if reexec.Init() {
+		os.Exit(0)
+	}
 
 	background := false
 	debug := true

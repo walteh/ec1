@@ -57,24 +57,7 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 
 	errchan := make(chan error)
 	go func() {
-
-		defer func() {
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "panic in Start", "panic", r)
-				panic(r)
-			}
-		}()
-		// runtime.LockOSThread()
-		// defer runtime.UnlockOSThread()
-
-		// libdispatch.DispatchMain()
-
-		slog.InfoContext(ctx, "dispatching main done")
-		err := vm.vzvm.Start()
-		if err != nil {
-			errchan <- errors.Errorf("starting virtual machine: %w", err)
-		}
-		errchan <- nil
+		errchan <- vm.vzvm.Start()
 	}()
 
 	timeout := time.NewTimer(5 * time.Second)
@@ -82,25 +65,14 @@ func (vm *VirtualMachine) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		if ctx.Err() != nil {
-			// if err := vm.vzvm.Stop(); err != nil {
-			// 	slog.ErrorContext(ctx, "error stopping virtual machine", "error", err)
-			// }
-		}
-
 		return ctx.Err()
 	case <-timeout.C:
-		// if err := vm.vzvm.Stop(); err != nil {
-		// 	slog.ErrorContext(ctx, "error stopping virtual machine", "error", err)
-		// }
 		return errors.Errorf("timeout waiting for virtual machine to start")
 	case err := <-errchan:
-		// if err != nil {
-		// 	slog.ErrorContext(ctx, "error starting virtual machine", "error", err)
-		// }
 		return err
 	}
 }
+
 func (hpv *VirtualMachine) VZ() *vz.VirtualMachine {
 	return hpv.vzvm
 }

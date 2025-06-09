@@ -28,24 +28,24 @@ func SetupReexec(ctx context.Context, justSymlinks bool) error {
 		os.Exit(1)
 	}
 
-	// drop the permissions on the proxy socket
-	if err := os.Chown(CtrSimlinkPath(), 1000, 1000); err != nil {
-		slog.Error("Failed to drop permissions on log proxy socket", "error", err, "path", ShimLogProxySockPath())
-		os.Exit(1)
-	}
+	// // drop the permissions on the proxy socket
+	// if err := os.Chown(CtrSimlinkPath(), 1000, 1000); err != nil {
+	// 	slog.Error("Failed to drop permissions on log proxy socket", "error", err, "path", ShimLogProxySockPath())
+	// 	os.Exit(1)
+	// }
 
-	if err := os.Chown(ShimSimlinkPath(), 1000, 1000); err != nil {
-		slog.Error("Failed to drop permissions on log proxy socket", "error", err, "path", ShimLogProxySockPath())
-		os.Exit(1)
-	}
+	// if err := os.Chown(ShimSimlinkPath(), 1000, 1000); err != nil {
+	// 	slog.Error("Failed to drop permissions on log proxy socket", "error", err, "path", ShimLogProxySockPath())
+	// 	os.Exit(1)
+	// }
 
-	// drop the privileges on the proxy socket
+	// // drop the privileges on the proxy socket
 
-	// drop the privileges on myself now
-	if err := os.Chown(self, 1000, 1000); err != nil {
-		slog.Error("Failed to drop permissions on myself", "error", err, "path", self)
-		os.Exit(1)
-	}
+	// // drop the privileges on myself now
+	// if err := os.Chown(self, 1000, 1000); err != nil {
+	// 	slog.Error("Failed to drop permissions on myself", "error", err, "path", self)
+	// 	os.Exit(1)
+	// }
 
 	if justSymlinks {
 		return nil

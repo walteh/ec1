@@ -251,6 +251,8 @@ func TryAppendingConsoleLog(ctx context.Context, workingDir string) error {
 
 	buf := bytes.NewBuffer(nil)
 	buf.Write([]byte("\n\n--------------------------------\n\n"))
+	buf.Write([]byte(filepath.Join(workingDir, "console.log")))
+	buf.Write([]byte("\n\n"))
 	buf.Write(file)
 	buf.Write([]byte("\n--------------------------------\n\n"))
 

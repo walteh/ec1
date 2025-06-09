@@ -264,6 +264,8 @@ func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 		}
 	}()
 
+	slog.InfoContext(ctx, "starting virtual machine")
+
 	if err := vm.Start(ctx); err != nil {
 		return errors.Errorf("starting virtual machine: %w", err)
 	}

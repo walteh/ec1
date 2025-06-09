@@ -59,16 +59,16 @@ import (
 )
 
 func init() {
-	tcontainerd.ShimReexecInit()
+	// tcontainerd.ShimReexecInit()
 
-	if reexec.Init() {
-		os.Exit(0)
-	}
+	// if reexec.Init() {
+	// 	os.Exit(0)
+	// }
 
-	err := tcontainerd.SetupReexec(context.Background(), true)
-	if err != nil {
-		log.L.Fatal("Failed to setup reexec", "error", err)
-	}
+	// err := tcontainerd.SetupReexec(context.Background(), true)
+	// if err != nil {
+	// 	log.L.Fatal("Failed to setup reexec", "error", err)
+	// }
 }
 
 func init() {
@@ -85,6 +85,16 @@ var (
 )
 
 func main() {
+	tcontainerd.ShimReexecInit()
+
+	if reexec.Init() {
+		os.Exit(0)
+	}
+
+	err := tcontainerd.SetupReexec(context.Background(), true)
+	if err != nil {
+		log.L.Fatal("Failed to setup reexec", "error", err)
+	}
 	if err := xmain(); err != nil {
 		errutil.HandleExitCoder(err)
 		log.L.Fatal(err)

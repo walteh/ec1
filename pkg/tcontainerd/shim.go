@@ -20,7 +20,6 @@ import (
 	slogctx "github.com/veqryn/slog-context"
 
 	"github.com/walteh/ec1/cmd/containerd-shim-harpoon-v2/containerd"
-	libdispatch "github.com/walteh/ec1/pkg/libdipatch"
 	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/logging/logrusshim"
 )
@@ -29,67 +28,7 @@ func ShimReexecInit() {
 	reexec.Register(ShimSimlinkPath(), ShimMain)
 }
 
-// func (s *DevContainerdServer) setupShim(ctx context.Context) error {
-
-// 	os.MkdirAll(filepath.Dir(ShimSimlinkPath()), 0755)
-
-// 	proxySock, err := net.Listen("unix", ShimLogProxySockPath())
-// 	if err != nil {
-// 		slog.Error("Failed to create log proxy socket", "error", err, "path", ShimLogProxySockPath())
-// 		os.Exit(1)
-// 	}
-
-// 	// fwd logs from the proxy socket to stdout
-// 	go func() {
-// 		defer proxySock.Close()
-// 		for {
-// 			conn, err := proxySock.Accept()
-// 			if err != nil {
-// 				slog.Error("Failed to accept log proxy connection", "error", err)
-// 				return
-// 			}
-// 			go func() { _, _ = io.Copy(os.Stdout, conn) }()
-// 		}
-// 	}()
-
-// 	// Set up logging for TestMain
-
-// 	self, _ := os.Executable()
-
-// 	if err := os.Symlink(self, ShimSimlinkPath()); err != nil {
-// 		slog.Error("create shim link", "error", err)
-// 		os.Exit(1)
-// 	}
-
-// 	oldPath := os.Getenv("PATH")
-// 	newPath := filepath.Dir(ShimSimlinkPath()) + string(os.PathListSeparator) + oldPath
-// 	os.Setenv("PATH", newPath)
-
-// 	return nil
-// }
-
 func ShimMain() {
-	// runtime.LockOSThread()
-	// defer runtime.UnlockOSThread()
-
-	// if os.Getuid() == 0 {
-	// 	syscall.Setuid(1000)
-	// 	syscall.Setgid(1000)
-	// }
-
-	// if os.Getppid() == 1 {
-	// 	// run myself as a child process and wait so i don't have pid as 1
-	// 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	// 	cmd.Stdout = os.Stdout
-	// 	cmd.Stderr = os.Stderr
-	// 	cmd.Stdin = os.Stdin
-	// 	err := cmd.Run()
-	// 	if err != nil {
-	// 		slog.Error("Failed to run myself as a child process", "error", err)
-	// 		os.Exit(1)
-	// 	}
-	// 	os.Exit(0)
-	// }
 
 	ctx := context.Background()
 
@@ -116,18 +55,6 @@ func ShimMain() {
 	}()
 
 	if syscall.Getppid() == 1 {
-
-		// runtime.LockOSThread() // ensures main() stays on the true main thread
-		// defer runtime.UnlockOSThread()
-		// go func() {
-		// 	defer func() {
-		// 		if r := recover(); r != nil {
-		// 			slog.ErrorContext(ctx, "panic in DispatchMain", "panic", r)
-		// 			panic(r)
-		// 		}
-		// 	}()
-		// 	libdispatch.DispatchMain()
-		// }()
 
 		var rusage syscall.Rusage
 		if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err == nil {
@@ -177,28 +104,12 @@ func ShimMain() {
 		time.Sleep(1 * time.Second)
 	}()
 
-	errc := make(chan error)
+	// errc := make(chan error)
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	go func() {
-		errc <- RunShim(ctx)
-	}()
-
-	if syscall.Getppid() == 1 {
-		slog.InfoContext(ctx, "SHIM_DISPATCH_MAIN")
-		libdispatch.DispatchMain()
-	} else {
-		select {
-		case err := <-errc:
-			slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
-		case <-time.After(30 * time.Second):
-			slog.ErrorContext(ctx, "SHIM_MAIN_TIMEOUT")
-		}
+	err = RunShim(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "SHIM_MAIN_FAILED", "error", err)
 	}
-
-	// <-time.After(30 * time.Second)
 
 }
 
