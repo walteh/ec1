@@ -30,6 +30,8 @@ var CommonEntitlements = map[string]string{
 	"allow-unsigned-executable":          "com.apple.security.cs.allow-unsigned-executable-memory",
 	"disable-executable-page-protection": "com.apple.security.cs.disable-executable-page-protection",
 	"disable-library-validation":         "com.apple.security.cs.disable-library-validation",
+	"inherit":                            "com.apple.security.inherit",
+	// "sandbox":                            "com.apple.security.app-sandbox",
 }
 
 type Config struct {
@@ -426,7 +428,7 @@ func runLegacyMode(ctx context.Context) error {
 
 	config := &Config{
 		Target:       target,
-		Entitlements: []string{"virtualization"}, // Default for backward compatibility
+		Entitlements: []string{"virtualization", "inherit"}, // Default for backward compatibility
 		Identity:     "-",
 		Force:        false,
 		ExecArgs:     execArgs,

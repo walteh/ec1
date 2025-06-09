@@ -128,13 +128,19 @@ func link(url string, text string) string {
 }
 
 type CallerURI struct {
-	Package string
-	File    string
-	Line    int
+	Package  string
+	File     string
+	Line     int
+	Function string
 }
 
 func GetCurrentCallerURI() CallerURI {
 	ptr, _, _, _ := runtime.Caller(1)
+	return getCallerURI(ptr)
+}
+
+func GetCurrentCallerURIOffset(offset int) CallerURI {
+	ptr, _, _, _ := runtime.Caller(1 + offset)
 	return getCallerURI(ptr)
 }
 
@@ -144,9 +150,10 @@ func getCallerURI(ptr uintptr) CallerURI {
 	pkg := packageName(frame)
 	uri := fmt.Sprintf("%s:%d", frame.File, frame.Line)
 	return CallerURI{
-		Package: pkg,
-		File:    filepath.Base(filepath.Dir(uri)),
-		Line:    frame.Line,
+		Package:  pkg,
+		File:     filepath.Base(filepath.Dir(uri)),
+		Line:     frame.Line,
+		Function: frame.Function,
 	}
 }
 func formatErrorStacks(groups []string, a slog.Attr) slog.Attr {

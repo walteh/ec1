@@ -510,6 +510,8 @@ func (cfg *GowConfig) buildCodesignExecArgs(mode string, entitlements []string, 
 		}
 	} else {
 		execArgs = append(execArgs, "-entitlement=virtualization")
+		execArgs = append(execArgs, "-entitlement=inherit")
+		// execArgs = append(execArgs, "-entitlement=sandbox")
 	}
 
 	// Add identity if specified

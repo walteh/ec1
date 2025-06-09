@@ -315,6 +315,8 @@ tasks:
     dev:shim:killall:
         desc: kills all running containers
         cmds:
+          - cmd: sudo -A pkill -f containerd-shim-harpoon-v2 || true
+          - cmd: sudo -A pkill -f nerdctl-dev || true
           - cmd: sudo -A killall -9 containerd-shim-harpoon-v2 || true
           - cmd: sudo -A killall -9 nerdctl-dev || true
 
@@ -324,7 +326,7 @@ tasks:
           - task: dev:shim:killall
           - task: harpoon:initramfs:arm64
           - cmd: |-
-                ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
+                timeout 20s ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
                     --platform=linux/arm64 \
                     --network=host \
                     --runtime=containerd.shim.harpoon.v2 \
@@ -332,3 +334,12 @@ tasks:
                     --rm \
                     docker.io/library/alpine:latest \
                     "echo" "'hi'"
+
+    dev:2025-06-08:*:
+        label: 'dev:2025-06-08:{{.ARG}}'
+        desc: runs the shim for 2025-06-08
+        vars:
+            ARG: "{{index .MATCH 0}}"
+        cmds:
+          - cmd: CGO_ENABLED=1 go build -buildmode=plugin -o /tmp/proc-demo/vz-plugin.so ./cmd/plugin-demo/plugin/main.go
+          - cmd: ./gow run -codesign ./cmd/proc-demo -{{.ARG}}
