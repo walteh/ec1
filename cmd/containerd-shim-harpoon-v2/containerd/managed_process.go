@@ -118,8 +118,6 @@ func (p *managedProcess) start(vm *vmm.RunningVM[*vf.VirtualMachine]) (err error
 
 	slog.Info("managedProcess.start: Starting process in VM")
 
-	p.vm = vm
-
 	// Wait for VM to be ready for exec
 	slog.Info("managedProcess.start: Waiting for VM to be ready for exec")
 	select {
@@ -131,7 +129,7 @@ func (p *managedProcess) start(vm *vmm.RunningVM[*vf.VirtualMachine]) (err error
 		return fmt.Errorf("timeout waiting for VM to be ready for exec")
 	}
 
-	// Build the command to execute
+	// // Build the command to execute
 	var cmdParts []string
 
 	// Handle working directory
