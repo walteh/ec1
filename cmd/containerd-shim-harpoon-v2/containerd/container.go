@@ -10,7 +10,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/containerd/containerd/api/runtime/task/v3"
-	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/errdefs/pkg/errgrpc"
@@ -27,9 +26,9 @@ const unmountFlags = unix.MNT_FORCE
 
 type container struct {
 	// These fields are readonly and filled when container is created
-	spec          *oci.Spec
-	bundlePath    string
-	rootfs        string
+	spec       *oci.Spec
+	bundlePath string
+	// rootfs        string
 	dnsSocketPath string
 	request       *task.CreateTaskRequest
 
@@ -84,9 +83,9 @@ func (c *container) destroy() (retErr error) {
 	// Remove socket file to avoid continuity "failed to create irregular file" error during multiple Dockerfile  `RUN` steps
 	_ = os.Remove(c.dnsSocketPath)
 
-	if err := mount.UnmountRecursive(c.rootfs, unmountFlags); err != nil {
-		retErr = multierror.Append(retErr, err)
-	}
+	// if err := mount.UnmountRecursive(c.rootfs, unmountFlags); err != nil {
+	// 	retErr = multierror.Append(retErr, err)
+	// }
 
 	return
 }
@@ -114,18 +113,16 @@ func (c *container) getProcess(ctx context.Context, execID string) (*managedProc
 }
 
 // createVM creates and starts a new microVM for this container using the already-prepared rootfs
-func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, execID string, rootfs string, stdio stdio) (retErr error) {
+func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, createRequest *task.CreateTaskRequest, stdio stdio) (retErr error) {
 
 	// Add panic recovery for VM creation
 	defer func() {
 		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", id, "execID", execID)
+			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", id)
 			retErr = errors.Errorf("VM creation panicked: %v", r)
 			panic(r)
 		}
 	}()
-
-	slog.InfoContext(ctx, "createVM: Starting VM creation", "id", id, "execID", execID, "rootfs", rootfs)
 
 	// Extract configuration from the OCI spec
 	memory := strongunits.MiB(64).ToBytes() // Use 512MB minimum for VZ compatibility
@@ -158,17 +155,16 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, exe
 	}
 
 	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
-		ID:           id,
-		ExecID:       execID,
-		RootfsPath:   c.rootfs,
-		RootfsMounts: c.request.Rootfs,
+		ID: id,
+		// RootfsPath:   c.rootfs,
+		RootfsMounts: createRequest.Rootfs,
 		StderrFD:     stdio.stderrFD,
 		StdoutFD:     stdio.stdoutFD,
 		StdinFD:      stdio.stdinFD,
 		DNSPath:      c.dnsSocketPath,
-		StdinPath:    c.request.Stdin,
-		StdoutPath:   c.request.Stdout,
-		StderrPath:   c.request.Stderr,
+		StdinPath:    createRequest.Stdin,
+		StdoutPath:   createRequest.Stdout,
+		StderrPath:   createRequest.Stderr,
 		Spec:         spec,
 		Platform:     platform,
 		Memory:       memory,

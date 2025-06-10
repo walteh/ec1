@@ -94,7 +94,7 @@ func (p *managedProcess) kill(signal syscall.Signal) error {
 	return nil
 }
 
-func (p *managedProcess) setup(ctx context.Context, rootfs string, stdin string, stdout string, stderr string) error {
+func (p *managedProcess) setup(ctx context.Context, stdin string, stdout string, stderr string) error {
 	var err error
 
 	p.io, err = setupIO(ctx, stdin, stdout, stderr)

@@ -35,6 +35,10 @@
 		{
 			"name": "vz",
 			"path": "../vz"
+		},
+		{
+			"name": "sys",
+			"path": "../sys"
 		}
 	],
 	"extensions": {

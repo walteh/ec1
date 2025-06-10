@@ -366,7 +366,7 @@ tasks:
           - task: harpoon:kernel:arm64
           - cmd: mkdir -p {{.TMP_DIR}}
           - defer: rm -rf {{.TMP_DIR}}
-          - cmd: echo "console.log('hi from bun!');" > {{.TMP_DIR}}/script.ts
+          - cmd: echo "console.log(new Date().toISOString()); console.log('hi from bun!');" > {{.TMP_DIR}}/script.ts
           - cmd: |-
                 timeout 20s ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
                     --platform=linux/arm64 \

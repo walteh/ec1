@@ -97,6 +97,18 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 		}
 	}
 
+	// for path, innerPath := range imageConfig.StaticFiles {
+	// 	data, err := os.ReadFile(path)
+	// 	if err != nil {
+	// 		return nil, nil, errors.Errorf("reading file: %w", err)
+	// 	}
+	// 	header, err := initramfs.NewStaticFileHeader(path, innerPath)
+	// 	if err != nil {
+	// 		return nil, nil, errors.Errorf("creating static file header: %w", err)
+	// 	}
+	// 	initramfs.StreamInjectHyper(ctx, initramfsGz, header, data)
+	// }
+
 	files := map[string]io.Reader{
 		targetVmLinuxPath:   kernelXz,
 		targetInitramfsPath: initramfsGz,
@@ -111,7 +123,7 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 	}
 
 	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-	cmdLine := strings.TrimSpace(" console=hvc0,vport2p0,vport3p0 " + extraArgs + " -- " + extraInitArgs)
+	cmdLine := strings.TrimSpace(" console=hvc0 " + extraArgs + " -- " + extraInitArgs)
 
 	err = groupErrs.Wait()
 	if err != nil {

@@ -151,6 +151,13 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 		return nil, errors.Errorf("canonicalizing rootfs at %s/: %w", rootfs, err)
 	}
 
+	// canonicalizedRootfs, err := mount.CanonicalizePath(request.Rootfs[0].Target)
+	// if err != nil {
+	// 	return nil, errors.Errorf("canonicalizing rootfs at %s/: %w", request.Rootfs, err)
+	// }
+
+	// slog.InfoContext(ctx, "CREATE", "spec.Root.Path", spec.Root.Path, "spec.Root.Path[canonicalized]", rootfs, "request.Rootfs", request.Rootfs, "canonicalizedRootfs")
+
 	// Workaround for 104-char limit of UNIX socket path
 	shortenedRootfsPath, err := shortenPath(rootfs)
 	if err != nil {
@@ -163,8 +170,8 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 	defer s.mu.Unlock()
 
 	c := &container{
-		request:       request,
-		rootfs:        rootfs,
+		request: request,
+		// rootfs:        rootfs,
 		spec:          spec,
 		bundlePath:    request.Bundle,
 		dnsSocketPath: dnsSocketPath,
@@ -187,18 +194,25 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 
 	log.G(ctx).WithField("request", request).Info("CREATE_SETUP_START")
 
-	if err = c.primary.setup(ctx, c.rootfs, request.Stdin, request.Stdout, request.Stderr); err != nil {
+	if err = c.primary.setup(ctx, request.Stdin, request.Stdout, request.Stderr); err != nil {
 		return nil, errors.Errorf("setting up primary process: %w", err)
 	}
 
-	mounts, err := processMounts(c.rootfs, request.Rootfs, spec.Mounts)
-	if err != nil {
-		return nil, errors.Errorf("processing mounts: %w", err)
+	log.G(ctx).Info("Starting VM creation")
+	// Create and start the VM for this container
+	if err := c.createVM(ctx, c.spec, request.ID, request, c.primary.io); err != nil {
+
+		return nil, errors.Errorf("failed to create VM: %w", err)
 	}
 
-	if err = mount.All(mounts, c.rootfs); err != nil {
-		return nil, errors.Errorf("mounting rootfs component: %w", err)
-	}
+	// mounts, err := processMounts(c.rootfs, request.Rootfs, spec.Mounts)
+	// if err != nil {
+	// 	return nil, errors.Errorf("processing mounts: %w", err)
+	// }
+
+	// if err = mount.All(mounts, c.rootfs); err != nil {
+	// 	return nil, errors.Errorf("mounting rootfs component: %w", err)
+	// }
 
 	// TODO: Check if container already exists?
 	s.containers[request.ID] = c
@@ -216,7 +230,9 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 		Checkpoint: request.Checkpoint,
 	}
 
-	return &task.CreateTaskResponse{}, nil
+	return &task.CreateTaskResponse{
+		Pid: uint32(c.primary.pid),
+	}, nil
 }
 
 func shortenPath(p string) (string, error) {
@@ -376,25 +392,25 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 			log.G(ctx).Info("START_VM_WAIT_DONE")
 		}()
 
-		log.G(ctx).Info("Starting VM creation")
-		// Create and start the VM for this container
-		if err := c.createVM(vmCtx, c.spec, request.ID, request.ExecID, c.rootfs, c.primary.io); err != nil {
-			log.G(ctx).WithError(err).Error("failed to create VM")
-			p.status = taskt.Status_STOPPED
-			p.exitStatus = 1
+		// log.G(ctx).Info("Starting VM creation")
+		// // Create and start the VM for this container
+		// if err := c.createVM(vmCtx, c.spec, request.ID, c.rootfs, c.primary.io); err != nil {
+		// 	log.G(ctx).WithError(err).Error("failed to create VM")
+		// 	p.status = taskt.Status_STOPPED
+		// 	p.exitStatus = 1
 
-			// Send task exit event to notify containerd of failure
-			s.events <- &events.TaskExit{
-				ContainerID: request.ID,
-				ID:          request.ExecID,
-				Pid:         uint32(p.pid),
-				ExitStatus:  1,
-				ExitedAt:    protobuf.ToTimestamp(time.Now()),
-			}
-			// Close waitblock since start won't be called
-			close(p.waitblock)
-			return
-		}
+		// 	// Send task exit event to notify containerd of failure
+		// 	s.events <- &events.TaskExit{
+		// 		ContainerID: request.ID,
+		// 		ID:          request.ExecID,
+		// 		Pid:         uint32(p.pid),
+		// 		ExitStatus:  1,
+		// 		ExitedAt:    protobuf.ToTimestamp(time.Now()),
+		// 	}
+		// 	// Close waitblock since start won't be called
+		// 	close(p.waitblock)
+		// 	return
+		// }
 
 		// Start the process in the VM now that VM is created
 		if err := p.start(ctx, c.vm); err != nil {
@@ -567,7 +583,7 @@ func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_
 		}
 	}()
 
-	if err = aux.setup(ctx, c.rootfs, request.Stdin, request.Stdout, request.Stderr); err != nil {
+	if err = aux.setup(ctx, request.Stdin, request.Stdout, request.Stderr); err != nil {
 		return nil, err
 	}
 

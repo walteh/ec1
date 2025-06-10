@@ -31,6 +31,7 @@ type ConatinerImageConfig struct {
 	Platform units.Platform
 	Memory   strongunits.B
 	VCPUs    uint64
+	// StaticFiles map[string]string
 }
 
 type ContainerVMConfig struct {

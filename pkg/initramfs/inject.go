@@ -1,6 +1,7 @@
 package initramfs
 
 import (
+	"os"
 	_ "unsafe"
 
 	"bufio"
@@ -38,6 +39,20 @@ func NewExecHeader(filename string) initramfs.Header {
 		// DataSize: uint32(len(data)),
 		Magic: initramfs.Magic_070701,
 	}
+}
+
+func NewStaticFileHeader(src string, dst string) (initramfs.Header, error) {
+	stat, err := os.Stat(src)
+	if err != nil {
+		return initramfs.Header{}, errors.Errorf("statting source: %w", err)
+	}
+	return initramfs.Header{
+		Filename:     dst,
+		FilenameSize: uint32(len(dst) + 1), // add 1 for the null terminator
+		Mode:         initramfs.Mode_File | initramfs.GroupRead | initramfs.UserRead | initramfs.OtherRead,
+		Mtime:        stat.ModTime(),
+		Magic:        initramfs.Magic_070701,
+	}, nil
 }
 
 func NewDirHeader(filename string) initramfs.Header {

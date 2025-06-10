@@ -43,8 +43,8 @@ func (s *DevContainerdServer) createNerdctlConfig(ctx context.Context) error {
 	}
 
 	configContent := fmt.Sprintf(`
-debug          = %[1]v
-debug_full     = %[1]v
+debug          = false
+debug_full     = false
 address        = "unix://%[2]s"
 namespace      = "%[3]s"
 snapshotter    = "%[4]s"

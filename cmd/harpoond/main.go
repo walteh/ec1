@@ -7,18 +7,15 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/ttrpc"
-	"github.com/lmittmann/tint"
 	"github.com/mdlayher/vsock"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
-	"go.bug.st/serial"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	slogctx "github.com/veqryn/slog-context"
@@ -104,6 +101,11 @@ func main() {
 			os.Exit(1)
 		}
 
+		if err := mountRootfsSecondary(ctx, ec1init.NewRootAbsPath, bindMounts); err != nil {
+			slog.ErrorContext(ctx, "problem mounting rootfs secondary", "error", err)
+			os.Exit(1)
+		}
+
 		err = mountRootfsPrimary(ctx)
 		if err != nil {
 			slog.ErrorContext(ctx, "problem mounting rootfs", "error", err)
@@ -159,19 +161,15 @@ func runContainerd(ctx context.Context) error {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
-	spec, _, bindMounts, err := loadSpecOrManifest(ctx)
-	if err != nil {
-		slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
-		return errors.Errorf("loading spec or manifest: %w", err)
-	}
+	// spec, _, _, err := loadSpecOrManifest(ctx)
+	// if err != nil {
+	// 	slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
+	// 	return errors.Errorf("loading spec or manifest: %w", err)
+	// }
 
-	if spec == nil {
-		return errors.Errorf("no spec found")
-	}
-
-	if err := mountRootfsSecondary(ctx, "", spec, bindMounts); err != nil {
-		return errors.Errorf("mounting rootfs secondary: %w", err)
-	}
+	// // if spec == nil {
+	// // 	return errors.Errorf("no spec found")
+	// // }
 
 	// logFile(ctx, "/proc/self/mountinfo")
 
@@ -243,17 +241,44 @@ func runTtrpc(ctx context.Context) error {
 	return ttrpcServe.Serve(ctx, listener)
 }
 
+// func getCopyMountCommands(ctx context.Context) ([][]string, error) {
+// 	cmds := [][]string{}
+
+// 	mountsBytes, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerMountsFile))
+// 	if err != nil {
+// 		return nil, errors.Errorf("loading mounts: %w", err)
+// 	}
+
+// 	var mounts []specs.Mount
+// 	err = json.Unmarshal(mountsBytes, &mounts)
+// 	if err != nil {
+// 		return nil, errors.Errorf("unmarshalling mounts: %w", err)
+// 	}
+
+// 	for _, mount := range mounts {
+// 		if mount.Type != "copy" {
+// 			continue
+// 		}
+
+// 		cmds = append(cmds, []string{"mkdir", "-p", filepath.Join(ec1init.NewRootAbsPath, filepath.Dir(mount.Destination))})
+// 		cmds = append(cmds, []string{"touch", filepath.Join(ec1init.NewRootAbsPath, mount.Destination)})
+// 		cmds = append(cmds, []string{"mount", "--bind", mount.Destination, filepath.Join(ec1init.NewRootAbsPath, mount.Destination)})
+// 	}
+
+//		return cmds, nil
+//	}
 func mountRootfsPrimary(ctx context.Context) error {
-	// dirs := []string{}
 
 	// mkdir and mount the rootfs
-	if err := os.MkdirAll(ec1init.NewRootAbsPath, 0755); err != nil {
-		return errors.Errorf("making directories: %w", err)
-	}
+	// if err := os.MkdirAll(ec1init.NewRootAbsPath, 0755); err != nil {
+	// 	return errors.Errorf("making directories: %w", err)
+	// }
 
-	if err := harpoon.ExecCmdForwardingStdio(ctx, "mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath); err != nil {
-		return errors.Errorf("mounting rootfs: %w", err)
-	}
+	// if err := harpoon.ExecCmdForwardingStdio(ctx, "mount", "-t", "virtiofs", ec1init.RootfsVirtioTag, ec1init.NewRootAbsPath); err != nil {
+	// 	return errors.Errorf("mounting rootfs: %w", err)
+	// }
+
+	_ = harpoon.ExecCmdForwardingStdio(ctx, "ls", "-lah", "/newroot")
 
 	if err := os.MkdirAll(filepath.Join(ec1init.NewRootAbsPath, ec1init.Ec1AbsPath), 0755); err != nil {
 		return errors.Errorf("making directories: %w", err)
@@ -264,6 +289,13 @@ func mountRootfsPrimary(ctx context.Context) error {
 	}
 
 	cmds := [][]string{}
+
+	// copyMounts, err := getCopyMountCommands(ctx)
+	// if err != nil {
+	// 	return errors.Errorf("getting copy mounts: %w", err)
+	// }
+
+	// cmds = append(cmds, copyMounts...)
 
 	for _, binary := range binariesToCopy {
 		cmds = append(cmds, []string{"mkdir", "-p", filepath.Join(ec1init.NewRootAbsPath, filepath.Dir(binary))})
@@ -278,47 +310,37 @@ func mountRootfsPrimary(ctx context.Context) error {
 		}
 	}
 
-	devices, err := serial.GetPortsList()
-	if err != nil {
-		return errors.Errorf("getting serial ports: %w", err)
-	}
-
-	slog.InfoContext(ctx, "serial devices", "devices", tint.NewPrettyValue(devices))
-
-	for _, device := range devices {
-		slog.InfoContext(ctx, "serial device", "device", device)
-	}
-
 	return nil
 }
 
-func mountRootfsSecondary(ctx context.Context, prefix string, spec *oci.Spec, customMounts []specs.Mount) error {
+func mountRootfsSecondary(ctx context.Context, prefix string, customMounts []specs.Mount) error {
 	// dirs := []string{}
 	cmds := [][]string{}
 
-	cmds = append(cmds, []string{"rm", "-rf", prefix + "/etc/hosts"})
-	cmds = append(cmds, []string{"rm", "-rf", prefix + "/etc/resolv.conf"})
+	// cmds = append(cmds, []string{"rm", "-rf", prefix + "/etc/hosts"})
+	// cmds = append(cmds, []string{"rm", "-rf", prefix + "/etc/resolv.conf"})
 
-	if err := os.MkdirAll(filepath.Join(prefix, "etc"), 0755); err != nil {
-		return errors.Errorf("making directories: %w", err)
-	}
+	// if err := os.MkdirAll(filepath.Join(prefix, "etc"), 0755); err != nil {
+	// 	return errors.Errorf("making directories: %w", err)
+	// }
 
-	// cmds = append(cmds, []string{"mkdir", "-p", prefix + "/dev/pts"})
-	// cmds = append(cmds, []string{"mount", "-t", "devpts", "devpts", prefix + "/dev/pts", "-o", "gid=5,mode=620,ptmxmode=666"})
+	cmds = append(cmds, []string{"mkdir", "-p", prefix + "/dev/pts"})
+	cmds = append(cmds, []string{"mount", "-t", "devpts", "devpts", prefix + "/dev/pts", "-o", "gid=5,mode=620,ptmxmode=666"})
 
 	// dirs = append(dirs, filepath.Join(prefix, ec1init.Ec1AbsPath))
 
 	// trying to figure out how to proerly do this to not skip things
-	for _, mount := range append(spec.Mounts, customMounts...) {
+	for _, mount := range customMounts {
+
 		dest := filepath.Join(prefix, mount.Destination)
-		if mount.Destination == "/etc/resolv.conf" || mount.Destination == "/etc/hosts" {
-			continue
-		}
-		if mount.Type != "ec1-virtiofs" {
-			if mount.Type == "bind" || slices.Contains(mount.Options, "rbind") {
-				continue
-			}
-		}
+		// if mount.Destination == "/etc/resolv.conf" || mount.Destination == "/etc/hosts" {
+		// 	continue
+		// }
+		// if mount.Type != "ec1-virtiofs" {
+		// 	if mount.Type == "bind" || slices.Contains(mount.Options, "rbind") {
+		// 		continue
+		// 	}
+		// }
 		cmds = append(cmds, []string{"mkdir", "-p", dest})
 		// if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		// 	return errors.Errorf("making directories: %w", err)
@@ -328,24 +350,22 @@ func mountRootfsSecondary(ctx context.Context, prefix string, spec *oci.Spec, cu
 			continue
 		}
 
-		opts := []string{"-o", strings.Join(mount.Options, ",")}
+		opd := strings.Join(mount.Options, ",")
+		opd = strings.TrimSuffix(opd, ",")
+
+		opts := []string{"-o", opd}
 		if len(mount.Options) == 1 {
 			opts = []string{}
 		}
 
-		if mount.Destination == "/dev" {
-			mount.Type = "devtmpfs"
-			mount.Source = "devtmpfs"
-		}
+		// if mount.Destination == "/dev" {
+		// 	mount.Type = "devtmpfs"
+		// 	mount.Source = "devtmpfs"
+		// }
 
 		switch mount.Type {
 
-		case "ec1-virtiofs":
-			allOpts := []string{"mount", "-t", "virtiofs", mount.Source}
-			allOpts = append(allOpts, opts...)
-			allOpts = append(allOpts, dest)
-			cmds = append(cmds, allOpts)
-		case "bind":
+		case "bind", "copy":
 			continue
 		default:
 			allOpts := []string{"mount", "-t", mount.Type, mount.Source}

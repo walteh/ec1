@@ -6,16 +6,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
 	"time"
 
 	"github.com/containerd/containerd/api/types"
-	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
-	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/containerd/v2/pkg/shim"
-	"github.com/containerd/log"
 )
 
 func NewManager(name string) shim.Manager {
@@ -103,19 +98,19 @@ func (*manager) Start(ctx context.Context, id string, opts shim.StartOpts) (para
 }
 
 func (*manager) Stop(ctx context.Context, id string) (shim.StopStatus, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return shim.StopStatus{}, err
-	}
+	// cwd, err := os.Getwd()
+	// if err != nil {
+	// 	return shim.StopStatus{}, err
+	// }
 
-	bundlePath := filepath.Join(filepath.Dir(cwd), id)
+	// bundlePath := filepath.Join(filepath.Dir(cwd), id)
 
-	spec, err := oci.ReadSpec(path.Join(bundlePath, oci.ConfigFilename))
-	if err == nil {
-		if err = mount.UnmountRecursive(spec.Root.Path, unmountFlags); err != nil {
-			log.G(ctx).WithError(err).Warn("failed to cleanup rootfs mount")
-		}
-	}
+	// spec, err := oci.ReadSpec(path.Join(bundlePath, oci.ConfigFilename))
+	// if err == nil {
+	// 	if err = mount.UnmountRecursive(spec.Root.Path, unmountFlags); err != nil {
+	// 		log.G(ctx).WithError(err).Warn("failed to cleanup rootfs mount")
+	// 	}
+	// }
 
 	return shim.StopStatus{
 		ExitedAt: time.Now(),

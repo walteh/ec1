@@ -39,7 +39,6 @@ import (
 
 type ContainerizedVMConfig struct {
 	ID           string
-	ExecID       string
 	RootfsMounts []*types.Mount
 	RootfsPath   string
 	StderrFD     int
@@ -108,7 +107,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		return nil, errors.Errorf("creating working directory: %w", err)
 	}
 
-	bindMounts, mountDevices, err := PrepareContainerMounts(ctx, ctrconfig.Spec)
+	bindMounts, mountDevices, err := PrepareContainerMounts(ctx, ctrconfig.Spec, ctrconfig.ID)
 	if err != nil {
 		return nil, errors.Errorf("preparing container mounts: %w", err)
 	}
@@ -123,7 +122,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		"spec.Root.Readonly", ctrconfig.Spec.Root.Readonly,
 	)
 
-	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, ctrconfig.RootfsPath, bindMounts, errgrp)
+	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, ctrconfig.RootfsMounts, bindMounts, errgrp)
 	if err != nil {
 		return nil, errors.Errorf("creating ec1 block device from rootfs: %w", err)
 	}
@@ -133,10 +132,17 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 
 	switch ctrconfig.Platform.OS() {
 	case "linux":
+		// staticFiles := map[string]string{}
+		// for _, mount := range bindMounts {
+		// 	if mount.Type == "copy" {
+		// 		staticFiles[mount.Source] = mount.Destination
+		// 	}
+		// }
 		bl, bldevs, err := PrepareHarpoonLinuxBootloader(ctx, workingDir, ConatinerImageConfig{
 			Platform: ctrconfig.Platform,
 			Memory:   ctrconfig.Memory,
 			VCPUs:    ctrconfig.VCPUs,
+			// StaticFiles: staticFiles,
 		}, errgrp)
 		if err != nil {
 			return nil, errors.Errorf("getting boot loader config: %w", err)
@@ -320,7 +326,49 @@ func TailConsoleLog(ctx context.Context, workingDir string) error {
 	return nil
 }
 
-func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount, []virtio.VirtioDevice, error) {
+func bindMountToVirtioFs(ctx context.Context, mount specs.Mount, containerId string) (*specs.Mount, virtio.VirtioDevice, error) {
+	fi, err := os.Stat(mount.Source)
+	if err != nil {
+		return nil, nil, errors.Errorf("statting source: %w", err)
+	}
+
+	if fi.IsDir() {
+		hash := sha256.Sum256([]byte(mount.Source))
+		tag := "bind-" + hex.EncodeToString(hash[:8])
+		// create a new fs direcotry share
+		shareDev, err := virtio.VirtioFsNew(mount.Source, tag)
+		if err != nil {
+			return nil, nil, errors.Errorf("creating share device: %w", err)
+		}
+
+		mount.Type = "virtiofs"
+		mount.Source = tag
+		mount.Options = []string{}
+
+		return &mount, shareDev, nil
+
+	} else {
+
+		base := filepath.Base(mount.Source)
+		dir := filepath.Base(filepath.Dir(mount.Source))
+
+		if base == "resolv.conf" || base == "hosts" {
+			if dir == containerId {
+				slog.WarnContext(ctx, "skipping mount of file", "file", mount.Source)
+
+				// mount.Type = "copy"
+				return nil, nil, nil
+			}
+		}
+
+		return nil, nil, errors.Errorf("unsupported bind mount file: %s", mount.Source)
+
+		// this is probably a security issue, but for now d
+	}
+
+}
+
+func PrepareContainerMounts(ctx context.Context, spec *oci.Spec, containerId string) ([]specs.Mount, []virtio.VirtioDevice, error) {
 	bindMounts := []specs.Mount{}
 	devices := []virtio.VirtioDevice{}
 
@@ -328,32 +376,37 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 	slog.InfoContext(ctx, "mounts", "mounts", tint.NewPrettyValue(spec.Mounts))
 
 	for _, mount := range spec.Mounts {
+		if mount.Type == "" && slices.Contains(mount.Options, "rbind") {
+			mount.Type = "rbind"
+		}
 
-		if mount.Type == "bind" || slices.Contains(mount.Options, "rbind") {
-			if fi, err := os.Stat(mount.Source); err == nil {
-				var dir string
-				if fi.IsDir() {
-					dir = mount.Source
-				} else {
-					dir = filepath.Dir(mount.Source)
-				}
-				hash := sha256.Sum256([]byte(dir))
-				tag := "bind-" + hex.EncodeToString(hash[:8])
-				// create a new fs direcotry share
-				shareDev, err := virtio.VirtioFsNew(dir, tag)
-				if err != nil {
-					return nil, nil, errors.Errorf("creating share device: %w", err)
-				}
-				devices = append(devices, shareDev)
+		switch mount.Type {
+		case "bind", "rbind":
+			mnt, dev, err := bindMountToVirtioFs(ctx, mount, containerId)
+			if err != nil {
+				return nil, nil, errors.Errorf("binding mount to virtio fs: %w", err)
+			}
+			if mnt != nil {
+				bindMounts = append(bindMounts, *mnt)
+			}
+			if dev != nil {
+				devices = append(devices, dev)
+			}
+		case "tmpfs":
+			if mount.Destination == "/dev" {
 				bindMounts = append(bindMounts, specs.Mount{
-					Type:        "ec1-virtiofs",
-					Source:      tag,
+					Type:        "devtmpfs",
+					Source:      "devtmpfs",
 					Destination: mount.Destination,
 					Options:     mount.Options,
 					UIDMappings: mount.UIDMappings,
 					GIDMappings: mount.GIDMappings,
 				})
+			} else {
+				bindMounts = append(bindMounts, mount)
 			}
+		default:
+			bindMounts = append(bindMounts, mount)
 		}
 	}
 
@@ -361,7 +414,8 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 }
 
 // PrepareContainerVirtioDevicesFromRootfs creates virtio devices using an existing rootfs directory
-func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string, ctrconfig *oci.Spec, rootfsPath string, bindMounts []specs.Mount, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string, ctrconfig *oci.Spec, rootfsMounts []*types.Mount, bindMounts []specs.Mount, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+	outMounts := []specs.Mount{}
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
 
 	devices := []virtio.VirtioDevice{}
@@ -371,12 +425,27 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 		return nil, errors.Errorf("creating block device directory: %w", err)
 	}
 
+	if len(rootfsMounts) != 1 {
+		return nil, errors.Errorf("expected 1 rootfs mount, got %d", len(rootfsMounts))
+	}
+
+	rootfsMount := rootfsMounts[0]
+
 	// i think the prob is that ctrconfig.Root.Path is set to 'rootfs'
 	// Create a VirtioFs device pointing to the existing rootfs directory
-	blkDev, err := virtio.VirtioFsNew(strings.TrimPrefix(rootfsPath, "/private"), ec1init.RootfsVirtioTag)
+	blkDev, err := virtio.VirtioFsNew(rootfsMount.Source, ec1init.RootfsVirtioTag)
 	if err != nil {
 		return nil, errors.Errorf("creating rootfs virtio device: %w", err)
 	}
+
+	outMounts = append(outMounts, specs.Mount{
+		Type:        "virtiofs",
+		Source:      ec1init.RootfsVirtioTag,
+		Destination: "", // the root
+		Options: slices.DeleteFunc(rootfsMount.Options, func(opt string) bool {
+			return opt == "rbind" || opt == "bind"
+		}),
+	})
 
 	// consoleAttachment := virtio.NewFileHandleDeviceAttachment(os.NewFile(uintptr(ctrconfig.StdinFD), "ptymaster"), virtio.DeviceSerial)
 	// consoleConfig.SetAttachment(consoleAttachment)
@@ -388,14 +457,16 @@ func PrepareContainerVirtioDevicesFromRootfs(ctx context.Context, wrkdir string,
 		return nil, errors.Errorf("marshalling spec: %w", err)
 	}
 
-	bindMounts = append(bindMounts, specs.Mount{
+	outMounts = append(outMounts, specs.Mount{
 		Type:        "virtiofs",
 		Source:      ec1init.Ec1VirtioTag,
 		Destination: ec1init.Ec1AbsPath,
 		Options:     []string{},
 	})
 
-	mountsBytes, err := json.Marshal(bindMounts)
+	outMounts = append(outMounts, bindMounts...)
+
+	mountsBytes, err := json.Marshal(outMounts)
 	if err != nil {
 		return nil, errors.Errorf("marshalling mounts: %w", err)
 	}
