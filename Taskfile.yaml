@@ -339,6 +339,44 @@ tasks:
                     --rm \
                     docker.io/library/alpine:latest \
                     "echo" "-e" "\n\nhi\n\n"
+    dev:2025-06-10:01:
+        desc: runs the shim for 2025-06-08
+        cmds:
+          - task: dev:shim:killall
+          - task: harpoon:initramfs:arm64
+          - task: harpoon:kernel:arm64
+          - cmd: |-
+                timeout 20s ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
+                    --platform=linux/arm64 \
+                    --network=host \
+                    --runtime=containerd.shim.harpoon.v2 \
+                    --pull=missing \
+                    --rm \
+                    docker.io/oven/bun:alpine \
+                    --version
+
+    dev:2025-06-10:02:
+        desc: runs the shim for 2025-06-08
+        vars:
+            TMP_DIR:
+                sh: mktemp -d
+        cmds:
+          - task: dev:shim:killall
+          - task: harpoon:initramfs:arm64
+          - task: harpoon:kernel:arm64
+          - cmd: mkdir -p {{.TMP_DIR}}
+          - defer: rm -rf {{.TMP_DIR}}
+          - cmd: echo "console.log('hi from bun!');" > {{.TMP_DIR}}/script.ts
+          - cmd: |-
+                timeout 20s ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
+                    --platform=linux/arm64 \
+                    --network=host \
+                    --runtime=containerd.shim.harpoon.v2 \
+                    --pull=missing \
+                    --rm \
+                    --mount=type=bind,src={{.TMP_DIR}},dst=/app/scripts \
+                    docker.io/oven/bun:alpine \
+                    run /app/scripts/script.ts
 
     dev:2025-06-08:*:
         label: 'dev:2025-06-08:{{.ARG}}'

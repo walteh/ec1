@@ -140,7 +140,7 @@ func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*har
 	// slog.InfoContext(ctx, "run response", "exitCode", exitCode, "stdout", string(outb), "stderr", string(errb))
 
 	return harpoonv1.NewRunResponse(func(b *harpoonv1.RunResponse_builder) {
-		b.Stdout = []byte(fmt.Sprintf("yes its working: %s", string(outb)))
+		b.Stdout = outb
 		b.Stderr = errb
 		b.ExitCode = ptr(int32(exitCode))
 	}), nil

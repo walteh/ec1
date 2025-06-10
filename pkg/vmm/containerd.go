@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -323,8 +324,12 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 	bindMounts := []specs.Mount{}
 	devices := []virtio.VirtioDevice{}
 
+	// log all the mounts
+	slog.InfoContext(ctx, "mounts", "mounts", tint.NewPrettyValue(spec.Mounts))
+
 	for _, mount := range spec.Mounts {
-		if mount.Type == "bind" {
+
+		if mount.Type == "bind" || slices.Contains(mount.Options, "rbind") {
 			if fi, err := os.Stat(mount.Source); err == nil {
 				var dir string
 				if fi.IsDir() {
@@ -335,7 +340,7 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec) ([]specs.Mount,
 				hash := sha256.Sum256([]byte(dir))
 				tag := "bind-" + hex.EncodeToString(hash[:8])
 				// create a new fs direcotry share
-				shareDev, err := virtio.VirtioFsNew(filepath.Dir(mount.Source), tag)
+				shareDev, err := virtio.VirtioFsNew(dir, tag)
 				if err != nil {
 					return nil, nil, errors.Errorf("creating share device: %w", err)
 				}

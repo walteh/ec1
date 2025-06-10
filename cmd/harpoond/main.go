@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -313,6 +314,11 @@ func mountRootfsSecondary(ctx context.Context, prefix string, spec *oci.Spec, cu
 		if mount.Destination == "/etc/resolv.conf" || mount.Destination == "/etc/hosts" {
 			continue
 		}
+		if mount.Type != "ec1-virtiofs" {
+			if mount.Type == "bind" || slices.Contains(mount.Options, "rbind") {
+				continue
+			}
+		}
 		cmds = append(cmds, []string{"mkdir", "-p", dest})
 		// if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		// 	return errors.Errorf("making directories: %w", err)
@@ -355,6 +361,8 @@ func mountRootfsSecondary(ctx context.Context, prefix string, spec *oci.Spec, cu
 			return errors.Errorf("running command: %v: %w", cmd, err)
 		}
 	}
+
+	harpoon.ExecCmdForwardingStdio(ctx, "ls", "-lah", "/app/scripts")
 
 	return nil
 }
