@@ -3,15 +3,27 @@ package harpoon
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime/debug"
+	"strings"
+	"syscall"
 	"time"
 
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sys/unix"
 
+	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/lmittmann/tint"
+
 	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
+	"github.com/walteh/ec1/pkg/ec1init"
+	"github.com/walteh/ec1/pkg/logging"
 )
 
 type AgentService struct {
@@ -24,6 +36,202 @@ var (
 
 func NewAgentService() *AgentService {
 	return &AgentService{}
+}
+
+func (s *AgentService) WrapWithErrorLogging() harpoonv1.TTRPCGuestServiceService {
+	return WrapGuestServiceWithErrorLogging(s)
+}
+
+func (s *AgentService) Readiness(ctx context.Context, req *harpoonv1.ReadinessRequest) (*harpoonv1.ReadinessResponse, error) {
+	return harpoonv1.NewReadinessResponse(func(b *harpoonv1.ReadinessResponse_builder) {
+		b.Ready = ptr(true)
+	}), nil
+}
+
+func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*harpoonv1.RunResponse, error) {
+	var spec *oci.Spec
+	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, errors.Errorf("reading spec: %w", err)
+		}
+	} else {
+		err = json.Unmarshal(specd, &spec)
+		if err != nil {
+			return nil, errors.Errorf("unmarshalling spec: %w", err)
+		}
+	}
+	var stdin io.Reader
+	if req.GetStdin() != nil {
+		stdin = bytes.NewBuffer(req.GetStdin())
+	} else {
+		stdin = bytes.NewReader([]byte{})
+	}
+	stdout := bytes.NewBuffer(nil)
+	stderr := bytes.NewBuffer(nil)
+
+	// stdoutFifo, err := fifo.OpenFifo(ctx, ec1init.DevStdoutPort, os.O_RDWR|syscall.O_NONBLOCK 0)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stdout fifo: %w", err)
+	// }
+
+	// stderrFifo, err := fifo.OpenFifo(ctx, ec1init.DevStderrPort, os.O_RDWR|syscall.O_NONBLOCK 0)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stderr fifo: %w", err)
+	// }
+
+	// make sure our vport exists
+	// ExecCmdForwardingStdio(ctx, "ls", "-lah", ec1init.DevStdoutPort)
+	// ExecCmdForwardingStdio(ctx, "ls", "-lah", ec1init.DevStderrPort)
+
+	// stdoutFifo, err := os.OpenFile(ec1init.DevStdoutPort, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stdout fifo: %w", err)
+	// }
+	// stderrFifo, err := os.OpenFile(ec1init.DevStderrPort, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stderr fifo: %w", err)
+	// }
+
+	// stdoutFifo, err := OpenSerialPort(ctx, ec1init.DevStdoutPort)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stdout port: %w", err)
+	// }
+	// stderrFifo, err := OpenSerialPort(ctx, ec1init.DevStderrPort)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stderr port: %w", err)
+	// }
+
+	// stdoutFifo, err := openVirtioPortWithRetry(ctx, ec1init.DevStdoutPort)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stdout port: %w", err)
+	// }
+	// stderrFifo, err := openVirtioPortWithRetry(ctx, ec1init.DevStderrPort)
+	// if err != nil {
+	// 	return nil, errors.Errorf("opening stderr port: %w", err)
+	// }
+
+	argc := spec.Process.Args[0]
+	argv := spec.Process.Args[1:]
+
+	slog.InfoContext(ctx, "running command", "argc", argc, "argv", argv)
+
+	command := exec.CommandContext(ctx, argc, argv...)
+
+	command.Stdout = stdout
+	command.Stderr = stderr
+	command.Stdin = stdin
+	// command.Stdin = stdinFifo
+
+	err = command.Run()
+
+	outb := stdout.Bytes()
+	errb := stderr.Bytes()
+	exitCode := 0
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return nil, errors.Errorf("harpoon: running command [%s %s]: %w", argc, strings.Join(argv, " "), err)
+		}
+	}
+
+	// slog.InfoContext(ctx, "run response", "exitCode", exitCode, "stdout", string(outb), "stderr", string(errb))
+
+	return harpoonv1.NewRunResponse(func(b *harpoonv1.RunResponse_builder) {
+		b.Stdout = []byte(fmt.Sprintf("yes its working: %s", string(outb)))
+		b.Stderr = errb
+		b.ExitCode = ptr(int32(exitCode))
+	}), nil
+}
+
+// func openVirtioPortWithRetry(ctx context.Context, devicePath string) (*os.File, error) {
+// 	backoff := 50 * time.Millisecond
+// 	maxBackoff := 2 * time.Second
+// 	maxRetries := 10
+
+// 	for i := 0; i < maxRetries; i++ {
+// 		file, err := os.OpenFile(devicePath, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+// 		if err == nil {
+// 			return file, nil
+// 		}
+
+// 		// If it's not the "no such device" error, fail immediately
+// 		if !strings.Contains(err.Error(), "no such device") {
+// 			return nil, err
+// 		}
+
+// 		slog.DebugContext(ctx, "retrying virtio port open",
+// 			"device", devicePath,
+// 			"attempt", i+1,
+// 			"backoff", backoff,
+// 			"error", err)
+
+// 		select {
+// 		case <-ctx.Done():
+// 			return nil, ctx.Err()
+// 		case <-time.After(backoff):
+// 			// Exponential backoff
+// 			backoff = min(backoff*2, maxBackoff)
+// 		}
+// 	}
+
+// 	return nil, errors.Errorf("failed to open %s after %d retries", devicePath, maxRetries)
+// }
+
+func waitForVirtioPortActive(ctx context.Context, devicePath string) error {
+	// Extract port name from device path
+	portName := strings.TrimPrefix(devicePath, "/dev/")
+	activePath := fmt.Sprintf("/sys/class/virtio-ports/%s/active", portName)
+
+	backoff := 50 * time.Millisecond
+	maxBackoff := 2 * time.Second
+	maxRetries := 10
+
+	for i := 0; i < maxRetries; i++ {
+		// Check if port is active in sysfs
+		if data, err := os.ReadFile(activePath); err == nil {
+			active := strings.TrimSpace(string(data))
+			if active == "1" {
+				// Port is active, try to open
+				file, err := os.OpenFile(devicePath, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+				if err == nil {
+					file.Close()
+					return nil
+				}
+			}
+		}
+
+		slog.DebugContext(ctx, "waiting for virtio port to become active",
+			"device", devicePath,
+			"attempt", i+1,
+			"backoff", backoff)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			backoff = min(backoff*2, maxBackoff)
+		}
+	}
+
+	return errors.Errorf("virtio port %s never became active", devicePath)
+}
+
+func openVirtioPortWithRetry(ctx context.Context, devicePath string) (*os.File, error) {
+	// First wait for the port to become active
+	if err := waitForVirtioPortActive(ctx, devicePath); err != nil {
+		return nil, err
+	}
+
+	// Then open the device
+	file, err := os.OpenFile(devicePath, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, errors.Errorf("opening virtio port %s: %w", devicePath, err)
+	}
+
+	return file, nil
 }
 
 func (s *AgentService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequest) (*harpoonv1.TimeSyncResponse, error) {
@@ -47,10 +255,22 @@ func (s *AgentService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequ
 	}), nil
 }
 
-func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) error {
+func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) (err error) {
+
+	slog.InfoContext(ctx, "exec request received")
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "exec request panicked", "error", r)
+			fmt.Fprintln(logging.GetDefaultLogWriter(), string(debug.Stack()))
+			err = errors.New("exec request panicked")
+			return
+		}
+	}()
+
 	req, err := server.Recv()
 	if err != nil {
-		return err
+		return errors.Errorf("receiving request: %w", err)
 	}
 
 	start := req.GetStart()
@@ -69,17 +289,55 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	cmdDone := make(chan struct{})
 	terminateDone := make(chan struct{})
 
+	errs := []error{}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "err goroutine panicked", "error", r)
+				panic(r)
+			}
+		}()
+		for err := range errch {
+			slog.ErrorContext(ctx, "err goroutine received error", "error", err)
+			errs = append(errs, err)
+			er, err := harpoonv1.NewValidatedExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
+				b.Error = ptr(err.Error())
+			})
+			if err != nil {
+				slog.ErrorContext(ctx, "building error response", "error", err)
+				errs = append(errs, err)
+				continue
+			}
+			err = server.Send(er)
+			if err != nil {
+				slog.ErrorContext(ctx, "sending error response", "error", err)
+				errs = append(errs, err)
+				continue
+			}
+		}
+	}()
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "stdin goroutine panicked", "error", r)
+				panic(r)
+			}
+		}()
 		defer close(stdinDone)
 		for {
 			req, err := server.Recv()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
+					slog.DebugContext(ctx, "stdin EOF")
 					return
 				}
 				errch <- errors.Errorf("reading stdin from client: %w", err)
 				return
 			}
+
+			slog.DebugContext(ctx, "stdin request received", "req", tint.NewPrettyValue(req))
+
 			if req.GetTerminate() != nil {
 				close(terminateDone)
 				return
@@ -94,31 +352,54 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 				return
 			}
 			if req.GetStdin().GetDone() {
+				slog.DebugContext(ctx, "stdin request done")
 				return
 			}
 		}
 	}()
 
-	env := make(map[string]string)
-	for k, v := range start.GetEnvVars() {
-		env[k] = v
-	}
+	// env := make(map[string]string)
+	// for k, v := range start.GetEnvVars() {
+	// 	env[k] = v
+	// }
 
-	argv := start.GetArgv()
-	argc := start.GetArgc()
+	// argv := start.GetArgv()
+	// argc := start.GetArgc()
 	// if start.GetUseEntrypoint() {
 	// 	full := append(s.currentContainerEntrypoint, append([]string{argc}, argv...)...)
 	// 	argv = full[1:]
 	// 	argc = full[0]
 	// }
 
+	var spec *oci.Spec
+	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return errors.Errorf("reading spec: %w", err)
+		}
+	} else {
+		err = json.Unmarshal(specd, &spec)
+		if err != nil {
+			return errors.Errorf("unmarshalling spec: %w", err)
+		}
+	}
+
+	argc := spec.Process.Args[0]
+	argv := spec.Process.Args[1:]
+
 	cmd := exec.CommandContext(ctx, argc, argv...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.Stdin = stdin
+	cmd.Env = spec.Process.Env
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Cloneflags: syscall.CLONE_NEWNS,
+	}
+	cmd.Dir = spec.Process.Cwd
 
 	// Start stdout streaming
 	go streamOutput(
+		ctx,
 		stdout,
 		server,
 		harpoonv1.NewValidatedExecResponse_WithStdout,
@@ -129,6 +410,7 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 
 	// Start stderr streaming
 	go streamOutput(
+		ctx,
 		stderr,
 		server,
 		harpoonv1.NewValidatedExecResponse_WithStderr,
@@ -138,6 +420,12 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 	)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "cmd goroutine panicked", "error", r)
+				panic(r)
+			}
+		}()
 		defer close(cmdDone)
 		err = cmd.Run()
 		if err != nil {
@@ -165,38 +453,28 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 		}
 	}()
 
-	errs := []error{}
-	go func() {
-		for err := range errch {
-			errs = append(errs, err)
-			er, err := harpoonv1.NewValidatedExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
-				b.Error = ptr(err.Error())
-			})
-			if err != nil {
-				errs = append(errs, err)
-				return
-			}
-			err = server.Send(er)
-			if err != nil {
-				return
-			}
-		}
-	}()
-
 	<-cmdDone
 	<-stdoutDone
 	<-stderrDone
 	<-stdinDone
+	<-terminateDone
 
 	close(errch)
 
 	allerrs := errors.Join(errs...)
+
+	if len(errs) > 0 {
+		slog.ErrorContext(ctx, "exec request finished", "err", allerrs)
+	}
+
+	slog.InfoContext(ctx, "exec request finished")
 
 	return allerrs
 }
 
 // streamOutput handles reading from a source and streaming it to the client
 func streamOutput(
+	ctx context.Context,
 	reader io.Reader,
 	server harpoonv1.TTRPCGuestService_ExecServer,
 	responseBuilder func(func(*harpoonv1.Bytestream_builder)) (*harpoonv1.ExecResponse, error),
@@ -204,6 +482,12 @@ func streamOutput(
 	done chan<- struct{},
 	streamType string,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "streamOutput goroutine panicked", "streamType", streamType, "error", r)
+			panic(r)
+		}
+	}()
 	defer close(done)
 	for {
 		buf := make([]byte, 1024)

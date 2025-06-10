@@ -6,7 +6,7 @@ import "github.com/walteh/ec1/pkg/binembed"
 //go:embed vmlinux.xz
 var BinaryXZ []byte
 
-const BinaryXZChecksum = "f1655d281cb4009369c9cb023c18aa3e75e4e5a4270d522dba08a56400c44671"
+const BinaryXZChecksum = "206222f3fdace598c7754da3b7b5367c7b370f5d651b65b2728761619215fa07"
 
 const Version = "6.15-rc7"
 

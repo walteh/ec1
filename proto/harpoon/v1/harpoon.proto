@@ -15,6 +15,9 @@ service GuestService {
 
 
 	rpc Readiness(ReadinessRequest) returns (ReadinessResponse);
+
+
+	rpc Run(RunRequest) returns (RunResponse);
 }
 
 message Bytestream {
@@ -37,12 +40,12 @@ message ExecRequest {
 
 		// the arguments to pass to the executable
 		repeated string argv = 2 [
-			(buf.validate.field).required = true
+			(buf.validate.field).required = false
 		];
 
 		// the environment variables to set for the executable
 		map<string, string> env_vars = 3 [
-			(buf.validate.field).required = true
+			(buf.validate.field).required = false
 		];
 
 		// whether to read stdin from the client
@@ -102,6 +105,45 @@ message ReadinessRequest {}
 
 message ReadinessResponse {
 	bool ready = 1 [
+		(buf.validate.field).required = true
+	];
+}
+
+message RunRequest {
+	bytes stdin = 1 [
+		(buf.validate.field).required = false
+	];
+
+	// // the executable to run
+	// string argc = 1 [
+	//  (buf.validate.field).required = true
+	// ];
+
+	// // the arguments to pass to the executable
+	// repeated string argv = 2 [
+	//  (buf.validate.field).required = true
+	// ];
+
+	// // the environment variables to set for the executable
+	// map<string, string> env_vars = 3 [
+	//  (buf.validate.field).required = true
+	// ];
+
+	// // whether to append the entrypoint to argc
+	// bool use_entrypoint = 4 [
+	//  (buf.validate.field).required = true
+	// ];
+}
+
+message RunResponse {
+	bytes stdout = 1 [
+		(buf.validate.field).required = false
+	];
+
+	bytes stderr    = 2 [
+		(buf.validate.field).required = false
+	];
+	int32 exit_code = 3 [
 		(buf.validate.field).required = true
 	];
 }

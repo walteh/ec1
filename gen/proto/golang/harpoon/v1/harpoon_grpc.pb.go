@@ -19,8 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GuestService_Exec_FullMethodName     = "/harpoon.v1.GuestService/Exec"
-	GuestService_TimeSync_FullMethodName = "/harpoon.v1.GuestService/TimeSync"
+	GuestService_Exec_FullMethodName      = "/harpoon.v1.GuestService/Exec"
+	GuestService_TimeSync_FullMethodName  = "/harpoon.v1.GuestService/TimeSync"
+	GuestService_Readiness_FullMethodName = "/harpoon.v1.GuestService/Readiness"
+	GuestService_Run_FullMethodName       = "/harpoon.v1.GuestService/Run"
 )
 
 // GuestServiceClient is the client API for GuestService service.
@@ -29,6 +31,8 @@ const (
 type GuestServiceClient interface {
 	Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error)
 	TimeSync(ctx context.Context, in *TimeSyncRequest, opts ...grpc.CallOption) (*TimeSyncResponse, error)
+	Readiness(ctx context.Context, in *ReadinessRequest, opts ...grpc.CallOption) (*ReadinessResponse, error)
+	Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error)
 }
 
 type guestServiceClient struct {
@@ -62,12 +66,34 @@ func (c *guestServiceClient) TimeSync(ctx context.Context, in *TimeSyncRequest, 
 	return out, nil
 }
 
+func (c *guestServiceClient) Readiness(ctx context.Context, in *ReadinessRequest, opts ...grpc.CallOption) (*ReadinessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReadinessResponse)
+	err := c.cc.Invoke(ctx, GuestService_Readiness_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *guestServiceClient) Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunResponse)
+	err := c.cc.Invoke(ctx, GuestService_Run_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GuestServiceServer is the server API for GuestService service.
 // All implementations must embed UnimplementedGuestServiceServer
 // for forward compatibility.
 type GuestServiceServer interface {
 	Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error
 	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
+	Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error)
+	Run(context.Context, *RunRequest) (*RunResponse, error)
 	mustEmbedUnimplementedGuestServiceServer()
 }
 
@@ -83,6 +109,12 @@ func (UnimplementedGuestServiceServer) Exec(grpc.BidiStreamingServer[ExecRequest
 }
 func (UnimplementedGuestServiceServer) TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TimeSync not implemented")
+}
+func (UnimplementedGuestServiceServer) Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Readiness not implemented")
+}
+func (UnimplementedGuestServiceServer) Run(context.Context, *RunRequest) (*RunResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
 }
 func (UnimplementedGuestServiceServer) mustEmbedUnimplementedGuestServiceServer() {}
 func (UnimplementedGuestServiceServer) testEmbeddedByValue()                      {}
@@ -130,6 +162,42 @@ func _GuestService_TimeSync_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GuestService_Readiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadinessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GuestServiceServer).Readiness(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GuestService_Readiness_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GuestServiceServer).Readiness(ctx, req.(*ReadinessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GuestService_Run_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GuestServiceServer).Run(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GuestService_Run_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GuestServiceServer).Run(ctx, req.(*RunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GuestService_ServiceDesc is the grpc.ServiceDesc for GuestService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -140,6 +208,14 @@ var GuestService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TimeSync",
 			Handler:    _GuestService_TimeSync_Handler,
+		},
+		{
+			MethodName: "Readiness",
+			Handler:    _GuestService_Readiness_Handler,
+		},
+		{
+			MethodName: "Run",
+			Handler:    _GuestService_Run_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

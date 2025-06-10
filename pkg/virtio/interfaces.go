@@ -49,6 +49,10 @@ func ApplyDevices(ctx context.Context, applier DeviceApplier, devices []VirtioDe
 			if err := applier.ApplyVirtioSerialStdio(ctx, dev); err != nil {
 				return errors.Errorf("applying virtio serial stdio: %w", err)
 			}
+		case *VirtioSerialStdioPipes:
+			if err := applier.ApplyVirtioSerialStdioPipes(ctx, dev); err != nil {
+				return errors.Errorf("applying virtio serial stdio pipes: %w", err)
+			}
 		case *VirtioSerialPty:
 			if err := applier.ApplyVirtioSerialPty(ctx, dev); err != nil {
 				return errors.Errorf("applying virtio serial pty: %w", err)
@@ -81,6 +85,10 @@ func ApplyDevices(ctx context.Context, applier DeviceApplier, devices []VirtioDe
 			if err := applier.ApplyVirtioSerialFifoFile(ctx, dev); err != nil {
 				return errors.Errorf("applying virtio serial fifo file: %w", err)
 			}
+		case *VirtioSerialFDPipes:
+			if err := applier.ApplyVirtioSerialFDPipes(ctx, dev); err != nil {
+				return errors.Errorf("applying virtio serial fd pipes: %w", err)
+			}
 		default:
 			return errors.Errorf("unsupported device type: %T", dev)
 		}
@@ -112,6 +120,8 @@ type DeviceApplier interface {
 	ApplyVirtioSerialPty(ctx context.Context, vmConfig *VirtioSerialPty) error
 	ApplyVirtioSerialLogFile(ctx context.Context, vmConfig *VirtioSerialLogFile) error
 	ApplyVirtioSerialFifoFile(ctx context.Context, vmConfig *VirtioSerialFifoFile) error
+	ApplyVirtioSerialStdioPipes(ctx context.Context, vmConfig *VirtioSerialStdioPipes) error
+	ApplyVirtioSerialFDPipes(ctx context.Context, vmConfig *VirtioSerialFDPipes) error
 	// ApplyVirtioDiskStorage(ctx context.Context, vmConfig *DiskStorageConfig) error
 	// ApplyVirtioNetworkBlockStorage(ctx context.Context, vmConfig *NetworkBlockStorageConfig) error
 	// ApplyVirtioStorage(ctx context.Context, vmConfig *StorageConfig) error

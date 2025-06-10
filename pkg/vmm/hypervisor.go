@@ -1,9 +1,13 @@
 package vmm
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/containerd/ttrpc"
@@ -12,6 +16,7 @@ import (
 
 	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 	"github.com/walteh/ec1/pkg/ec1init"
+	"github.com/walteh/ec1/pkg/logging"
 	"github.com/walteh/ec1/pkg/streamexec"
 	"github.com/walteh/ec1/pkg/streamexec/protocol"
 	"github.com/walteh/ec1/pkg/streamexec/transport"
@@ -78,7 +83,9 @@ func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestS
 				slog.Error("failed to dial vsock", "error", err)
 				continue
 			}
-			r.guestServiceConnection = harpoonv1.NewTTRPCGuestServiceClient(ttrpc.NewClient(conn))
+			r.guestServiceConnection = harpoonv1.NewTTRPCGuestServiceClient(ttrpc.NewClient(conn, ttrpc.WithClientDebugging(), ttrpc.WithOnCloseError(func(err error) {
+				slog.Error("guest service connection closed", "error", err)
+			})))
 			return r.guestServiceConnection, nil
 		case <-timeout.C:
 			return nil, errors.Errorf("timeout waiting for guest service connection")
@@ -198,9 +205,282 @@ func (r *RunningVM[VM]) PortOnHostIP() uint16 {
 	return r.portOnHostIP
 }
 
+func (r *RunningVM[VM]) Run(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) (int64, error) {
+	if stdin == nil {
+		stdin = bytes.NewReader([]byte{})
+	}
+
+	guestService, err := r.guestService(ctx)
+	if err != nil {
+		return 0, errors.Errorf("getting guest service: %w", err)
+	}
+
+	stdinData, err := io.ReadAll(stdin)
+	if err != nil {
+		return 0, errors.Errorf("reading stdin: %w", err)
+	}
+
+	req, err := harpoonv1.NewValidatedRunRequest(func(b *harpoonv1.RunRequest_builder) {
+		b.Stdin = stdinData
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	exec, err := guestService.Run(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_, err = stdout.Write(exec.GetStdout())
+		if err != nil {
+			slog.Error("failed to write stdout", "error", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		_, err = stderr.Write(exec.GetStderr())
+		if err != nil {
+			slog.Error("failed to write stderr", "error", err)
+		}
+	}()
+
+	wg.Wait()
+
+	return int64(exec.GetExitCode()), nil
+}
+
 func (r *RunningVM[VM]) Exec(ctx context.Context, command string) (stdout []byte, stderr []byte, errorcode []byte, err error) {
 	if r.manager.State() != StateConnected {
 		return nil, nil, nil, errors.New("stream exec not ready")
 	}
 	return r.streamexec.ExecuteCommand(ctx, command)
 }
+
+func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) (errorcode int32, err error) {
+
+	slog.InfoContext(ctx, "RunWithStdio: starting")
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in RunWithStdio", "error", r)
+			fmt.Fprintln(logging.GetDefaultLogWriter(), string(debug.Stack()))
+			errorcode = -1
+			err = errors.Errorf("panic in RunWithStdio: %v", r)
+			return
+		}
+		slog.InfoContext(ctx, "RunWithStdio: finished")
+
+	}()
+
+	guestService, err := r.guestService(ctx)
+	if err != nil {
+		return 0, errors.Errorf("getting guest service: %w", err)
+	}
+
+	slog.InfoContext(ctx, "RunWithStdio: got guest service")
+
+	if term == nil {
+		term = make(chan bool)
+	}
+
+	if stdin == nil {
+		stdin = bytes.NewReader([]byte{})
+	}
+
+	slog.InfoContext(ctx, "RunWithStdio: creating exec request")
+	//
+	e, err := guestService.Exec(ctx)
+	if err != nil {
+		return 0, errors.Errorf("creating start request: %w", err)
+	}
+
+	slog.InfoContext(ctx, "RunWithStdio: sending start request")
+
+	start, err := harpoonv1.NewValidatedExecRequest_WithStart(func(b *harpoonv1.ExecRequest_Start_builder) {
+		b.Argc = ptr("")
+		b.Argv = []string{}
+		b.Stdin = ptr(true)
+		b.EnvVars = map[string]string{}
+	})
+	if err != nil {
+		return 0, errors.Errorf("creating start request: %w", err)
+	}
+
+	err = e.Send(start)
+	if err != nil {
+		return 0, errors.Errorf("sending start request: %w", err)
+	}
+
+	slog.InfoContext(ctx, "RunWithStdio: start request sent")
+
+	terminate := func(force bool) {
+		req, err := harpoonv1.NewValidatedExecRequest_WithTerminate(func(b *harpoonv1.ExecRequest_Terminate_builder) {
+			b.Force = ptr(force)
+		})
+		if err != nil {
+			slog.Error("failed to create terminate request", "error", err)
+			return
+		}
+		err = e.Send(req)
+		if err != nil {
+			slog.Error("failed to send terminate to guest service", "error", err)
+		}
+
+	}
+
+	defer terminate(false)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "panic in term goroutine", "error", r)
+				slog.DebugContext(ctx, string(debug.Stack()))
+				panic(r)
+			}
+		}()
+		select {
+		case <-ctx.Done():
+			slog.InfoContext(ctx, "RunWithStdio: context done")
+			terminate(false)
+			return
+		case force := <-term:
+			slog.InfoContext(ctx, "RunWithStdio: term signal received", "force", force)
+			terminate(force)
+			return
+		}
+
+	}()
+
+	slog.InfoContext(ctx, "RunWithStdio: stating goroutines")
+
+	// copy stdin to the guest service
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "panic in stdin goroutine", "error", r)
+				slog.DebugContext(ctx, string(debug.Stack()))
+				panic(r)
+			}
+		}()
+		buf := make([]byte, 1024)
+		for {
+
+			n, err := stdin.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					req, err := harpoonv1.NewValidatedExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+						b.Data = buf[:n]
+						b.Done = ptr(true)
+					})
+					if err != nil {
+						slog.Error("failed to create exec request", "error", err)
+						return
+					}
+					err = e.Send(req)
+					if err != nil {
+						slog.Error("failed to send stdin to guest service", "error", err)
+					}
+					return
+				}
+				slog.Error("failed to read stdin", "error", err)
+			}
+			if n == 0 {
+				slog.InfoContext(ctx, "RunWithStdio: stdin read 0 bytes")
+				return
+			}
+
+			req, err := harpoonv1.NewValidatedExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+				b.Data = buf[:n]
+				b.Done = ptr(false)
+			})
+			if err != nil {
+				slog.Error("failed to create exec request", "error", err)
+				return
+			}
+
+			err = e.Send(req)
+			if err != nil {
+				slog.Error("failed to send stdin to guest service", "error", err)
+			}
+		}
+	}()
+
+	slog.InfoContext(ctx, "RunWithStdio: starting recv loop")
+
+	for {
+
+		slog.InfoContext(ctx, "RunWithStdio: recv loop started")
+
+		msg, err := e.Recv()
+		if err != nil {
+			slog.Error("failed to receive message from guest service", "error", err)
+			return 0, errors.Errorf("failed to receive message from guest service: %w", err)
+		}
+
+		if msg.GetError() == nil {
+			err = errors.Errorf("error: %s", msg.GetError().GetError())
+		} else if msg.GetStderr() != nil {
+			stderr.Write(msg.GetStderr().GetData())
+		} else if msg.GetStdout() != nil {
+			stdout.Write(msg.GetStdout().GetData())
+		} else if msg.GetExit() != nil {
+			errorcode = msg.GetExit().GetExitCode()
+			return errorcode, err
+		} else {
+			err = errors.Errorf("unknown message: %v", msg)
+		}
+	}
+
+}
+
+// type WrappedWriter struct {
+// 	cli harpoonv1.TTRPCGuestService_ExecClient
+// }
+
+// func NewWrappedWriter(client harpoonv1.TTRPCGuestService_ExecClient) *WrappedWriter {
+// 	return &WrappedWriter{
+// 		client: client,
+// 	}
+// }
+
+// func (w *WrappedWriter) Write(p []byte) (n int, err error) {
+// 	req, err := harpoonv1.New(func(b *harpoonv1.Bytestream_builder) {
+// 	err = w.cli.Send(&harpoonv1.Bytestream{
+// 		Data: p,
+// 	})
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	return len(p), nil
+// }
+
+// type WrappedReader struct {
+// 	cli harpoonv1.TTRPCGuestService_ExecClient
+// }
+
+// type WrappedReader struct {
+// 	protocol protocol.Protocol
+// 	msgType  protocol.MessageType
+// }
+
+// func NewWrappedReader(protocol protocol.Protocol, msgType protocol.MessageType) *WrappedReader {
+// 	return &WrappedReader{
+// 		protocol: protocol,
+// 		msgType:  msgType,
+// 	}
+// }
+
+// func (w *WrappedReader) Read(p []byte) (n int, err error) {
+// 	payload, err := w.protocol.ReadMessage(w.msgType)
+// 	if err != nil {
+// 		return 0, errors.Errorf("reading message: %w", err)
+// 	}
+// 	return payload, nil
+// }

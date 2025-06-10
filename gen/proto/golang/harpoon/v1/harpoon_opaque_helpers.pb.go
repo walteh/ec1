@@ -314,3 +314,67 @@ func NewValidatedTimeSyncResponse(f func(*TimeSyncResponse_builder)) (*TimeSyncR
 	}
 	return m, nil
 }
+
+// NewReadinessRequest creates a new ReadinessRequest using the builder pattern
+func NewReadinessRequest(f func(*ReadinessRequest_builder)) *ReadinessRequest {
+	b := &ReadinessRequest_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedReadinessRequest creates a new ReadinessRequest using the builder pattern with validation
+func NewValidatedReadinessRequest(f func(*ReadinessRequest_builder)) (*ReadinessRequest, error) {
+	m := NewReadinessRequest(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewReadinessResponse creates a new ReadinessResponse using the builder pattern
+func NewReadinessResponse(f func(*ReadinessResponse_builder)) *ReadinessResponse {
+	b := &ReadinessResponse_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedReadinessResponse creates a new ReadinessResponse using the builder pattern with validation
+func NewValidatedReadinessResponse(f func(*ReadinessResponse_builder)) (*ReadinessResponse, error) {
+	m := NewReadinessResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunRequest creates a new RunRequest using the builder pattern
+func NewRunRequest(f func(*RunRequest_builder)) *RunRequest {
+	b := &RunRequest_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedRunRequest creates a new RunRequest using the builder pattern with validation
+func NewValidatedRunRequest(f func(*RunRequest_builder)) (*RunRequest, error) {
+	m := NewRunRequest(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunResponse creates a new RunResponse using the builder pattern
+func NewRunResponse(f func(*RunResponse_builder)) *RunResponse {
+	b := &RunResponse_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewValidatedRunResponse creates a new RunResponse using the builder pattern with validation
+func NewValidatedRunResponse(f func(*RunResponse_builder)) (*RunResponse, error) {
+	m := NewRunResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}

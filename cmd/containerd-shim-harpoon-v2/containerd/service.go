@@ -340,6 +340,7 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 
 	// Start VM creation asynchronously with better error handling
 	go func() {
+
 		// Use background context since the request context might be cancelled
 		vmCtx := context.Background()
 		attrs := slogctx.ExtractAppended(ctx, time.Now(), slog.LevelDebug, "start_vm_done")
@@ -396,22 +397,22 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 		}
 
 		// Start the process in the VM now that VM is created
-		// if err := p.start(c.vm); err != nil {
-		// 	log.G(ctx).WithError(err).Error("failed to start process in VM")
-		// 	p.status = taskt.Status_STOPPED
-		// 	p.exitStatus = 1
-		// 	// Send task exit event to notify containerd of failure
-		// 	s.events <- &events.TaskExit{
-		// 		ContainerID: request.ID,
-		// 		ID:          request.ExecID,
-		// 		Pid:         uint32(p.pid),
-		// 		ExitStatus:  1,
-		// 		ExitedAt:    protobuf.ToTimestamp(time.Now()),
-		// 	}
-		// 	// Close waitblock since start failed
-		// 	close(p.waitblock)
-		// 	return
-		// }
+		if err := p.start(ctx, c.vm); err != nil {
+			log.G(ctx).WithError(err).Error("failed to start process in VM")
+			p.status = taskt.Status_STOPPED
+			p.exitStatus = 1
+			// Send task exit event to notify containerd of failure
+			s.events <- &events.TaskExit{
+				ContainerID: request.ID,
+				ID:          request.ExecID,
+				Pid:         uint32(p.pid),
+				ExitStatus:  1,
+				ExitedAt:    protobuf.ToTimestamp(time.Now()),
+			}
+			// Close waitblock since start failed
+			close(p.waitblock)
+			return
+		}
 
 		log.G(ctx).Info("VM and process started successfully")
 	}()

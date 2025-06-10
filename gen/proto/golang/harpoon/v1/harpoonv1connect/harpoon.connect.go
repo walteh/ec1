@@ -37,12 +37,18 @@ const (
 	GuestServiceExecProcedure = "/harpoon.v1.GuestService/Exec"
 	// GuestServiceTimeSyncProcedure is the fully-qualified name of the GuestService's TimeSync RPC.
 	GuestServiceTimeSyncProcedure = "/harpoon.v1.GuestService/TimeSync"
+	// GuestServiceReadinessProcedure is the fully-qualified name of the GuestService's Readiness RPC.
+	GuestServiceReadinessProcedure = "/harpoon.v1.GuestService/Readiness"
+	// GuestServiceRunProcedure is the fully-qualified name of the GuestService's Run RPC.
+	GuestServiceRunProcedure = "/harpoon.v1.GuestService/Run"
 )
 
 // GuestServiceClient is a client for the harpoon.v1.GuestService service.
 type GuestServiceClient interface {
 	Exec(context.Context) *connect.BidiStreamForClient[v1.ExecRequest, v1.ExecResponse]
 	TimeSync(context.Context, *connect.Request[v1.TimeSyncRequest]) (*connect.Response[v1.TimeSyncResponse], error)
+	Readiness(context.Context, *connect.Request[v1.ReadinessRequest]) (*connect.Response[v1.ReadinessResponse], error)
+	Run(context.Context, *connect.Request[v1.RunRequest]) (*connect.Response[v1.RunResponse], error)
 }
 
 // NewGuestServiceClient constructs a client for the harpoon.v1.GuestService service. By default, it
@@ -68,13 +74,27 @@ func NewGuestServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(guestServiceMethods.ByName("TimeSync")),
 			connect.WithClientOptions(opts...),
 		),
+		readiness: connect.NewClient[v1.ReadinessRequest, v1.ReadinessResponse](
+			httpClient,
+			baseURL+GuestServiceReadinessProcedure,
+			connect.WithSchema(guestServiceMethods.ByName("Readiness")),
+			connect.WithClientOptions(opts...),
+		),
+		run: connect.NewClient[v1.RunRequest, v1.RunResponse](
+			httpClient,
+			baseURL+GuestServiceRunProcedure,
+			connect.WithSchema(guestServiceMethods.ByName("Run")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // guestServiceClient implements GuestServiceClient.
 type guestServiceClient struct {
-	exec     *connect.Client[v1.ExecRequest, v1.ExecResponse]
-	timeSync *connect.Client[v1.TimeSyncRequest, v1.TimeSyncResponse]
+	exec      *connect.Client[v1.ExecRequest, v1.ExecResponse]
+	timeSync  *connect.Client[v1.TimeSyncRequest, v1.TimeSyncResponse]
+	readiness *connect.Client[v1.ReadinessRequest, v1.ReadinessResponse]
+	run       *connect.Client[v1.RunRequest, v1.RunResponse]
 }
 
 // Exec calls harpoon.v1.GuestService.Exec.
@@ -87,10 +107,22 @@ func (c *guestServiceClient) TimeSync(ctx context.Context, req *connect.Request[
 	return c.timeSync.CallUnary(ctx, req)
 }
 
+// Readiness calls harpoon.v1.GuestService.Readiness.
+func (c *guestServiceClient) Readiness(ctx context.Context, req *connect.Request[v1.ReadinessRequest]) (*connect.Response[v1.ReadinessResponse], error) {
+	return c.readiness.CallUnary(ctx, req)
+}
+
+// Run calls harpoon.v1.GuestService.Run.
+func (c *guestServiceClient) Run(ctx context.Context, req *connect.Request[v1.RunRequest]) (*connect.Response[v1.RunResponse], error) {
+	return c.run.CallUnary(ctx, req)
+}
+
 // GuestServiceHandler is an implementation of the harpoon.v1.GuestService service.
 type GuestServiceHandler interface {
 	Exec(context.Context, *connect.BidiStream[v1.ExecRequest, v1.ExecResponse]) error
 	TimeSync(context.Context, *connect.Request[v1.TimeSyncRequest]) (*connect.Response[v1.TimeSyncResponse], error)
+	Readiness(context.Context, *connect.Request[v1.ReadinessRequest]) (*connect.Response[v1.ReadinessResponse], error)
+	Run(context.Context, *connect.Request[v1.RunRequest]) (*connect.Response[v1.RunResponse], error)
 }
 
 // NewGuestServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -112,12 +144,28 @@ func NewGuestServiceHandler(svc GuestServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(guestServiceMethods.ByName("TimeSync")),
 		connect.WithHandlerOptions(opts...),
 	)
+	guestServiceReadinessHandler := connect.NewUnaryHandler(
+		GuestServiceReadinessProcedure,
+		svc.Readiness,
+		connect.WithSchema(guestServiceMethods.ByName("Readiness")),
+		connect.WithHandlerOptions(opts...),
+	)
+	guestServiceRunHandler := connect.NewUnaryHandler(
+		GuestServiceRunProcedure,
+		svc.Run,
+		connect.WithSchema(guestServiceMethods.ByName("Run")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/harpoon.v1.GuestService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GuestServiceExecProcedure:
 			guestServiceExecHandler.ServeHTTP(w, r)
 		case GuestServiceTimeSyncProcedure:
 			guestServiceTimeSyncHandler.ServeHTTP(w, r)
+		case GuestServiceReadinessProcedure:
+			guestServiceReadinessHandler.ServeHTTP(w, r)
+		case GuestServiceRunProcedure:
+			guestServiceRunHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -133,4 +181,12 @@ func (UnimplementedGuestServiceHandler) Exec(context.Context, *connect.BidiStrea
 
 func (UnimplementedGuestServiceHandler) TimeSync(context.Context, *connect.Request[v1.TimeSyncRequest]) (*connect.Response[v1.TimeSyncResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("harpoon.v1.GuestService.TimeSync is not implemented"))
+}
+
+func (UnimplementedGuestServiceHandler) Readiness(context.Context, *connect.Request[v1.ReadinessRequest]) (*connect.Response[v1.ReadinessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("harpoon.v1.GuestService.Readiness is not implemented"))
+}
+
+func (UnimplementedGuestServiceHandler) Run(context.Context, *connect.Request[v1.RunRequest]) (*connect.Response[v1.RunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("harpoon.v1.GuestService.Run is not implemented"))
 }

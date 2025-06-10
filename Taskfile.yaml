@@ -133,6 +133,8 @@ tasks:
           - ./gen/harpoon/harpoon_harpoond_{{ .ARCH }}/**
         sources:
           - ./cmd/harpoond/**
+          - ./pkg/harpoon/**
+          - ./pkg/vmm/**
 
         cmds:
           - cmd: rm -rf {{.OUT_DIR}}
@@ -327,6 +329,7 @@ tasks:
         cmds:
           - task: dev:shim:killall
           - task: harpoon:initramfs:arm64
+          - task: harpoon:kernel:arm64
           - cmd: |-
                 timeout 20s ./gow -root run -codesign -log-file-to-append-in=.logs/containerd.log ./cmd/nerdctl-dev run \
                     --platform=linux/arm64 \
@@ -335,7 +338,7 @@ tasks:
                     --pull=missing \
                     --rm \
                     docker.io/library/alpine:latest \
-                    "echo" "'hi'"
+                    "echo" "-e" "\n\nhi\n\n"
 
     dev:2025-06-08:*:
         label: 'dev:2025-06-08:{{.ARG}}'
@@ -345,3 +348,41 @@ tasks:
         cmds:
           - cmd: CGO_ENABLED=1 go build -buildmode=plugin -o /tmp/proc-demo/vz-plugin.so ./cmd/plugin-demo/plugin/main.go
           - cmd: ./gow run -codesign ./cmd/proc-demo -{{.ARG}}
+
+    setup:
+        desc: sets up the environment
+        cmds:
+          - task: fork:sync
+
+    fork:sync:
+        desc: syncs the forks
+        dir: ../
+        vars:
+            FORKS:
+              - branch: main
+                repo: "github.com/Code-Hex/vz"
+
+              - branch: main
+                repo: "github.com/walteh/containerd"
+
+              - branch: main
+                repo: "github.com/walteh/nerdctl"
+
+              - branch: main
+                repo: "github.com/walteh/gvisor-tap-vsock"
+
+              - branch: main
+                repo: "github.com/walteh/tint"
+
+              - branch: main
+                repo: "github.com/walteh/buildkit"
+
+              - branch: main
+                repo: "github.com/walteh/ttrpc"
+
+              - branch: main
+                repo: "github.com/walteh/nerdctl"
+
+        cmds:
+          - for: {var: FORKS}
+            cmd: git clone {{.ITEM.repo}} --depth 1 && git fetch origin {{.ITEM.branch}} && git checkout {{.ITEM.branch}}

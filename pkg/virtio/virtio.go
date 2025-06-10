@@ -178,6 +178,22 @@ type VirtioSerialStdio struct {
 	Stdout *os.File
 }
 
+type VirtioSerialStdioPipes struct {
+	Stdin  string
+	Stdout string
+	Stderr string
+}
+
+type VirtioSerialFDPipes struct {
+	Stdin  uintptr
+	Stdout uintptr
+	Stderr uintptr
+}
+
+var _ VirtioDevice = &VirtioSerialFDPipes{}
+
+func (v *VirtioSerialFDPipes) isVirtioDevice() {}
+
 type VirtioSerialPty struct {
 	// this will be reset by the hypervisor
 	InternalManagedName string
@@ -188,6 +204,8 @@ type VirtioSerialLogFile struct {
 	Path   string
 	Append bool
 }
+
+var _ VirtioDevice = &VirtioSerialStdioPipes{}
 
 var _ VirtioDevice = &VirtioSerialStdio{}
 
@@ -204,6 +222,8 @@ func (v *VirtioSerialPty) isVirtioDevice() {}
 func (v *VirtioSerialLogFile) isVirtioDevice() {}
 
 func (v *VirtioSerialFifoFile) isVirtioDevice() {}
+
+func (v *VirtioSerialStdioPipes) isVirtioDevice() {}
 
 type NBDSynchronizationMode string
 

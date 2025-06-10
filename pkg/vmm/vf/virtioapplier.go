@@ -168,6 +168,108 @@ func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFifoFile(ctx context.Context, d
 	return nil
 }
 
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialStdioPipes(ctx context.Context, dev *virtio.VirtioSerialStdioPipes) error {
+
+	// Example for stdout and stderr:
+	if dev.Stdout != "" {
+
+		// open the file
+		stdout, err := os.OpenFile(dev.Stdout, os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			return errors.Errorf("opening stdout file: %w", err)
+		}
+
+		attachOut, err := vz.NewFileHandleSerialPortAttachment(stdout, stdout)
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment for stdout: %w", err)
+		}
+		cfgOut, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(attachOut)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stdout: %w", err)
+		}
+
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgOut)
+	}
+
+	if dev.Stderr != "" {
+
+		stderr, err := os.OpenFile(dev.Stderr, os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			return errors.Errorf("opening stderr file: %w", err)
+		}
+
+		attachErr, err := vz.NewFileHandleSerialPortAttachment(stderr, stderr)
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment for stderr: %w", err)
+		}
+		cfgErr, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(attachErr)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stderr: %w", err)
+		}
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgErr)
+	}
+
+	if dev.Stdin != "" {
+
+		stdin, err := os.OpenFile(dev.Stdin, os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			return errors.Errorf("opening stdin file: %w", err)
+		}
+
+		attachIn, err := vz.NewFileHandleSerialPortAttachment(stdin, stdin)
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment for stdin: %w", err)
+		}
+		cfgIn, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(attachIn)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stdin: %w", err)
+		}
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgIn)
+	}
+
+	return nil
+}
+
+func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFDPipes(ctx context.Context, dev *virtio.VirtioSerialFDPipes) error {
+	if dev.Stdin != 0 {
+		serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(os.NewFile(uintptr(dev.Stdin), "stdin"), os.NewFile(uintptr(dev.Stdin), "stdin"))
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment: %w", err)
+		}
+		cfgIn, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stdin: %w", err)
+		}
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgIn)
+	}
+
+	if dev.Stdout != 0 {
+		serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(os.NewFile(uintptr(dev.Stdout), "stdout"), os.NewFile(uintptr(dev.Stdout), "stdout"))
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment: %w", err)
+		}
+		cfgOut, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stdout: %w", err)
+		}
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgOut)
+	}
+
+	if dev.Stderr != 0 {
+		serialPortAttachment, err := vz.NewFileHandleSerialPortAttachment(os.NewFile(uintptr(dev.Stderr), "stderr"), os.NewFile(uintptr(dev.Stderr), "stderr"))
+		if err != nil {
+			return errors.Errorf("creating file handle serial port attachment: %w", err)
+		}
+		cfgErr, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialPortAttachment)
+		if err != nil {
+			return errors.Errorf("creating virtio console device serial port configuration for stderr: %w", err)
+		}
+		v.serialPortsToSet = append(v.serialPortsToSet, cfgErr)
+	}
+
+	return nil
+}
+
 // ApplyVirtioSerialFifo implements virtio.DeviceApplier.
 func (v *vzVirtioDeviceApplier) ApplyVirtioSerialFifo(ctx context.Context, dev *virtio.VirtioSerialFifo) error {
 	fifoRead := os.NewFile(uintptr(dev.FD), "fifo-read")

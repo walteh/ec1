@@ -111,7 +111,7 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 	}
 
 	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
-	cmdLine := strings.TrimSpace(" console=hvc0 " + extraArgs + " -- " + extraInitArgs)
+	cmdLine := strings.TrimSpace(" console=hvc0,vport2p0,vport3p0 " + extraArgs + " -- " + extraInitArgs)
 
 	err = groupErrs.Wait()
 	if err != nil {

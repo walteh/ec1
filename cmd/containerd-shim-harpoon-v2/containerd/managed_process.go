@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -112,94 +110,134 @@ func (p *managedProcess) setup(ctx context.Context, rootfs string, stdin string,
 	return nil
 }
 
-func (p *managedProcess) start(vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
+func (p *managedProcess) start(ctx context.Context, vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	slog.Info("managedProcess.start: Starting process in VM")
-
-	// Wait for VM to be ready for exec
-	slog.Info("managedProcess.start: Waiting for VM to be ready for exec")
-	select {
-	case <-p.vm.WaitOnVMReadyToExec():
-		// VM is ready
-		slog.Info("managedProcess.start: VM is ready for exec")
-	case <-time.After(30 * time.Second):
-		slog.Error("managedProcess.start: Timeout waiting for VM to be ready for exec")
-		return fmt.Errorf("timeout waiting for VM to be ready for exec")
+	exitCode, err := vm.Run(ctx, p.io.stdin, p.io.stdout, p.io.stderr)
+	if err != nil {
+		return errors.Errorf("running process in VM: %w", err)
 	}
 
-	// // Build the command to execute
-	var cmdParts []string
+	p.exitStatus = uint32(exitCode)
 
-	// Handle working directory
-	if p.spec.Cwd != "" {
-		cmdParts = append(cmdParts, "cd", p.spec.Cwd, "&&")
-	}
+	p.status = taskt.Status_STOPPED
+	p.exitedAt = time.Now()
 
-	// Handle environment variables
-	for _, env := range p.spec.Env {
-		cmdParts = append(cmdParts, "export", env, "&&")
-	}
-
-	// Add the actual command
-	cmdParts = append(cmdParts, p.spec.Args...)
-
-	command := strings.Join(cmdParts, " ")
-	slog.Info("managedProcess.start: Executing command in VM", "command", command)
-
-	// Create context for the command
-	p.commandCtx, p.commandCancel = context.WithCancel(context.Background())
-
-	p.status = taskt.Status_RUNNING
-
-	// Execute the command in the VM
-	go func() {
-		defer func() {
-			slog.Info("managedProcess.start: Command execution finished, updating process state")
-			p.mu.Lock()
-			p.status = taskt.Status_STOPPED
-			p.exitedAt = time.Now()
-			close(p.waitblock)
-			p.mu.Unlock()
-			slog.Info("managedProcess.start: Process state updated and waitblock closed")
-		}()
-
-		slog.Info("managedProcess.start: Calling vm.Exec")
-		stdout, stderr, exitCode, err := p.vm.Exec(p.commandCtx, command)
-
-		slog.Info("managedProcess.start: vm.Exec completed", "stdout_len", len(stdout), "stderr_len", len(stderr), "exit_code", string(exitCode), "error", err)
-
-		// Write output to the configured I/O
-		if len(stdout) > 0 {
-			slog.Debug("managedProcess.start: Writing stdout", "length", len(stdout))
-			p.io.stdout.Write(stdout)
-		}
-		if len(stderr) > 0 {
-			slog.Debug("managedProcess.start: Writing stderr", "length", len(stderr))
-			p.io.stderr.Write(stderr)
-		}
-
-		// Parse exit code
-		if len(exitCode) > 0 {
-			if code, parseErr := strconv.Atoi(strings.TrimSpace(string(exitCode))); parseErr == nil {
-				slog.Info("managedProcess.start: Setting exit status", "exit_code", code)
-				p.mu.Lock()
-				p.exitStatus = uint32(code)
-				p.mu.Unlock()
-			} else {
-				slog.Warn("managedProcess.start: Failed to parse exit code", "exit_code_raw", string(exitCode), "error", parseErr)
-			}
-		}
-
-		if err != nil {
-			slog.Error("managedProcess.start: Command execution failed", "error", err, "command", command)
-			p.mu.Lock()
-			p.exitStatus = 1
-			p.mu.Unlock()
-		}
-	}()
-
-	slog.Info("managedProcess.start: Process started successfully")
 	return nil
 }
+
+func (p *managedProcess) startIO(ctx context.Context, vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
+	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM")
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in startIO", "error", r)
+		}
+		slog.InfoContext(ctx, "startIO: finished")
+	}()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	exitCode, err := vm.RunWithStdio(ctx, nil, p.io.stdin, p.io.stdout, p.io.stderr)
+	if err != nil {
+		return errors.Errorf("running with stdio: %w", err)
+	}
+
+	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM", "exitCode", exitCode)
+
+	p.exitStatus = uint32(exitCode)
+
+	p.status = taskt.Status_STOPPED
+	p.exitedAt = time.Now()
+
+	return nil
+}
+
+// 	slog.Info("managedProcess.start: Starting process in VM")
+
+// 	// Wait for VM to be ready for exec
+// 	slog.Info("managedProcess.start: Waiting for VM to be ready for exec")
+// 	select {
+// 	case <-p.vm.WaitOnVMReadyToExec():
+// 		// VM is ready
+// 		slog.Info("managedProcess.start: VM is ready for exec")
+// 	case <-time.After(30 * time.Second):
+// 		slog.Error("managedProcess.start: Timeout waiting for VM to be ready for exec")
+// 		return fmt.Errorf("timeout waiting for VM to be ready for exec")
+// 	}
+
+// 	// // Build the command to execute
+// 	var cmdParts []string
+
+// 	// Handle working directory
+// 	if p.spec.Cwd != "" {
+// 		cmdParts = append(cmdParts, "cd", p.spec.Cwd, "&&")
+// 	}
+
+// 	// Handle environment variables
+// 	for _, env := range p.spec.Env {
+// 		cmdParts = append(cmdParts, "export", env, "&&")
+// 	}
+
+// 	// Add the actual command
+// 	cmdParts = append(cmdParts, p.spec.Args...)
+
+// 	command := strings.Join(cmdParts, " ")
+// 	slog.Info("managedProcess.start: Executing command in VM", "command", command)
+
+// 	// Create context for the command
+// 	p.commandCtx, p.commandCancel = context.WithCancel(context.Background())
+
+// 	p.status = taskt.Status_RUNNING
+
+// 	// Execute the command in the VM
+// 	go func() {
+// 		defer func() {
+// 			slog.Info("managedProcess.start: Command execution finished, updating process state")
+// 			p.mu.Lock()
+// 			p.status = taskt.Status_STOPPED
+// 			p.exitedAt = time.Now()
+// 			close(p.waitblock)
+// 			p.mu.Unlock()
+// 			slog.Info("managedProcess.start: Process state updated and waitblock closed")
+// 		}()
+
+// 		slog.Info("managedProcess.start: Calling vm.Exec")
+// 		stdout, stderr, exitCode, err := p.vm.Exec(p.commandCtx, command)
+
+// 		slog.Info("managedProcess.start: vm.Exec completed", "stdout_len", len(stdout), "stderr_len", len(stderr), "exit_code", string(exitCode), "error", err)
+
+// 		// Write output to the configured I/O
+// 		if len(stdout) > 0 {
+// 			slog.Debug("managedProcess.start: Writing stdout", "length", len(stdout))
+// 			p.io.stdout.Write(stdout)
+// 		}
+// 		if len(stderr) > 0 {
+// 			slog.Debug("managedProcess.start: Writing stderr", "length", len(stderr))
+// 			p.io.stderr.Write(stderr)
+// 		}
+
+// 		// Parse exit code
+// 		if len(exitCode) > 0 {
+// 			if code, parseErr := strconv.Atoi(strings.TrimSpace(string(exitCode))); parseErr == nil {
+// 				slog.Info("managedProcess.start: Setting exit status", "exit_code", code)
+// 				p.mu.Lock()
+// 				p.exitStatus = uint32(code)
+// 				p.mu.Unlock()
+// 			} else {
+// 				slog.Warn("managedProcess.start: Failed to parse exit code", "exit_code_raw", string(exitCode), "error", parseErr)
+// 			}
+// 		}
+
+// 		if err != nil {
+// 			slog.Error("managedProcess.start: Command execution failed", "error", err, "command", command)
+// 			p.mu.Lock()
+// 			p.exitStatus = 1
+// 			p.mu.Unlock()
+// 		}
+// 	}()
+
+// 	slog.Info("managedProcess.start: Process started successfully")
+// 	return nil
+// }

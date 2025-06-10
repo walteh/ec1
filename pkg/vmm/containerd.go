@@ -154,15 +154,11 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 			Path:   filepath.Join(workingDir, "console.log"),
 			Append: false,
 		})
-		if ctrconfig.StdinPath != "" {
-			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StdinPath})
-		}
-		if ctrconfig.StdoutPath != "" {
-			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StdoutPath})
-		}
-		if ctrconfig.StderrPath != "" {
-			devices = append(devices, &virtio.VirtioSerialFifoFile{Path: ctrconfig.StderrPath})
-		}
+		devices = append(devices, &virtio.VirtioSerialStdioPipes{
+			Stdin:  ctrconfig.StdinPath,
+			Stdout: ctrconfig.StdoutPath,
+			Stderr: ctrconfig.StderrPath,
+		})
 	}
 
 	// add vsock and memory devices

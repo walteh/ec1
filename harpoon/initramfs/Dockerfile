@@ -26,10 +26,9 @@ RUN cp busybox /rootfs/bin/ \
 
 RUN mkdir -p /rootfs/etc/network
 RUN echo -e 'auto eth0\niface eth0 inet dhcp' > /rootfs/etc/network/interfaces
-# RUN apk add --no-cache file
 
-# download jq
-FROM debian:bookworm-slim AS jq-build
+# RUN apk add --no-cache file
+FROM debian:bookworm-slim AS debian-build
 
 ENV DEBIAN_FRONTEND=noninteractive \
 	DEBCONF_NONINTERACTIVE_SEEN=true \
@@ -47,6 +46,9 @@ RUN apt-get update \
 		wget \
 	&& rm -rf /var/lib/apt/lists/*
 
+# download jq
+FROM debian-build AS jq-build
+
 RUN git clone --depth 1 --branch master https://github.com/jqlang/jq.git /app
 ## have to skip building docs but I don't need them for my use case
 RUN cd /app \
@@ -60,17 +62,16 @@ RUN cd /app \
 
 RUN cd /app && make check || echo "check failed"
 
-# # FROM busybox-build AS e2fsprogs-build
-# # RUN apt-get install -y gcc-arm-linux-gnueabi
-# FROM alpine:3.21 AS e2fsprogs-build
-# RUN apk add --no-cache e2fsprogs e2fsprogs-static file
-# RUN which mke2fs && file $(which mke2fs) && exit 1
-# # RUN git clone https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git /e2fsprogs
-# # WORKDIR /e2fsprogs
-# # RUN ./configure CFLAGS='-g -O2 -static'
-# # RUN make -j$(nproc)
-# # RUN strip /e2fsprogs/misc/mke2fs
-# # RUN cp /bin/mke2fs /bin/mke2fs
+# Add this new build stage after the e2fsprogs-build stage
+FROM debian-build AS lshw-build
+
+
+RUN git clone https://github.com/lyonel/lshw.git /src
+WORKDIR /src
+# Build statically linked lshw
+RUN make static
+RUN strip src/lshw-static
+RUN cp src/lshw-static /bin/lshw
 
 FROM alpine:3.21 AS e2fsprogs-build
 RUN apk add --no-cache build-base git autoconf automake linux-headers musl-dev
@@ -84,13 +85,49 @@ RUN make -j$(nproc)
 RUN strip misc/mke2fs
 RUN cp misc/mke2fs /bin/
 
-# FROM alpine:3.21 AS symlink-build
-# RUN touch /bin/harpoond
-# RUN ln -s /bin/harpoond /init
+# FROM alpine:3.21 AS util-linux-build
+# RUN apk add --no-cache build-base git autoconf automake linux-headers musl-dev util-linux-dev gettext-dev ncurses-dev libtool-2 bison flex
+# RUN git clone https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git /src
+# WORKDIR /src
+# # Checkout a stable release
+# RUN git checkout v2.40.2
+# RUN ./autogen.sh
+# # Configure for static build with minimal dependencies and most useful utilities
+# RUN CFLAGS='-O2' \
+# 	LDFLAGS='-static -s' \
+# 	./configure \
+# 	--enable-static \
+# 	--disable-shared \
+# 	--disable-nls \
+# 	--disable-rpath \
+# 	--without-python \
+# 	--without-systemd \
+# 	--without-systemdsystemunitdir \
+# 	--disable-makeinstall-chown \
+# 	--disable-makeinstall-setuid \
+# 	--disable-bash-completion \
+# 	--disable-colors-default \
+# 	--enable-static-programs=mount,umount,lsblk,fdisk,findmnt,losetup,mkswap,swapon,swapoff,dmesg,fsck,blkid,blockdev,fstrim,lscpu,lsmem,hwclock,sfdisk
+# RUN make -j$(nproc)
+# # Copy the most useful utilities to /bin
+# RUN mkdir -p /bin && \
+# 	for util in mount umount lsblk fdisk findmnt losetup mkswap swapon swapoff dmesg fsck blkid blockdev fstrim lscpu lsmem hwclock sfdisk; do \
+# 		if [ -f "$util" ]; then cp "$util" /bin/; fi; \
+# 		if [ -f "sys-utils/$util" ]; then cp "sys-utils/$util" /bin/; fi; \
+# 		if [ -f "disk-utils/$util" ]; then cp "disk-utils/$util" /bin/; fi; \
+# 		if [ -f "misc-utils/$util" ]; then cp "misc-utils/$util" /bin/; fi; \
+# 		if [ -f "sys-utils/$util.static" ]; then cp "sys-utils/$util.static" /bin/"$util"; fi; \
+# 		if [ -f "disk-utils/$util.static" ]; then cp "disk-utils/$util.static" /bin/"$util"; fi; \
+# 		if [ -f "misc-utils/$util.static" ]; then cp "misc-utils/$util.static" /bin/"$util"; fi; \
+# 	done
+# # Strip all binaries
+# RUN find /bin -type f -executable -exec strip {} \;
 
 FROM scratch AS rootfsd
 COPY --from=alpine/socat /usr/bin/socat /bin/socat
 COPY --from=e2fsprogs-build /bin/mke2fs /bin/mke2fs
+COPY --from=lshw-build /bin/lshw /hbin/lshw
+# COPY --from=util-linux-build /bin/* /hbin/
 COPY --from=harpoond /harpoond /bin/harpoond
 COPY --from=busybox-build /rootfs/ /
 

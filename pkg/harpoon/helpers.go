@@ -1,39 +1,79 @@
 package harpoon
 
 import (
-	"buf.build/go/protovalidate"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"strings"
+	"syscall"
 
-	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
+	"gitlab.com/tozd/go/errors"
+	"go.bug.st/serial"
 )
 
 func ptr[T any](v T) *T { return &v }
 
-func NewBytestream(f func(*harpoonv1.Bytestream_builder)) *harpoonv1.Bytestream {
-	builder := &harpoonv1.Bytestream_builder{}
-	f(builder)
-	return builder.Build()
+func ExecCmdForwardingStdio(ctx context.Context, cmds ...string) error {
+	if len(cmds) == 0 {
+		return errors.Errorf("no command to execute")
+	}
+
+	argc := "/bin/busybox"
+	if strings.HasPrefix(cmds[0], "/") {
+		argc = cmds[0]
+		cmds = cmds[1:]
+	}
+	argv := cmds
+
+	slog.DebugContext(ctx, "executing command", "argc", argc, "argv", argv)
+	cmd := exec.CommandContext(ctx, argc, argv...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Cloneflags: syscall.CLONE_NEWNS,
+	}
+
+	path := os.Getenv("PATH")
+
+	cmd.Env = append([]string{"PATH=" + path + ":/hbin"}, os.Environ()...)
+
+	cmd.Stdin = bytes.NewBuffer(nil) // set to avoid reading /dev/null since it may not be mounted
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.Errorf("running busybox command (stdio was copied to the parent process): %v: %w", cmds, err)
+	}
+
+	return nil
 }
 
-func NewValidatedBytestream(f func(*harpoonv1.Bytestream_builder)) (*harpoonv1.Bytestream, error) {
-	b := NewBytestream(f)
-	err := protovalidate.Validate(b)
-	return b, err
-}
+func OpenSerialPort(ctx context.Context, portName string) (io.ReadWriteCloser, error) {
 
-func NewExecResponse(f func(*harpoonv1.ExecResponse_builder)) *harpoonv1.ExecResponse {
-	builder := &harpoonv1.ExecResponse_builder{}
-	f(builder)
-	return builder.Build()
-}
+	// List available ports to find your virtio console
+	ports, err := serial.GetPortsList()
+	if err != nil {
+		return nil, errors.Errorf("getting ports list: %w", err)
+	}
 
-func NewValidatedExecResponse(f func(*harpoonv1.ExecResponse_builder)) (*harpoonv1.ExecResponse, error) {
-	b := NewExecResponse(f)
-	err := protovalidate.Validate(b)
-	return b, err
-}
+	fmt.Println("Available ports:")
+	for _, port := range ports {
+		fmt.Printf("  %s\n", port)
+	}
 
-func NewExecResponse_Exit(f func(*harpoonv1.ExecResponse_Exit_builder)) *harpoonv1.ExecResponse_Exit {
-	builder := &harpoonv1.ExecResponse_Exit_builder{}
-	f(builder)
-	return builder.Build()
+	mode := &serial.Mode{
+		BaudRate: 115200, // Virtio consoles typically use high baud rates
+		Parity:   serial.NoParity,
+		DataBits: 8,
+		StopBits: serial.OneStopBit,
+	}
+
+	port, err := serial.Open(portName, mode)
+	if err != nil {
+		return nil, errors.Errorf("opening port %s: %w", portName, err)
+	}
+
+	return port, nil
 }
