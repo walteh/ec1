@@ -19,36 +19,39 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/containerd/containerd/v2/pkg/oci"
-	"github.com/lmittmann/tint"
 
 	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/logging"
+	"github.com/walteh/ec1/pkg/logging/valuelog"
 )
 
-type AgentService struct {
+type GuestService struct {
+	forwarder GuestStdioForwarder
 	// currentContainerEntrypoint []string
 }
 
 var (
-	_ harpoonv1.TTRPCGuestServiceService = &AgentService{}
+	_ harpoonv1.TTRPCGuestServiceService = &GuestService{}
 )
 
-func NewAgentService() *AgentService {
-	return &AgentService{}
+func NewAgentService(forwarder GuestStdioForwarder) *GuestService {
+	return &GuestService{
+		forwarder: forwarder,
+	}
 }
 
-func (s *AgentService) WrapWithErrorLogging() harpoonv1.TTRPCGuestServiceService {
+func (s *GuestService) WrapWithErrorLogging() harpoonv1.TTRPCGuestServiceService {
 	return WrapGuestServiceWithErrorLogging(s)
 }
 
-func (s *AgentService) Readiness(ctx context.Context, req *harpoonv1.ReadinessRequest) (*harpoonv1.ReadinessResponse, error) {
+func (s *GuestService) Readiness(ctx context.Context, req *harpoonv1.ReadinessRequest) (*harpoonv1.ReadinessResponse, error) {
 	return harpoonv1.NewReadinessResponse(func(b *harpoonv1.ReadinessResponse_builder) {
 		b.Ready = ptr(true)
 	}), nil
 }
 
-func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*harpoonv1.RunResponse, error) {
+func (s *GuestService) Run(ctx context.Context, req *harpoonv1.RunRequest) (resp *harpoonv1.RunResponse, err error) {
 	var spec *oci.Spec
 	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
 	if err != nil {
@@ -61,14 +64,14 @@ func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*har
 			return nil, errors.Errorf("unmarshalling spec: %w", err)
 		}
 	}
-	var stdin io.Reader
-	if req.GetStdin() != nil {
-		stdin = bytes.NewBuffer(req.GetStdin())
-	} else {
-		stdin = bytes.NewReader([]byte{})
-	}
-	stdout := bytes.NewBuffer(nil)
-	stderr := bytes.NewBuffer(nil)
+	// var stdin io.Reader
+	// if req.GetStdin() != nil {
+	// 	stdin = bytes.NewBuffer(req.GetStdin())
+	// } else {
+	// 	stdin = bytes.NewReader([]byte{})
+	// }
+	// stdout := bytes.NewBuffer(nil)
+	// stderr := bytes.NewBuffer(nil)
 
 	// stdoutFifo, err := fifo.OpenFifo(ctx, ec1init.DevStdoutPort, os.O_RDWR|syscall.O_NONBLOCK 0)
 	// if err != nil {
@@ -111,23 +114,34 @@ func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*har
 	// 	return nil, errors.Errorf("opening stderr port: %w", err)
 	// }
 
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in Run", "error", r)
+			resp = nil
+			err = errors.Errorf("panic in Run: %v", r)
+		}
+		slog.InfoContext(ctx, "Run finished")
+	}()
+
 	argc := spec.Process.Args[0]
 	argv := spec.Process.Args[1:]
 
-	slog.InfoContext(ctx, "running command", "argc", argc, "argv", argv)
-
 	command := exec.CommandContext(ctx, argc, argv...)
 
-	command.Stdout = stdout
-	command.Stderr = stderr
-	command.Stdin = stdin
+	logwr := logging.GetDefaultLogWriter()
+
+	command.Stdout = io.MultiWriter(logwr, s.forwarder.Stdout())
+	command.Stderr = io.MultiWriter(logwr, s.forwarder.Stderr())
+	command.Stdin = s.forwarder.Stdin()
 	// command.Stdin = stdinFifo
+
+	slog.InfoContext(ctx, "running command", "argc", argc, "argv", argv)
 
 	err = command.Run()
 
-	outb := stdout.Bytes()
-	errb := stderr.Bytes()
 	exitCode := 0
+
+	slog.InfoContext(ctx, "command finished", "err", err, "exitCode", exitCode)
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -137,13 +151,14 @@ func (s *AgentService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*har
 		}
 	}
 
-	// slog.InfoContext(ctx, "run response", "exitCode", exitCode, "stdout", string(outb), "stderr", string(errb))
-
-	return harpoonv1.NewRunResponse(func(b *harpoonv1.RunResponse_builder) {
-		b.Stdout = outb
-		b.Stderr = errb
+	resp, err = harpoonv1.NewValidatedRunResponse(func(b *harpoonv1.RunResponse_builder) {
 		b.ExitCode = ptr(int32(exitCode))
-	}), nil
+	})
+	if err != nil {
+		return nil, errors.Errorf("building run response: %w", err)
+	}
+
+	return resp, nil
 }
 
 // func openVirtioPortWithRetry(ctx context.Context, devicePath string) (*os.File, error) {
@@ -234,7 +249,7 @@ func openVirtioPortWithRetry(ctx context.Context, devicePath string) (*os.File, 
 	return file, nil
 }
 
-func (s *AgentService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequest) (*harpoonv1.TimeSyncResponse, error) {
+func (s *GuestService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequest) (*harpoonv1.TimeSyncResponse, error) {
 
 	nowNano := uint64(time.Now().UnixNano())
 	updateNano := uint64(req.GetUnixTimeNs())
@@ -255,7 +270,7 @@ func (s *AgentService) TimeSync(ctx context.Context, req *harpoonv1.TimeSyncRequ
 	}), nil
 }
 
-func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) (err error) {
+func (s *GuestService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) (err error) {
 
 	slog.InfoContext(ctx, "exec request received")
 
@@ -336,7 +351,7 @@ func (s *AgentService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 				return
 			}
 
-			slog.DebugContext(ctx, "stdin request received", "req", tint.NewPrettyValue(req))
+			slog.DebugContext(ctx, "stdin request received", "req", valuelog.NewPrettyValue(req))
 
 			if req.GetTerminate() != nil {
 				close(terminateDone)

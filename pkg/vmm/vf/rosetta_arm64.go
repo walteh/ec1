@@ -2,11 +2,10 @@ package vf
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/Code-Hex/vz/v3"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/virtio"
 )
@@ -25,19 +24,19 @@ func checkRosettaAvailability(dev *virtio.RosettaShare) error {
 		if !dev.InstallRosetta {
 			return fmt.Errorf("rosetta is not installed")
 		}
-		log.Debugf("installing rosetta")
+		slog.Debug("installing rosetta")
 		if err := doInstallRosetta(); err != nil {
 			if dev.IgnoreIfMissing {
-				log.Info("Rosetta installation failed. Continuing without Rosetta.")
+				slog.Info("Rosetta installation failed. Continuing without Rosetta.")
 				_, err = os.Stderr.WriteString(err.Error() + "\n")
 				if err != nil {
-					log.Debugf("Failed to write error to stderr: %v", err)
+					slog.Warn("Failed to write error to stderr", "error", err)
 				}
 				return nil
 			}
 			return fmt.Errorf("failed to install rosetta: %w", err)
 		}
-		log.Debugf("rosetta installed")
+		slog.Debug("rosetta installed")
 	case vz.LinuxRosettaAvailabilityInstalled:
 		// nothing to do
 	}
@@ -72,7 +71,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyRosettaShare(dev *virtio.RosettaShar
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding virtio-fs device")
+	slog.Info("adding virtio-fs device")
 	vmConfig.directorySharingDevicesToSet = append(vmConfig.directorySharingDevicesToSet, fileSystemDeviceConfig)
 	return nil
 }

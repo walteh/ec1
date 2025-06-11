@@ -11,8 +11,6 @@ import (
 	"github.com/containers/common/pkg/strongunits"
 	"gitlab.com/tozd/go/errors"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
 )
@@ -336,17 +334,17 @@ func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
 		if nbdDev, isNbdDev := dev.(vzNetworkBlockDevice); isNbdDev {
 			nbdAttachment, isNbdAttachment := dev.Attachment().(*vz.NetworkBlockDeviceStorageDeviceAttachment)
 			if !isNbdAttachment {
-				log.Info("Found NBD device with no NBD attachment. Please file a vfkit bug.")
-				return fmt.Errorf("NetworkBlockDevice must use a NBD attachment")
+				slog.InfoContext(ctx, "Found NBD device with no NBD attachment. Please file a vfkit bug.")
+				return errors.Errorf("NetworkBlockDevice must use a NBD attachment")
 			}
 			nbdConfig := nbdDev.config
 			go func() {
 				for {
 					select {
 					case err := <-nbdAttachment.DidEncounterError():
-						log.Infof("Disconnected from NBD server %s. Error %v", nbdConfig.URI, err.Error())
+						slog.WarnContext(ctx, "Disconnected from NBD server", "uri", nbdConfig.URI, "error", err.Error())
 					case <-nbdAttachment.Connected():
-						log.Infof("Successfully connected to NBD server %s.", nbdConfig.URI)
+						slog.InfoContext(ctx, "Successfully connected to NBD server", "uri", nbdConfig.URI)
 					}
 				}
 			}()

@@ -2,6 +2,7 @@ package vf
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,8 +12,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Code-Hex/vz/v3"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -41,7 +40,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyNVMExpressController(dev *virtio.NVM
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding nvme device (imagePath: %s)", dev.ImagePath)
+	slog.Info("adding nvme device", "imagePath", dev.ImagePath)
 	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
@@ -73,7 +72,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyVirtioBlk(dev *virtio.VirtioBlk) err
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding virtio-blk device (imagePath: %s)", dev.ImagePath)
+	slog.Info("adding virtio-blk device", "imagePath", dev.ImagePath)
 	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
@@ -106,10 +105,10 @@ func (vmConfig *vzVirtioDeviceApplier) applyVirtioInput(dev *virtio.VirtioInput)
 
 	switch conf := inputDeviceConfig.(type) {
 	case vz.PointingDeviceConfiguration:
-		log.Info("Adding virtio-input pointing device")
+		slog.Info("Adding virtio-input pointing device")
 		vmConfig.pointingDevicesToSet = append(vmConfig.pointingDevicesToSet, conf)
 	case vz.KeyboardConfiguration:
-		log.Info("Adding virtio-input keyboard device")
+		slog.Info("Adding virtio-input keyboard device")
 		vmConfig.keyboardToSet = append(vmConfig.keyboardToSet, conf)
 	}
 
@@ -135,7 +134,7 @@ func newVirtioGraphicsDeviceConfiguration(dev *virtio.VirtioGPU) (vz.GraphicsDev
 }
 
 func toVzVirtioGPU(dev *virtio.VirtioGPU, useMacOSGPUGraphicsDevice bool) (vz.GraphicsDeviceConfiguration, error) {
-	log.Debugf("Setting up graphics device with %vx%v resolution.", dev.Width, dev.Height)
+	slog.Debug("setting up graphics device", "width", dev.Width, "height", dev.Height)
 
 	if useMacOSGPUGraphicsDevice {
 		return newMacGraphicsDeviceConfiguration(dev)
@@ -151,7 +150,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyVirtioGPU(dev *virtio.VirtioGPU) err
 		return err
 	}
 
-	log.Infof("Adding virtio-gpu device")
+	slog.Info("Adding virtio-gpu device")
 
 	vmConfig.graphicsDevicesToSet = append(vmConfig.graphicsDevicesToSet, gpuDeviceConfig)
 
@@ -191,7 +190,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyVirtioFs(dev *virtio.VirtioFs) error
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding virtio-fs device")
+	slog.Info("Adding virtio-fs device")
 	vmConfig.directorySharingDevicesToSet = append(vmConfig.directorySharingDevicesToSet, fileSystemDeviceConfig)
 	return nil
 }
@@ -201,7 +200,7 @@ func toVzVirtioRng(dev *virtio.VirtioRng) (*vz.VirtioEntropyDeviceConfiguration,
 }
 
 func (vmConfig *vzVirtioDeviceApplier) applyVirtioRng(dev *virtio.VirtioRng) error {
-	log.Infof("Adding virtio-rng device")
+	slog.Info("Adding virtio-rng device")
 	entropyConfig, err := toVzVirtioRng(dev)
 	if err != nil {
 		return err
@@ -312,10 +311,10 @@ func setRawMode(f *os.File) error {
 
 // func (vmConfig *vzVirtioDeviceApplier) applyVirtioSerial(dev *virtio.VirtioSerial) error {
 // 	if dev.LogFile != "" {
-// 		log.Infof("Adding virtio-serial device (logFile: %s)", dev.LogFile)
+// 		slog.Info("Adding virtio-serial device (logFile: %s)", dev.LogFile)
 // 	}
 // 	// if dev.UsesStdio {
-// 	// 	log.Infof("Adding stdio console")
+// 	// 	slog.Info("Adding stdio console")
 // 	// }
 // 	if dev.PtyName != "" {
 // 		return fmt.Errorf("VirtioSerial.PtyName must be empty (current value: %s)", dev.PtyName)
@@ -349,7 +348,7 @@ func setRawMode(f *os.File) error {
 // 		log.Debugf("virtio-vsock device already present, not adding a second one")
 // 		return nil
 // 	}
-// 	log.Infof("Adding virtio-vsock device")
+// 	slog.Info("Adding virtio-vsock device")
 // 	vzdev, err := vz.NewVirtioSocketDeviceConfiguration()
 // 	if err != nil {
 // 		return err
@@ -431,7 +430,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyNetworkBlockDevice(dev *virtio.Netwo
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding NBD device (uri: %s, deviceId: %s)", dev.URI, dev.DeviceIdentifier)
+	slog.Info("Adding NBD device", "uri", dev.URI, "deviceId", dev.DeviceIdentifier)
 	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil
@@ -497,7 +496,7 @@ func (vmConfig *vzVirtioDeviceApplier) applyUSBMassStorage(dev *virtio.USBMassSt
 	if err != nil {
 		return err
 	}
-	log.Infof("Adding USB mass storage device (imagePath: %s)", dev.ImagePath)
+	slog.Info("Adding USB mass storage device", "imagePath", dev.ImagePath)
 	vmConfig.storageDevicesToSet = append(vmConfig.storageDevicesToSet, storageDeviceConfig)
 
 	return nil

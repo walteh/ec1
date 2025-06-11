@@ -3,8 +3,7 @@ package rest
 import (
 	"context"
 	"fmt"
-
-	"github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/walteh/ec1/pkg/vmm/vf/rest/define"
 )
@@ -16,16 +15,16 @@ func (vm *ControllableVirtualMachine) ChangeState(ctx context.Context, newState 
 	)
 	switch newState {
 	case define.Pause:
-		logrus.Debug("pausing virtual machine")
+		slog.DebugContext(ctx, "pausing virtual machine")
 		response = vm.Pause(ctx)
 	case define.Resume:
-		logrus.Debug("resuming machine")
+		slog.DebugContext(ctx, "resuming machine")
 		response = vm.Resume(ctx)
 	case define.Stop:
-		logrus.Debug("stopping machine")
+		slog.DebugContext(ctx, "stopping machine")
 		_, response = vm.RequestStop(ctx)
 	case define.HardStop:
-		logrus.Debug("force stopping machine")
+		slog.DebugContext(ctx, "force stopping machine")
 		response = vm.HardStop(ctx)
 	default:
 		return fmt.Errorf("invalid new VMState: %s", newState)

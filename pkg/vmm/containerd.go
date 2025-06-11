@@ -21,7 +21,6 @@ import (
 	"github.com/containerd/containerd/api/types"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containers/common/pkg/strongunits"
-	"github.com/lmittmann/tint"
 	"github.com/nxadm/tail"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
@@ -33,6 +32,7 @@ import (
 	"github.com/walteh/ec1/pkg/ext/osx"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/logging"
+	"github.com/walteh/ec1/pkg/logging/valuelog"
 	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/virtio"
 )
@@ -41,9 +41,9 @@ type ContainerizedVMConfig struct {
 	ID           string
 	RootfsMounts []*types.Mount
 	RootfsPath   string
-	StderrFD     int
-	StdoutFD     int
-	StdinFD      int
+	StderrWriter io.Writer
+	StdoutWriter io.Writer
+	StdinReader  io.Reader
 	DNSPath      string
 	StdinPath    string
 	StdoutPath   string
@@ -116,7 +116,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 
 	slog.InfoContext(ctx, "about to set up rootfs",
 		"ctrconfig.RootfsPath", ctrconfig.RootfsPath,
-		"ctrconfig.RootfsMounts", tint.NewPrettyValue(ctrconfig.RootfsMounts),
+		"ctrconfig.RootfsMounts", valuelog.NewPrettyValue(ctrconfig.RootfsMounts),
 		// "bindMounts", tint.NewPrettyValue(bindMounts),
 		"spec.Root.Path", ctrconfig.Spec.Root.Path,
 		"spec.Root.Readonly", ctrconfig.Spec.Root.Readonly,
@@ -176,7 +176,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	}
 	devices = append(devices, netdev)
 
-	slog.InfoContext(ctx, "devices", "devices", tint.NewPrettyValue(devices))
+	slog.InfoContext(ctx, "devices", "devices", valuelog.NewPrettyValue(devices))
 
 	devices = append(devices, &virtio.VirtioVsock{})
 	devices = append(devices, &virtio.VirtioBalloon{})
@@ -206,6 +206,21 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 			slog.ErrorContext(ctx, "error appending console log", "error", err)
 		}
 		return nil, errors.Errorf("running virtual machine: %w", err)
+	}
+
+	errgrp.Go(func() error {
+		err = ForwardStdio(ctx, vm, ctrconfig.StdinReader, ctrconfig.StdoutWriter, ctrconfig.StderrWriter)
+		if err != nil {
+			slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
+			return errors.Errorf("forwarding stdio: %w", err)
+		}
+		slog.WarnContext(ctx, "forwarding stdio done")
+		return nil
+	})
+
+	if err != nil {
+		slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
+		return nil, errors.Errorf("forwarding stdio: %w", err)
 	}
 
 	err = TailConsoleLog(ctx, workingDir)
@@ -373,7 +388,7 @@ func PrepareContainerMounts(ctx context.Context, spec *oci.Spec, containerId str
 	devices := []virtio.VirtioDevice{}
 
 	// log all the mounts
-	slog.InfoContext(ctx, "mounts", "mounts", tint.NewPrettyValue(spec.Mounts))
+	slog.InfoContext(ctx, "mounts", "mounts", valuelog.NewPrettyValue(spec.Mounts))
 
 	for _, mount := range spec.Mounts {
 		if mount.Type == "" && slices.Contains(mount.Options, "rbind") {

@@ -10,14 +10,90 @@ import (
 	"path/filepath"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
 	"github.com/containers/gvisor-tap-vsock/pkg/tcpproxy"
+	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/host"
 	"github.com/walteh/ec1/pkg/virtio"
 )
+
+func ForwardStdio(ctx context.Context, vm VirtualMachine, stdin io.Reader, stdout io.Writer, stderr io.Writer) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in ForwardStdio", "error", r)
+			err = errors.Errorf("panic in ForwardStdio: %v", r)
+		}
+	}()
+
+	errgroup := errgroup.Group{}
+
+	errgroup.Go(func() error {
+		ctx := slogctx.Append(ctx, slog.String("pipe", "stdin"))
+		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdinPort)
+		if err != nil {
+			return errors.Errorf("error connecting to vsock: %w", err)
+		}
+		defer conn.Close()
+		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdinPort)
+		_, err = io.Copy(conn, stdin)
+		if err != nil {
+			return errors.Errorf("error copying stdin to vsock: %w", err)
+		}
+		return nil
+	})
+
+	errgroup.Go(func() error {
+		ctx := slogctx.Append(ctx, slog.String("pipe", "stdout"))
+		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdoutPort)
+		if err != nil {
+			slog.ErrorContext(ctx, "error connecting to vsock", "error", err)
+			return errors.Errorf("error connecting to vsock: %w", err)
+		}
+		defer conn.Close()
+		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdoutPort)
+		_, err = io.Copy(stdout, conn)
+		if err != nil {
+			slog.ErrorContext(ctx, "error copying stdin to vsock", "error", err)
+		}
+		return nil
+	})
+
+	errgroup.Go(func() error {
+		ctx := slogctx.Append(ctx, slog.String("pipe", "stderr"))
+		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStderrPort)
+		if err != nil {
+			return errors.Errorf("error connecting to vsock: %w", err)
+		}
+		defer conn.Close()
+		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStderrPort)
+		_, err = io.Copy(stderr, conn)
+		if err != nil {
+			slog.ErrorContext(ctx, "error copying stdin to vsock", "error", err)
+			return errors.Errorf("error copying stdin to vsock: %w", err)
+		}
+		return nil
+	})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "panic in ForwardStdio", "error", r)
+				err = errors.Errorf("panic in ForwardStdio: %v", r)
+			}
+		}()
+		err = errgroup.Wait()
+		if err != nil {
+			slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
+		}
+	}()
+
+	return
+}
 
 func VSockProxyUnixAddr(ctx context.Context, vm VirtualMachine, proxiedDevice *virtio.VirtioVsock) (*net.UnixAddr, error) {
 	empathicalCacheDir, err := host.EmphiricalVMCacheDir(ctx, vm.ID())

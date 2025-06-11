@@ -3,13 +3,13 @@ package rest
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"syscall"
 
 	"github.com/crc-org/vfkit/pkg/util"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 // see `man unix`:
@@ -76,7 +76,7 @@ func (v *VFKitService) Start() {
 			util.RegisterExitHandler(func() { os.Remove(v.Path) })
 			err = v.router.RunUnix(v.Path)
 		}
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}()
 }
 

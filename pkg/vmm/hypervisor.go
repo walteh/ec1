@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"runtime/debug"
-	"sync"
 	"time"
 
 	"github.com/containerd/ttrpc"
@@ -65,6 +65,30 @@ type RunningVM[VM VirtualMachine] struct {
 // 	return r.guestServiceConnection
 // }
 
+func connectToVsockWithRetry(ctx context.Context, vm VirtualMachine, port uint32) (net.Conn, error) {
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	timeout := time.NewTimer(3 * time.Second)
+	defer ticker.Stop()
+	defer timeout.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			conn, err := vm.VSockConnect(ctx, port)
+			if err != nil {
+				slog.Error("failed to dial vsock", "error", err)
+				continue
+			}
+			return conn, nil
+		case <-timeout.C:
+			return nil, errors.Errorf("timeout waiting for guest service connection")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
 func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestServiceClient, error) {
 	if r.guestServiceConnection != nil {
 		return r.guestServiceConnection, nil
@@ -108,6 +132,10 @@ func NewRunningContainerdVM[VM VirtualMachine](ctx context.Context, vm VM, portO
 		// streamExecReady: false,
 		// streamexec: client,
 	}
+}
+
+func (r *RunningVM[VM]) ForwardStdio(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	return ForwardStdio(ctx, r.vm, stdin, stdout, stderr)
 }
 
 func NewRunningVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP uint16, start time.Time, wait <-chan error) *RunningVM[VM] {
@@ -205,23 +233,23 @@ func (r *RunningVM[VM]) PortOnHostIP() uint16 {
 	return r.portOnHostIP
 }
 
-func (r *RunningVM[VM]) Run(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) (int64, error) {
-	if stdin == nil {
-		stdin = bytes.NewReader([]byte{})
-	}
+func (r *RunningVM[VM]) Run(ctx context.Context) (int64, error) {
+	// if stdin == nil {
+	// 	stdin = bytes.NewReader([]byte{})
+	// }
 
 	guestService, err := r.guestService(ctx)
 	if err != nil {
 		return 0, errors.Errorf("getting guest service: %w", err)
 	}
 
-	stdinData, err := io.ReadAll(stdin)
-	if err != nil {
-		return 0, errors.Errorf("reading stdin: %w", err)
-	}
+	// stdinData, err := io.ReadAll(stdin)
+	// if err != nil {
+	// 	return 0, errors.Errorf("reading stdin: %w", err)
+	// }
 
 	req, err := harpoonv1.NewValidatedRunRequest(func(b *harpoonv1.RunRequest_builder) {
-		b.Stdin = stdinData
+		// b.Stdin = stdinData
 	})
 	if err != nil {
 		return 0, err
@@ -232,26 +260,26 @@ func (r *RunningVM[VM]) Run(ctx context.Context, stdin io.Reader, stdout io.Writ
 		return 0, err
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
+	// wg := sync.WaitGroup{}
+	// wg.Add(2)
 
-	go func() {
-		defer wg.Done()
-		_, err = stdout.Write(exec.GetStdout())
-		if err != nil {
-			slog.Error("failed to write stdout", "error", err)
-		}
-	}()
+	// go func() {
+	// 	defer wg.Done()
+	// 	_, err = stdout.Write(exec.GetStdout())
+	// 	if err != nil {
+	// 		slog.Error("failed to write stdout", "error", err)
+	// 	}
+	// }()
 
-	go func() {
-		defer wg.Done()
-		_, err = stderr.Write(exec.GetStderr())
-		if err != nil {
-			slog.Error("failed to write stderr", "error", err)
-		}
-	}()
+	// go func() {
+	// 	defer wg.Done()
+	// 	_, err = stderr.Write(exec.GetStderr())
+	// 	if err != nil {
+	// 		slog.Error("failed to write stderr", "error", err)
+	// 	}
+	// }()
 
-	wg.Wait()
+	// wg.Wait()
 
 	return int64(exec.GetExitCode()), nil
 }

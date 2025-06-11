@@ -28,7 +28,6 @@ import (
 	"github.com/containerd/ttrpc"
 	"github.com/containerd/typeurl/v2"
 	"github.com/creack/pty"
-	"github.com/lmittmann/tint"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
@@ -37,6 +36,7 @@ import (
 	taskt "github.com/containerd/containerd/api/types/task"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
 
+	"github.com/walteh/ec1/pkg/logging/valuelog"
 	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
@@ -126,7 +126,7 @@ func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.
 		ExecID:     request.ExecID,
 	}
 
-	slog.InfoContext(ctx, "STATE", "response", tint.NewPrettyValue(resp), "pid", p.pid, "status", p.status)
+	slog.InfoContext(ctx, "STATE", "response", valuelog.NewPrettyValue(resp), "pid", p.pid, "status", p.status)
 
 	// For VM-based processes, we use the stored pid
 
@@ -144,7 +144,7 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 		return nil, errors.Errorf("reading spec at %s/: %w", specPath, err)
 	}
 
-	slog.InfoContext(ctx, "CREATE", "request", tint.NewPrettyValue(request))
+	slog.InfoContext(ctx, "CREATE", "request", valuelog.NewPrettyValue(request))
 
 	rootfs, err := mount.CanonicalizePath(spec.Root.Path)
 	if err != nil {

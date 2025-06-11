@@ -12,15 +12,14 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/v2/pkg/oci"
-	"github.com/containerd/ttrpc"
-	"github.com/mdlayher/vsock"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	slogctx "github.com/veqryn/slog-context"
 
-	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
+	"github.com/walteh/run"
+
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/harpoon"
 	"github.com/walteh/ec1/pkg/logging"
@@ -67,13 +66,27 @@ func main() {
 
 	ctx = slogctx.Append(ctx, slog.Int("pid", pid))
 
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in main", "error", r)
+			os.Exit(1)
+		}
+	}()
+	err := safeMain(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "error in main", "error", err)
+		os.Exit(1)
+	}
+}
+
+func safeMain(ctx context.Context) error {
+
 	if _, err := os.Stat(ec1init.Ec1AbsPath); err == nil {
 		err := runContainerd(ctx)
 		if err != nil {
 			slog.ErrorContext(ctx, "problem running containerd", "error", err)
-			os.Exit(1)
 		}
-		os.Exit(0)
+		return nil
 	}
 
 	if _, err := os.Stat(ec1init.Ec1AbsPath); os.IsNotExist(err) {
@@ -83,56 +96,48 @@ func main() {
 	// mount the ec1 virtiofs
 	err := harpoon.ExecCmdForwardingStdio(ctx, "mount", "-t", "virtiofs", ec1init.Ec1VirtioTag, ec1init.Ec1AbsPath)
 	if err != nil {
-		slog.ErrorContext(ctx, "problem mounting ec1 virtiofs", "error", err)
-		os.Exit(1)
+		return errors.Errorf("problem mounting ec1 virtiofs: %w", err)
 	}
 
 	spec, manifest, bindMounts, err := loadSpecOrManifest(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
-		os.Exit(1)
+		return errors.Errorf("problem loading spec or manifest: %w", err)
 	}
 
 	if spec != nil {
 		ctx = slogctx.Append(ctx, slog.String("mode", string(modeOCI)))
 
 		if bindMounts == nil {
-			slog.ErrorContext(ctx, "no bind mounts found")
-			os.Exit(1)
+			return errors.Errorf("no bind mounts found")
 		}
 
 		if err := mountRootfsSecondary(ctx, ec1init.NewRootAbsPath, bindMounts); err != nil {
-			slog.ErrorContext(ctx, "problem mounting rootfs secondary", "error", err)
-			os.Exit(1)
+			return errors.Errorf("problem mounting rootfs secondary: %w", err)
 		}
 
 		err = mountRootfsPrimary(ctx)
 		if err != nil {
-			slog.ErrorContext(ctx, "problem mounting rootfs", "error", err)
-			os.Exit(1)
+			return errors.Errorf("problem mounting rootfs: %w", err)
 		}
 
 		err = switchRoot(ctx)
 		if err != nil {
-			slog.ErrorContext(ctx, "problem switching root", "error", err)
-			os.Exit(1)
+			return errors.Errorf("problem switching root: %w", err)
 		}
 
-		os.Exit(0)
+		return nil
 	}
 
 	if manifest != nil {
 		ctx = slogctx.Append(ctx, slog.String("mode", string(modeManifest)))
 		err = runManifest(ctx, ec1init.VsockPort, manifest.Config.Entrypoint, manifest.Config.Env)
 		if err != nil {
-			slog.ErrorContext(ctx, "problem serving vsock", "error", err)
-			os.Exit(1)
+			return errors.Errorf("problem serving vsock: %w", err)
 		}
 	}
 
 	slog.ErrorContext(ctx, "no spec or manifest found")
-	os.Exit(1)
-
+	return errors.Errorf("no spec or manifest found")
 }
 
 func logFile(ctx context.Context, path string) {
@@ -226,19 +231,38 @@ func runContainerd(ctx context.Context) error {
 }
 
 func runTtrpc(ctx context.Context) error {
-	ttrpcServe, err := ttrpc.NewServer(ttrpc.WithServerDebugging())
+
+	forwarder, err := harpoon.NewVsockStdioForwarder(ctx, harpoon.VsockStdioForwarderOpts{
+		StdinPort:  uint32(ec1init.VsockStdinPort),
+		StdoutPort: uint32(ec1init.VsockStdoutPort),
+		StderrPort: uint32(ec1init.VsockStderrPort),
+	})
 	if err != nil {
-		return errors.Errorf("creating ttrpc server: %w", err)
+		slog.ErrorContext(ctx, "problem running stdio forwarding", "error", err)
+		return errors.Errorf("running stdio forwarding: %w", err)
 	}
 
-	harpoonv1.RegisterTTRPCGuestServiceService(ttrpcServe, harpoon.NewAgentService().WrapWithErrorLogging())
+	service := harpoon.NewAgentService(forwarder)
 
-	listener, err := vsock.ListenContextID(3, uint32(ec1init.VsockPort), nil)
+	runner, err := harpoon.NewGuestServiceRunner(ctx, harpoon.GuestServiceRunnerOpts{
+		VsockPort:      uint32(ec1init.VsockPort),
+		VsockContextID: 3,
+		GuestService:   service,
+	})
 	if err != nil {
-		return errors.Errorf("dialing vsock: %w", err)
+		slog.ErrorContext(ctx, "problem running guest service runner", "error", err)
+		return errors.Errorf("running guest service runner: %w", err)
 	}
 
-	return ttrpcServe.Serve(ctx, listener)
+	group := run.New(run.WithLogger(slog.Default()))
+
+	group.Always(runner)
+	for _, p := range forwarder.Processes() {
+		group.Always(p)
+	}
+
+	return group.Run()
+
 }
 
 // func getCopyMountCommands(ctx context.Context) ([][]string, error) {

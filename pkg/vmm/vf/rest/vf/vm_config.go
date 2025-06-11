@@ -2,11 +2,11 @@ package rest
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf/rest/define"
@@ -67,7 +67,7 @@ func (vm *ControllableVirtualMachine) SetVMState(ctx context.Context, c *gin.Con
 
 	response := vm.ChangeState(ctx, define.StateChange(s.State))
 	if response != nil {
-		logrus.Errorf("failed action %s: %q", s.State, response)
+		slog.ErrorContext(ctx, "failed action", "state", s.State, "error", response)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": response.Error()})
 		return
 	}

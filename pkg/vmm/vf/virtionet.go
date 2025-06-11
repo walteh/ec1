@@ -2,11 +2,10 @@ package vf
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Code-Hex/vz/v3"
 	"gitlab.com/tozd/go/errors"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/walteh/ec1/pkg/virtio"
 )
@@ -53,7 +52,7 @@ func toVzVirtioNet(dev *virtio.VirtioNet) (*vz.VirtioNetworkDeviceConfiguration,
 }
 
 func (c *vzVirtioDeviceApplier) ApplyVirtioNet(ctx context.Context, dev *virtio.VirtioNet) error {
-	log.Infof("Adding virtio-net device (nat: %t macAddress: [%s])", dev.Nat, dev.MacAddress)
+	slog.InfoContext(ctx, "adding virtio-net device", "nat", dev.Nat, "macAddress", dev.MacAddress)
 	// if dev.Socket != nil {
 	// 	log.Infof("Using fd %d", dev.Socket.Fd())
 	// }

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/lmittmann/tint"
+	"github.com/walteh/ec1/pkg/logging/valuelog"
 )
 
 func GetUnexportedFieldOf(obj any, field string) any {
@@ -73,7 +73,7 @@ func GetPrevFunctionCaller() runtime.Frame {
 	// take the first frame
 	for more {
 		frame, more = frames.Next()
-		slog.Info("GetPrevFunctionCaller", "frame", tint.NewPrettyValue(frame))
+		slog.Info("GetPrevFunctionCaller", "frame", valuelog.NewPrettyValue(frame))
 
 		if !more {
 			break

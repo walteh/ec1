@@ -114,7 +114,7 @@ func (p *managedProcess) start(ctx context.Context, vm *vmm.RunningVM[*vf.Virtua
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	exitCode, err := vm.Run(ctx, p.io.stdin, p.io.stdout, p.io.stderr)
+	exitCode, err := vm.Run(ctx)
 	if err != nil {
 		return errors.Errorf("running process in VM: %w", err)
 	}

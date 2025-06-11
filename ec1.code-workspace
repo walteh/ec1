@@ -39,6 +39,18 @@
 		{
 			"name": "sys",
 			"path": "../sys"
+		},
+		{
+			"name": "run",
+			"path": "../run"
+		},
+		{
+			"name": "termlog",
+			"path": "../termlog"
+		},
+		{
+			"name": "go-errors",
+			"path": "../go-errors"
 		}
 	],
 	"extensions": {
