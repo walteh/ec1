@@ -11,6 +11,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/walteh/ec1/pkg/logging/valuelog"
 )
 
 var _ slog.Handler = (*TermLogger)(nil)
@@ -77,13 +79,21 @@ func (l *TermLogger) render(s lipgloss.Style, strs ...string) string {
 }
 
 const (
-	timeFormat = "15:04:05.0000 MST"
+	timeFormat    = "15:04:05.0000 MST"
+	maxNameLength = 10
 )
 
 func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 	// Build a pretty, human-friendly log line.
 
 	var b strings.Builder
+	var appendageBuilder strings.Builder
+
+	// 0. Name.
+	if l.name != "" {
+		b.WriteString(l.render(l.styles.Prefix, strings.ToUpper(l.name)))
+		b.WriteByte(' ')
+	}
 
 	// 1 Level.
 	levelStyle, ok := l.styles.Levels[r.Level]
@@ -122,17 +132,32 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 				keyStyle = l.styles.Key
 			}
 
-			// Value styling (supports per-key overrides).
-			valStyle, ok := l.styles.Values[a.Key]
-			if !ok {
-				valStyle = l.styles.Value
-			}
-
 			key := l.render(keyStyle, a.Key)
 
-			// Resolve slog.Value to an interface{} and stringify.
-			val := fmt.Sprint(a.Value)
-			valColored := l.render(valStyle, val)
+			var valColored string
+
+			if pv, ok := a.Value.Any().(valuelog.PrettyRawJSONValue); ok {
+				appendageBuilder.WriteString("\n" + a.Key + ":\n")
+				appendageBuilder.WriteString(JSONToTree(a.Key, pv.RawJSON()))
+				appendageBuilder.WriteByte('\n')
+				valColored = l.render(l.styles.ValueAppendage, "[json rendered below]")
+			} else if pv, ok := a.Value.Any().(valuelog.PrettyAnyValue); ok {
+				appendageBuilder.WriteString("\n" + a.Key + ":\n")
+				appendageBuilder.WriteString(StructToTree(pv.Any()))
+				appendageBuilder.WriteByte('\n')
+				valColored = l.render(l.styles.ValueAppendage, "[struct rendered below]")
+			} else {
+				// Value styling (supports per-key overrides).
+				valStyle, ok := l.styles.Values[a.Key]
+				if !ok {
+					valStyle = l.styles.Value
+				}
+
+				// Resolve slog.Value to an interface{} and stringify.
+				val := fmt.Sprint(a.Value)
+				valColored = l.render(valStyle, val)
+
+			}
 
 			b.WriteString(key)
 			b.WriteByte('=')
@@ -159,6 +184,9 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	_, err := fmt.Fprint(w, b.String())
+	if appendageBuilder.Len() > 0 {
+		_, err = fmt.Fprint(w, appendageBuilder.String())
+	}
 	return err
 }
 

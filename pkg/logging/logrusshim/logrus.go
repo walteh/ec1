@@ -68,7 +68,7 @@ func (h *SlogBridgeHook) Fire(entry *logrus.Entry) error {
 		return strings.Compare(a.Key, b.Key)
 	})
 
-	record := slog.NewRecord(entry.Time, level, "[logrus] "+entry.Message, entry.Caller.PC)
+	record := slog.NewRecord(entry.Time, level, entry.Message, entry.Caller.PC)
 	record.AddAttrs(attrs...)
 
 	if strings.HasSuffix(entry.Caller.File, "panic.go") {
