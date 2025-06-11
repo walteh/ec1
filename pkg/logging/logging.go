@@ -11,10 +11,13 @@ import (
 	"strings"
 
 	// "github.com/golang-cz/devslog"
-	"github.com/lmittmann/tint"
+
 	"gitlab.com/tozd/go/errors"
 
+	"github.com/muesli/termenv"
 	slogctx "github.com/veqryn/slog-context"
+
+	"github.com/walteh/ec1/pkg/logging/termlog"
 )
 
 func SetupSlogSimple(ctx context.Context) context.Context {
@@ -66,17 +69,60 @@ func SetupSlogSimpleToWriterWithProcessNameJSON(ctx context.Context, w io.Writer
 
 func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, color bool, processName string, processor ...SlogProcessor) context.Context {
 
-	devHandler := tint.NewHandler(w, &tint.Options{
-		Level:      slog.LevelDebug,
-		TimeFormat: "2006-01-02 15:04 05.0000",
-		AddSource:  true,
+	// devHandler := tint.NewHandler(w, &tint.Options{
+	// 	Level:      slog.LevelDebug,
+	// 	TimeFormat: "2006-01-02 15:04 05.0000",
+	// 	AddSource:  true,
+	// 	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+	// 		a = formatErrorStacks(groups, a)
+	// 		return Redact(groups, a)
+	// 	},
+	// 	NoColor:     !color,
+	// 	ProcessName: processName,
+	// })
+
+	// Override the default error level style.
+	// styles := clog.DefaultStyles()
+	// styles.Levels[clog.ErrorLevel] = lipgloss.NewStyle().
+	// 	SetString("ERROR!!").
+	// 	Padding(0, 1, 0, 1).
+	// 	Background(lipgloss.Color("204")).
+	// 	Foreground(lipgloss.Color("0"))
+	// // Add a custom style for key `err`
+	// styles.Keys["err"] = lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
+	// styles.Values["err"] = lipgloss.NewStyle().Bold(true)
+
+	// clogHandler := clog.NewWithOptions(w, clog.Options{
+	// 	CallerFormatter: func(file string, line int, _ string) string {
+	// 		return NewEnhancedSource(uintptr(line)).ColorizedString(termenv.ANSI)
+	// 	},
+
+	// 	Level:        clog.DebugLevel,
+	// 	TimeFormat:   "2006-01-02 15:04 05.0000",
+	// 	Prefix:       processName,
+	// 	ReportCaller: true,
+	// })
+
+	// log
+
+	slogOpts := &slog.HandlerOptions{
+		Level:     slog.LevelDebug,
+		AddSource: true,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			a = formatErrorStacks(groups, a)
 			return Redact(groups, a)
 		},
-		NoColor:     !color,
-		ProcessName: processName,
-	})
+	}
+	clogHandler := termlog.NewTermLogger(w, slogOpts,
+		termlog.WithLoggerName(processName),
+		termlog.WithProfile(termenv.ANSI256),
+		termlog.WithRenderOption(termenv.WithTTY(true)),
+		termlog.WithLoggerName(processName),
+	)
+
+	// clog.StandardLog(clog.StandardLogOptions{
+	// 	ForceLevel: clog.DebugLevel,
+	// })
 
 	// opts := slog.HandlerOptions{
 	// 	Level:     slog.LevelDebug,
@@ -93,7 +139,7 @@ func SetupSlogSimpleToWriterWithProcessName(ctx context.Context, w io.Writer, co
 	// 	SameSourceInfoColor: color,
 	// })
 
-	ctxHandler := slogctx.NewHandler(devHandler, &slogctx.HandlerOptions{})
+	ctxHandler := slogctx.NewHandler(clogHandler, &slogctx.HandlerOptions{})
 
 	mylogger := slog.New(ctxHandler)
 	slog.SetDefault(mylogger)
