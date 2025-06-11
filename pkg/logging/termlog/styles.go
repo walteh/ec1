@@ -42,6 +42,9 @@ type Styles struct {
 
 	// Tree styles for tree visualizations
 	Tree TreeStyles
+
+	// Error styles for error trace displays
+	Error ErrorStyles
 }
 
 type CallerStyle struct {
@@ -77,6 +80,33 @@ type TreeStyles struct {
 	Struct lipgloss.Style
 
 	// Container is the overall style wrapper for the tree
+	Container lipgloss.Style
+}
+
+// ErrorStyles defines beautiful Rust-inspired error trace styling
+type ErrorStyles struct {
+	// Main is the style for the main error message
+	Main lipgloss.Style
+
+	// Arrow is the style for trace arrows (├─, └─, etc.)
+	Arrow lipgloss.Style
+
+	// Function is the style for function names
+	Function lipgloss.Style
+
+	// Package is the style for package names
+	Package lipgloss.Style
+
+	// File is the style for file paths (with hyperlinks)
+	File lipgloss.Style
+
+	// Line is the style for line numbers
+	Line lipgloss.Style
+
+	// Context is the style for contextual information
+	Context lipgloss.Style
+
+	// Container is the overall wrapper for the error display
 	Container lipgloss.Style
 }
 
@@ -152,6 +182,19 @@ func DefaultStyles() *Styles {
 				Padding(1, 2).
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(TreeBorderColor),
+		},
+		Error: ErrorStyles{
+			Main:     lipgloss.NewStyle().Foreground(ErrorMainColor).Bold(true),
+			Arrow:    lipgloss.NewStyle().Foreground(ErrorTraceArrowColor).Bold(true),
+			Function: lipgloss.NewStyle().Foreground(ErrorFunctionColor).Bold(true),
+			Package:  lipgloss.NewStyle().Foreground(ErrorPackageColor).Bold(true),
+			File:     lipgloss.NewStyle().Foreground(ErrorFileColor).Bold(true),
+			Line:     lipgloss.NewStyle().Foreground(ErrorLineColor).Bold(true),
+			Context:  lipgloss.NewStyle().Foreground(ErrorContextColor).Faint(true),
+			Container: lipgloss.NewStyle().
+				Padding(1, 2).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ErrorBorderColor),
 		},
 	}
 }

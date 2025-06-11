@@ -90,4 +90,38 @@ var (
 		Light: lipgloss.CompleteColor{TrueColor: "#585858", ANSI256: "240", ANSI: "8"}, // Dark gray
 		Dark:  lipgloss.CompleteColor{TrueColor: "#9E9E9E", ANSI256: "247", ANSI: "7"}, // Medium gray
 	}
+
+	// Error trace styling colors - Rust-inspired error display
+	ErrorMainColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#D73502", ANSI256: "160", ANSI: "1"}, // Bright red
+		Dark:  lipgloss.CompleteColor{TrueColor: "#FF6B6B", ANSI256: "203", ANSI: "9"}, // Light red
+	}
+	ErrorTraceArrowColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#FF6B35", ANSI256: "202", ANSI: "3"},  // Orange
+		Dark:  lipgloss.CompleteColor{TrueColor: "#FFA726", ANSI256: "214", ANSI: "11"}, // Light orange
+	}
+	ErrorFunctionColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#8E44AD", ANSI256: "97", ANSI: "5"},   // Purple
+		Dark:  lipgloss.CompleteColor{TrueColor: "#BB86FC", ANSI256: "141", ANSI: "13"}, // Light purple
+	}
+	ErrorPackageColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#2980B9", ANSI256: "25", ANSI: "4"},  // Blue
+		Dark:  lipgloss.CompleteColor{TrueColor: "#64B5F6", ANSI256: "74", ANSI: "12"}, // Light blue
+	}
+	ErrorFileColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#27AE60", ANSI256: "34", ANSI: "2"},   // Green
+		Dark:  lipgloss.CompleteColor{TrueColor: "#81C784", ANSI256: "114", ANSI: "10"}, // Light green
+	}
+	ErrorLineColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#F39C12", ANSI256: "214", ANSI: "3"},  // Yellow
+		Dark:  lipgloss.CompleteColor{TrueColor: "#FFD54F", ANSI256: "221", ANSI: "11"}, // Light yellow
+	}
+	ErrorContextColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#7F8C8D", ANSI256: "244", ANSI: "8"}, // Gray
+		Dark:  lipgloss.CompleteColor{TrueColor: "#B0BEC5", ANSI256: "249", ANSI: "7"}, // Light gray
+	}
+	ErrorBorderColor = lipgloss.CompleteAdaptiveColor{
+		Light: lipgloss.CompleteColor{TrueColor: "#E74C3C", ANSI256: "196", ANSI: "1"}, // Error red
+		Dark:  lipgloss.CompleteColor{TrueColor: "#F48FB1", ANSI256: "211", ANSI: "9"}, // Light pink
+	}
 )

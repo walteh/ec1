@@ -150,6 +150,22 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 				appendageBuilder.WriteString(StructToTree(pv.Any(), l.styles, l.renderFunc))
 				appendageBuilder.WriteByte('\n')
 				valColored = l.render(l.styles.ValueAppendage, "[struct rendered below]")
+			} else if a.Key == "error" {
+				// Special handling for error values - use beautiful error trace display
+				if err, ok := a.Value.Any().(error); ok {
+					appendageBuilder.WriteString("\n")
+					appendageBuilder.WriteString(ErrorToTrace(err, l.styles, l.renderFunc))
+					appendageBuilder.WriteByte('\n')
+					valColored = l.render(l.styles.ValueAppendage, "[error trace rendered below]")
+				} else {
+					// Fallback for non-error values in "error" key
+					valStyle, ok := l.styles.Values[a.Key]
+					if !ok {
+						valStyle = l.styles.Value
+					}
+					val := fmt.Sprint(a.Value)
+					valColored = l.render(valStyle, val)
+				}
 			} else {
 				// Value styling (supports per-key overrides).
 				valStyle, ok := l.styles.Values[a.Key]
