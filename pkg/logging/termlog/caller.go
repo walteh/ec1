@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 var knownNestedProjects = []string{
@@ -62,11 +60,7 @@ type EnhancedSource struct {
 	enhancedFullPkg string
 }
 
-func (e *EnhancedSource) Render(r *lipgloss.Renderer, styles *Styles) string {
-
-	render := func(s lipgloss.Style, str string) string {
-		return s.Renderer(r).Render(str)
-	}
+func (e *EnhancedSource) Render(styles *Styles, render renderFunc, hyperlink HyperlinkFunc) string {
 
 	pkgNoProject := strings.TrimPrefix(e.enhancedFullPkg, e.enhancedProject+"/")
 	if e.enhancedProject == e.enhancedFullPkg {

@@ -5,48 +5,52 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/tree"
 )
 
-// StructToTree converts any Go struct (or value) to a beautifully styled ASCII tree.
+// StructToTree converts any Go struct (or value) to a stunning lipgloss tree.
 func StructToTree(v interface{}, styles *Styles, render renderFunc) string {
-	// Build the tree content
-	var b strings.Builder
-	b.WriteString(render(styles.Tree.Root, "struct") + "\n")
+	return StructToTreeWithTitle(v, "struct", styles, render)
+}
 
-	// Use reflection to walk the struct
-	buildStructTree(&b, reflect.ValueOf(v), "", true, styles.Tree, render)
+// StructToTreeWithTitle creates a struct tree with a custom title
+func StructToTreeWithTitle(v interface{}, title string, styles *Styles, render renderFunc) string {
+	t := tree.Root("󰙅 " + title).
+		RootStyle(styles.Tree.Root).
+		EnumeratorStyle(styles.Tree.Branch).
+		Enumerator(tree.RoundedEnumerator).
+		ItemStyle(styles.Tree.Key)
 
-	// Wrap in container style
-	return render(styles.Tree.Container, b.String())
+	buildStructTreeNode(t, reflect.ValueOf(v), styles.Tree, render)
+
+	return render(styles.Tree.Container, t.String())
 }
 
 type renderFunc func(s lipgloss.Style, str string) string
 
-// JSONToTree parses a JSON byte slice and returns a beautifully styled ASCII tree.
-func JSONToTree(name string, data []byte, styles *Styles, render renderFunc) string {
-
+// JSONToTree parses a JSON byte slice and returns a stunning lipgloss tree.
+func JSONToTree(keyName string, data []byte, styles *Styles, render renderFunc) string {
 	// Unmarshal into an empty interface
 	var raw interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Sprintf("(unable to render JSON: %s) %s", err, string(data))
 	}
 
-	// Build the tree content
-	var b strings.Builder
-	b.WriteString(render(styles.Tree.Root, "JSON") + "\n")
+	t := tree.Root("󰘦 " + keyName).
+		RootStyle(styles.Tree.Root).
+		EnumeratorStyle(styles.Tree.Branch).
+		Enumerator(tree.RoundedEnumerator).
+		ItemStyle(styles.Tree.Key)
 
-	// Recursively build the tree
-	buildJSONTree(&b, raw, "", true, styles.Tree, render)
+	buildJSONTreeNode(t, raw, styles.Tree, render)
 
-	// Wrap in container style
-	return render(styles.Tree.Container, b.String())
+	return render(styles.Tree.Container, t.String())
 }
 
-// buildStructTree recursively builds a colored tree from a struct using reflection
-func buildStructTree(b *strings.Builder, v reflect.Value, prefix string, isLast bool, styles TreeStyles, render renderFunc) {
+// buildStructTreeNode recursively builds a lipgloss tree from a struct using reflection
+func buildStructTreeNode(node *tree.Tree, v reflect.Value, styles TreeStyles, render renderFunc) {
 	if !v.IsValid() {
 		return
 	}
@@ -54,6 +58,7 @@ func buildStructTree(b *strings.Builder, v reflect.Value, prefix string, isLast 
 	// Handle pointers
 	if v.Kind() == reflect.Ptr {
 		if v.IsNil() {
+			node.Child(render(styles.Null, "nil"))
 			return
 		}
 		v = v.Elem()
@@ -73,158 +78,101 @@ func buildStructTree(b *strings.Builder, v reflect.Value, prefix string, isLast 
 				continue
 			}
 
-			isLastField := i == numFields-1
-			connector := "├── "
-			newPrefix := prefix + "│   "
-
-			if isLastField {
-				connector = "└── "
-				newPrefix = prefix + "    "
-			}
-
-			branchStr := render(styles.Branch, connector)
-			keyStr := render(styles.Key, field.Name)
-
-			b.WriteString(prefix + branchStr + keyStr)
-
-			// Add value inline for simple types, recurse for complex types
 			if isSimpleType(fieldValue) {
+				// Simple value - show as key: value
+				keyStr := render(styles.Key, "󰌽 "+field.Name)
 				valueStr := renderValue(fieldValue.Interface(), styles, render)
-				b.WriteString(": " + valueStr)
-			}
-
-			b.WriteString("\n")
-
-			// Recurse for complex types
-			if !isSimpleType(fieldValue) {
-				buildStructTree(b, fieldValue, newPrefix, isLastField, styles, render)
+				node.Child(keyStr + ": " + valueStr)
+			} else {
+				// Complex value - create subtree
+				keyStr := render(styles.Key, "󰌽 "+field.Name)
+				subTree := tree.New().Root(keyStr).
+					RootStyle(styles.Key).
+					EnumeratorStyle(styles.Branch).
+					Enumerator(tree.RoundedEnumerator).
+					ItemStyle(styles.Key)
+				buildStructTreeNode(subTree, fieldValue, styles, render)
+				node.Child(subTree)
 			}
 		}
 
 	case reflect.Slice, reflect.Array:
 		length := v.Len()
 		for i := 0; i < length; i++ {
-			isLastItem := i == length-1
-			connector := "├── "
-			newPrefix := prefix + "│   "
-
-			if isLastItem {
-				connector = "└── "
-				newPrefix = prefix + "    "
-			}
-
-			branchStr := render(styles.Branch, connector)
-			indexStr := render(styles.Index, fmt.Sprintf("[%d]", i))
-
-			b.WriteString(prefix + branchStr + indexStr)
-
 			item := v.Index(i)
+			indexStr := render(styles.Index, fmt.Sprintf("󰅪 [%d]", i))
+
 			if isSimpleType(item) {
 				valueStr := renderValue(item.Interface(), styles, render)
-				b.WriteString(": " + valueStr)
-			}
-
-			b.WriteString("\n")
-
-			if !isSimpleType(item) {
-				buildStructTree(b, item, newPrefix, isLastItem, styles, render)
+				node.Child(indexStr + ": " + valueStr)
+			} else {
+				subTree := tree.New().Root(indexStr).
+					RootStyle(styles.Index).
+					EnumeratorStyle(styles.Branch).
+					Enumerator(tree.RoundedEnumerator).
+					ItemStyle(styles.Key)
+				buildStructTreeNode(subTree, item, styles, render)
+				node.Child(subTree)
 			}
 		}
 
 	case reflect.Map:
 		keys := v.MapKeys()
-		for i, key := range keys {
-			isLastKey := i == len(keys)-1
-			connector := "├── "
-			newPrefix := prefix + "│   "
-
-			if isLastKey {
-				connector = "└── "
-				newPrefix = prefix + "    "
-			}
-
-			branchStr := render(styles.Branch, connector)
-			keyStr := render(styles.Key, fmt.Sprint(key.Interface()))
-
-			b.WriteString(prefix + branchStr + keyStr)
-
+		for _, key := range keys {
 			mapValue := v.MapIndex(key)
+			keyStr := render(styles.Key, "󰌽 "+fmt.Sprint(key.Interface()))
+
 			if isSimpleType(mapValue) {
 				valueStr := renderValue(mapValue.Interface(), styles, render)
-				b.WriteString(": " + valueStr)
-			}
-
-			b.WriteString("\n")
-
-			if !isSimpleType(mapValue) {
-				buildStructTree(b, mapValue, newPrefix, isLastKey, styles, render)
+				node.Child(keyStr + ": " + valueStr)
+			} else {
+				subTree := tree.New().Root(keyStr).
+					RootStyle(styles.Key).
+					EnumeratorStyle(styles.Branch).
+					ItemStyle(styles.Key)
+				buildStructTreeNode(subTree, mapValue, styles, render)
+				node.Child(subTree)
 			}
 		}
 	}
 }
 
-// buildJSONTree recursively builds a colored tree from JSON data
-func buildJSONTree(b *strings.Builder, v interface{}, prefix string, isLast bool, styles TreeStyles, render renderFunc) {
+// buildJSONTreeNode recursively builds a lipgloss tree from JSON data
+func buildJSONTreeNode(node *tree.Tree, v interface{}, styles TreeStyles, render renderFunc) {
 	switch vv := v.(type) {
 	case map[string]interface{}:
-		keys := make([]string, 0, len(vv))
-		for k := range vv {
-			keys = append(keys, k)
-		}
+		for key, jsonVal := range vv {
+			keyStr := render(styles.Key, "󰌽 "+key)
 
-		for i, key := range keys {
-			isLastKey := i == len(keys)-1
-			connector := "├── "
-			newPrefix := prefix + "│   "
-
-			if isLastKey {
-				connector = "└── "
-				newPrefix = prefix + "    "
-			}
-
-			branchStr := render(styles.Branch, connector)
-			keyStr := render(styles.Key, key)
-
-			b.WriteString(prefix + branchStr + keyStr)
-
-			val := vv[key]
-			if isSimpleJSONType(val) {
-				valueStr := renderJSONValue(val, styles, render)
-				b.WriteString(": " + valueStr)
-			}
-
-			b.WriteString("\n")
-
-			if !isSimpleJSONType(val) {
-				buildJSONTree(b, val, newPrefix, isLastKey, styles, render)
+			if isSimpleJSONType(jsonVal) {
+				valueStr := renderJSONValue(jsonVal, styles, render)
+				node.Child(keyStr + ": " + valueStr)
+			} else {
+				subTree := tree.New().Root(keyStr).
+					RootStyle(styles.Key).
+					EnumeratorStyle(styles.Branch).
+					Enumerator(tree.RoundedEnumerator).
+					ItemStyle(styles.Key)
+				buildJSONTreeNode(subTree, jsonVal, styles, render)
+				node.Child(subTree)
 			}
 		}
 
 	case []interface{}:
 		for i, item := range vv {
-			isLastItem := i == len(vv)-1
-			connector := "├── "
-			newPrefix := prefix + "│   "
-
-			if isLastItem {
-				connector = "└── "
-				newPrefix = prefix + "    "
-			}
-
-			branchStr := render(styles.Branch, connector)
-			indexStr := render(styles.Index, fmt.Sprintf("[%d]", i))
-
-			b.WriteString(prefix + branchStr + indexStr)
+			indexStr := render(styles.Index, fmt.Sprintf("󰅪 [%d]", i))
 
 			if isSimpleJSONType(item) {
 				valueStr := renderJSONValue(item, styles, render)
-				b.WriteString(": " + valueStr)
-			}
-
-			b.WriteString("\n")
-
-			if !isSimpleJSONType(item) {
-				buildJSONTree(b, item, newPrefix, isLastItem, styles, render)
+				node.Child(indexStr + ": " + valueStr)
+			} else {
+				subTree := tree.New().Root(indexStr).
+					RootStyle(styles.Index).
+					EnumeratorStyle(styles.Branch).
+					Enumerator(tree.RoundedEnumerator).
+					ItemStyle(styles.Key)
+				buildJSONTreeNode(subTree, item, styles, render)
+				node.Child(subTree)
 			}
 		}
 	}
@@ -264,18 +212,22 @@ func isSimpleJSONType(v interface{}) bool {
 // renderValue renders a Go value with appropriate styling
 func renderValue(v interface{}, styles TreeStyles, render renderFunc) string {
 	if v == nil {
-		return render(styles.Null, "nil")
+		return render(styles.Null, " nil")
 	}
 
 	switch vv := v.(type) {
 	case string:
-		return render(styles.String, fmt.Sprintf(`"%s"`, vv))
+		return render(styles.String, fmt.Sprintf(` "%s"`, vv))
 	case bool:
-		return render(styles.Bool, strconv.FormatBool(vv))
+		if vv {
+			return render(styles.Bool, "󰱒 true")
+		} else {
+			return render(styles.Bool, "󰰋 false")
+		}
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-		return render(styles.Number, fmt.Sprint(vv))
+		return render(styles.Number, "󰎠 "+fmt.Sprint(vv))
 	default:
-		return render(styles.Struct, fmt.Sprintf("(%T)", vv))
+		return render(styles.Struct, "󰙅 "+fmt.Sprintf("(%T)", vv))
 	}
 }
 
@@ -283,14 +235,18 @@ func renderValue(v interface{}, styles TreeStyles, render renderFunc) string {
 func renderJSONValue(v interface{}, styles TreeStyles, render renderFunc) string {
 	switch vv := v.(type) {
 	case nil:
-		return render(styles.Null, "null")
+		return render(styles.Null, " null")
 	case string:
-		return render(styles.String, fmt.Sprintf(`"%s"`, vv))
+		return render(styles.String, fmt.Sprintf(` "%s"`, vv))
 	case bool:
-		return render(styles.Bool, strconv.FormatBool(vv))
+		if vv {
+			return render(styles.Bool, "󰱒 true")
+		} else {
+			return render(styles.Bool, "󰰋 false")
+		}
 	case float64:
-		return render(styles.Number, strconv.FormatFloat(vv, 'g', -1, 64))
+		return render(styles.Number, "󰎠 "+strconv.FormatFloat(vv, 'g', -1, 64))
 	default:
-		return render(styles.Struct, fmt.Sprint(vv))
+		return render(styles.Struct, "󰙅 "+fmt.Sprint(vv))
 	}
 }

@@ -43,22 +43,32 @@ func WithRenderOption(opt termenv.OutputOption) TermLoggerOption {
 	}
 }
 
+func WithHyperlinkFunc(fn func(link, renderedText string) string) TermLoggerOption {
+	return func(l *TermLogger) {
+		l.hyperlinkFunc = fn
+	}
+}
+
+type HyperlinkFunc func(link, renderedText string) string
+
 type TermLogger struct {
-	slogOptions *slog.HandlerOptions
-	styles      *Styles
-	writer      io.Writer
-	renderOpts  []termenv.OutputOption
-	renderer    *lipgloss.Renderer
-	name        string
+	slogOptions   *slog.HandlerOptions
+	styles        *Styles
+	writer        io.Writer
+	renderOpts    []termenv.OutputOption
+	renderer      *lipgloss.Renderer
+	name          string
+	hyperlinkFunc HyperlinkFunc
 }
 
 func NewTermLogger(writer io.Writer, sopts *slog.HandlerOptions, opts ...TermLoggerOption) *TermLogger {
 	l := &TermLogger{
-		writer:      writer,
-		slogOptions: sopts,
-		styles:      DefaultStyles(),
-		renderOpts:  []termenv.OutputOption{},
-		name:        "",
+		writer:        writer,
+		slogOptions:   sopts,
+		styles:        DefaultStyles(),
+		renderOpts:    []termenv.OutputOption{},
+		name:          "",
+		hyperlinkFunc: hyperlink,
 	}
 	for _, opt := range opts {
 		opt(l)
@@ -118,7 +128,7 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 
 	// 3. Source (if requested).
 	if l.slogOptions != nil && l.slogOptions.AddSource {
-		b.WriteString(NewEnhancedSource(r.PC).Render(l.renderer, l.styles))
+		b.WriteString(NewEnhancedSource(r.PC).Render(l.styles, l.renderFunc, l.hyperlinkFunc))
 		b.WriteByte(' ')
 	}
 
@@ -141,22 +151,19 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 			var valColored string
 
 			if pv, ok := a.Value.Any().(valuelog.PrettyRawJSONValue); ok {
-				appendageBuilder.WriteString("\n" + a.Key + ":\n")
 				appendageBuilder.WriteString(JSONToTree(a.Key, pv.RawJSON(), l.styles, l.renderFunc))
-				appendageBuilder.WriteByte('\n')
-				valColored = l.render(l.styles.ValueAppendage, "[json rendered below]")
+				appendageBuilder.WriteString("\n")
+				valColored = l.render(l.styles.ValueAppendage, "󰘦 "+a.Key)
 			} else if pv, ok := a.Value.Any().(valuelog.PrettyAnyValue); ok {
-				appendageBuilder.WriteString("\n" + a.Key + ":\n")
-				appendageBuilder.WriteString(StructToTree(pv.Any(), l.styles, l.renderFunc))
-				appendageBuilder.WriteByte('\n')
-				valColored = l.render(l.styles.ValueAppendage, "[struct rendered below]")
+				appendageBuilder.WriteString(StructToTreeWithTitle(pv.Any(), a.Key, l.styles, l.renderFunc))
+				appendageBuilder.WriteString("\n")
+				valColored = l.render(l.styles.ValueAppendage, "󰙅 "+a.Key)
 			} else if a.Key == "error" {
 				// Special handling for error values - use beautiful error trace display
 				if err, ok := a.Value.Any().(error); ok {
+					appendageBuilder.WriteString(ErrorToTrace(err, l.styles, l.renderFunc, l.hyperlinkFunc))
 					appendageBuilder.WriteString("\n")
-					appendageBuilder.WriteString(ErrorToTrace(err, l.styles, l.renderFunc))
-					appendageBuilder.WriteByte('\n')
-					valColored = l.render(l.styles.ValueAppendage, "[error trace rendered below]")
+					valColored = l.render(l.styles.ValueAppendage, "󰅙 error trace")
 				} else {
 					// Fallback for non-error values in "error" key
 					valStyle, ok := l.styles.Values[a.Key]

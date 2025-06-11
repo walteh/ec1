@@ -112,6 +112,7 @@ type ErrorStyles struct {
 
 // DefaultStyles returns the default styles.
 func DefaultStyles() *Styles {
+
 	return &Styles{
 		Timestamp: lipgloss.NewStyle().Width(len(timeFormat)).Faint(true).Align(lipgloss.Center),
 		Caller: CallerStyle{
@@ -169,32 +170,38 @@ func DefaultStyles() *Styles {
 				Foreground(LevelErrorColor),
 		},
 		Tree: TreeStyles{
-			Root:   lipgloss.NewStyle().Foreground(TreeRootColor).Bold(true),
-			Branch: lipgloss.NewStyle().Foreground(TreeBranchColor).Faint(true),
+			Root:   lipgloss.NewStyle().Foreground(TreeRootColor).Bold(true).SetString("󰙅 "), // Nerd font folder icon
+			Branch: lipgloss.NewStyle().Foreground(TreeBranchColor).Bold(true),
 			Key:    lipgloss.NewStyle().Foreground(TreeKeyColor).Bold(true),
 			String: lipgloss.NewStyle().Foreground(TreeStringColor),
-			Number: lipgloss.NewStyle().Foreground(TreeNumberColor),
+			Number: lipgloss.NewStyle().Foreground(TreeNumberColor).Bold(true),
 			Bool:   lipgloss.NewStyle().Foreground(TreeBoolColor).Bold(true),
 			Null:   lipgloss.NewStyle().Foreground(TreeNullColor).Italic(true),
 			Index:  lipgloss.NewStyle().Foreground(TreeIndexColor).Bold(true),
 			Struct: lipgloss.NewStyle().Foreground(TreeStructColor).Bold(true),
 			Container: lipgloss.NewStyle().
-				Padding(1, 2).
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(TreeBorderColor),
+				Padding(0, 1).
+				Margin(1, 0).
+				BorderForeground(TreeBorderColor).
+				BorderStyle(lipgloss.RoundedBorder()),
 		},
 		Error: ErrorStyles{
-			Main:     lipgloss.NewStyle().Foreground(ErrorMainColor).Bold(true),
+			Main:     lipgloss.NewStyle().Foreground(LevelErrorColor).Bold(true),
 			Arrow:    lipgloss.NewStyle().Foreground(ErrorTraceArrowColor).Bold(true),
 			Function: lipgloss.NewStyle().Foreground(ErrorFunctionColor).Bold(true),
 			Package:  lipgloss.NewStyle().Foreground(ErrorPackageColor).Bold(true),
 			File:     lipgloss.NewStyle().Foreground(ErrorFileColor).Bold(true),
 			Line:     lipgloss.NewStyle().Foreground(ErrorLineColor).Bold(true),
-			Context:  lipgloss.NewStyle().Foreground(ErrorContextColor).Faint(true),
+			Context:  lipgloss.NewStyle().Foreground(ErrorContextColor),
 			Container: lipgloss.NewStyle().
-				Padding(1, 2).
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(ErrorBorderColor),
+				Padding(0, 1).
+				Margin(1, 0).
+				BorderForeground(LevelErrorColor).
+				BorderStyle(lipgloss.RoundedBorder()),
 		},
 	}
+}
+
+func EmptyStyles() *Styles {
+	return &Styles{}
 }
