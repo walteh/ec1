@@ -133,7 +133,7 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	// 4. Message.
-	msg := l.styles.Message.Render(r.Message)
+	msg := l.render(levelStyle.UnsetString().UnsetMaxWidth().UnsetBold(), r.Message)
 	b.WriteString(msg)
 
 	// 5. Attributes (key=value ...).
@@ -158,12 +158,12 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 				appendageBuilder.WriteString(StructToTreeWithTitle(pv.Any(), a.Key, l.styles, l.renderFunc))
 				appendageBuilder.WriteString("\n")
 				valColored = l.render(l.styles.ValueAppendage, "󰙅 "+a.Key)
-			} else if a.Key == "error" {
+			} else if (a.Key == "error" || a.Key == "err") && r.Level == slog.LevelError {
 				// Special handling for error values - use beautiful error trace display
 				if err, ok := a.Value.Any().(error); ok {
-					appendageBuilder.WriteString(ErrorToTrace(err, l.styles, l.renderFunc, l.hyperlinkFunc))
+					appendageBuilder.WriteString(ErrorToTrace(err, r, l.styles, l.renderFunc, l.hyperlinkFunc))
 					appendageBuilder.WriteString("\n")
-					valColored = l.render(l.styles.ValueAppendage, "󰅙 error trace")
+					valColored = l.render(l.styles.ValueAppendage, "[error rendered below]")
 				} else {
 					// Fallback for non-error values in "error" key
 					valStyle, ok := l.styles.Values[a.Key]

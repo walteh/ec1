@@ -2,6 +2,7 @@ package termlog
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime"
 	"strings"
 
@@ -23,14 +24,14 @@ type frameProvider interface {
 // ErrorToTrace renders an error with a simple two-part structure:
 // 1. Error traces list (individual errors with their locations)
 // 2. Simple stack trace (just call stack, no context mapping)
-func ErrorToTrace(err error, styles *Styles, render renderFunc, hyperlink HyperlinkFunc) string {
+func ErrorToTrace(err error, record slog.Record, styles *Styles, render renderFunc, hyperlink HyperlinkFunc) string {
 	if err == nil {
 		return ""
 	}
 
 	// For non-errors.E types, fall back to simple display
 	if _, ok := err.(errors.E); !ok {
-		return renderSimpleError(err, styles, render)
+		return renderSimpleError(err, styles, render, record, hyperlink)
 	}
 
 	// Build the display
@@ -49,15 +50,15 @@ func ErrorToTrace(err error, styles *Styles, render renderFunc, hyperlink Hyperl
 	}
 
 	if len(sections) == 0 {
-		return renderSimpleError(err, styles, render)
+		return renderSimpleError(err, styles, render, record, hyperlink)
 	}
 
 	// Get the root error message for header (avoid repetition)
 	rootError := getRootError(err)
-	header := render(styles.Error.Main, "󰅙 "+rootError.Error())
+	header := render(styles.Error.Main, rootError.Error())
 	content := strings.Join(sections, "\n")
 
-	return render(styles.Error.Container, header+"\n"+content)
+	return render(styles.Error.Container, header+"\n\n"+content)
 }
 
 // buildErrorTraces creates a list of individual errors with their creation locations
@@ -180,9 +181,12 @@ func filterRelevantFrames(frames []runtime.Frame) []runtime.Frame {
 	return relevant
 }
 
-// errorEnumerator returns empty string to avoid bullet points
+// errorEnumerator returns rounded tree-style connectors like Rust errors
 func errorEnumerator(items list.Items, i int) string {
-	return "    "
+	if i == items.Length()-1 {
+		return "╰── "
+	}
+	return "├── "
 }
 
 // errorEnumeratorStyle returns the style for enumerators
@@ -248,7 +252,25 @@ func getRootError(err error) error {
 	}
 }
 
-// renderSimpleError renders a simple error without stack trace
-func renderSimpleError(err error, styles *Styles, render renderFunc) string {
-	return render(styles.Error.Main, "󰅙 "+err.Error())
+// renderSimpleError renders a simple error with optional stack trace from log record
+func renderSimpleError(err error, styles *Styles, render renderFunc, record slog.Record, hyperlink HyperlinkFunc) string {
+	// Start with the error message
+	header := render(styles.Error.Main, err.Error())
+
+	// If we have source information from the log record, add it as a simple stack trace
+	if record.PC != 0 {
+		enhancedSource := NewEnhancedSource(record.PC)
+		location := enhancedSource.Render(styles, render, hyperlink)
+
+		// Create a simple single-item list with the location
+		l := list.New(location).
+			Enumerator(errorEnumerator).
+			EnumeratorStyleFunc(errorEnumeratorStyle)
+
+		content := l.String()
+		return render(styles.Error.Container, header+"\n\n"+content)
+	}
+
+	// Fallback to just the error message if no source info
+	return render(styles.Error.Main, err.Error())
 }

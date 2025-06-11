@@ -117,7 +117,7 @@ func DefaultStyles() *Styles {
 		Timestamp: lipgloss.NewStyle().Width(len(timeFormat)).Faint(true).Align(lipgloss.Center),
 		Caller: CallerStyle{
 			File:    lipgloss.NewStyle().Bold(true),
-			Line:    lipgloss.NewStyle().Foreground(CallerLineColor).Faint(true),
+			Line:    lipgloss.NewStyle().Foreground(CallerLineColor),
 			Func:    lipgloss.NewStyle().Foreground(CallerFuncColor),
 			Pkg:     lipgloss.NewStyle().Foreground(CallerPkgColor),
 			Sep:     lipgloss.NewStyle().Faint(true),
@@ -154,15 +154,15 @@ func DefaultStyles() *Styles {
 				SetString(strings.ToUpper("ERR!")).
 				Bold(true).
 				MaxWidth(4).
-				Background(LevelErrorColor).
+				Foreground(LevelErrorColor).
 				// Foreground(lipgloss.Color("black")).
 				Align(lipgloss.Left),
 		},
 		Keys: map[string]lipgloss.Style{
-			"error": lipgloss.NewStyle().
-				Bold(true).
-				Background(LevelErrorColor).
-				Foreground(lipgloss.Color("black")),
+			// "error": lipgloss.NewStyle().
+			// 	Bold(true).
+			// 	Background(LevelErrorColor).
+			// 	Foreground(lipgloss.Color("black")),
 		},
 		Values: map[string]lipgloss.Style{
 			"error": lipgloss.NewStyle().
@@ -194,7 +194,7 @@ func DefaultStyles() *Styles {
 			Line:     lipgloss.NewStyle().Foreground(ErrorLineColor).Bold(true),
 			Context:  lipgloss.NewStyle().Foreground(ErrorContextColor),
 			Container: lipgloss.NewStyle().
-				Padding(0, 1).
+				Padding(1, 2).
 				Margin(1, 0).
 				BorderForeground(LevelErrorColor).
 				BorderStyle(lipgloss.RoundedBorder()),

@@ -17,8 +17,8 @@ var (
 		Dark:  lipgloss.CompleteColor{TrueColor: "#d7ff87", ANSI256: "192", ANSI: "10"},
 	}
 	CallerPkgColor = lipgloss.CompleteAdaptiveColor{
-		Light: lipgloss.CompleteColor{TrueColor: "#8787ff", ANSI256: "105", ANSI: "12"},
-		Dark:  lipgloss.CompleteColor{TrueColor: "#8787ff", ANSI256: "105", ANSI: "12"},
+		Light: lipgloss.CompleteColor{TrueColor: "#BBBBF9", ANSI256: "105", ANSI: "12"},
+		Dark:  lipgloss.CompleteColor{TrueColor: "#BBBBF9", ANSI256: "105", ANSI: "12"},
 	}
 	CallerProjectColor = lipgloss.CompleteAdaptiveColor{
 		Light: lipgloss.CompleteColor{TrueColor: "#00ffff", ANSI256: "51", ANSI: "14"},
