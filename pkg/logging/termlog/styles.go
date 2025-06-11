@@ -39,6 +39,9 @@ type Styles struct {
 
 	// Values overrides value styles for specific keys.
 	Values map[string]lipgloss.Style
+
+	// Tree styles for tree visualizations
+	Tree TreeStyles
 }
 
 type CallerStyle struct {
@@ -48,6 +51,33 @@ type CallerStyle struct {
 	Pkg     lipgloss.Style
 	Sep     lipgloss.Style
 	Project lipgloss.Style
+}
+
+// TreeStyles defines beautiful styling for tree visualizations
+type TreeStyles struct {
+	// Root is the style for the root node
+	Root lipgloss.Style
+
+	// Branch is the style for tree structure (├──, └──, etc.)
+	Branch lipgloss.Style
+
+	// Key is the style for object keys/field names
+	Key lipgloss.Style
+
+	// Values for different data types
+	String lipgloss.Style
+	Number lipgloss.Style
+	Bool   lipgloss.Style
+	Null   lipgloss.Style
+
+	// Index is the style for array indices [0], [1], etc.
+	Index lipgloss.Style
+
+	// Struct is the style for struct type indicators
+	Struct lipgloss.Style
+
+	// Container is the overall style wrapper for the tree
+	Container lipgloss.Style
 }
 
 // DefaultStyles returns the default styles.
@@ -107,6 +137,21 @@ func DefaultStyles() *Styles {
 			"error": lipgloss.NewStyle().
 				// Bold(true).
 				Foreground(LevelErrorColor),
+		},
+		Tree: TreeStyles{
+			Root:   lipgloss.NewStyle().Foreground(TreeRootColor).Bold(true),
+			Branch: lipgloss.NewStyle().Foreground(TreeBranchColor).Faint(true),
+			Key:    lipgloss.NewStyle().Foreground(TreeKeyColor).Bold(true),
+			String: lipgloss.NewStyle().Foreground(TreeStringColor),
+			Number: lipgloss.NewStyle().Foreground(TreeNumberColor),
+			Bool:   lipgloss.NewStyle().Foreground(TreeBoolColor).Bold(true),
+			Null:   lipgloss.NewStyle().Foreground(TreeNullColor).Italic(true),
+			Index:  lipgloss.NewStyle().Foreground(TreeIndexColor).Bold(true),
+			Struct: lipgloss.NewStyle().Foreground(TreeStructColor).Bold(true),
+			Container: lipgloss.NewStyle().
+				Padding(1, 2).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(TreeBorderColor),
 		},
 	}
 }

@@ -78,6 +78,10 @@ func (l *TermLogger) render(s lipgloss.Style, strs ...string) string {
 	return s.Renderer(l.renderer).Render(strs...)
 }
 
+func (l *TermLogger) renderFunc(s lipgloss.Style, strs string) string {
+	return s.Renderer(l.renderer).Render(strs)
+}
+
 const (
 	timeFormat    = "15:04:05.0000 MST"
 	maxNameLength = 10
@@ -138,12 +142,12 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 
 			if pv, ok := a.Value.Any().(valuelog.PrettyRawJSONValue); ok {
 				appendageBuilder.WriteString("\n" + a.Key + ":\n")
-				appendageBuilder.WriteString(JSONToTree(a.Key, pv.RawJSON()))
+				appendageBuilder.WriteString(JSONToTree(a.Key, pv.RawJSON(), l.styles, l.renderFunc))
 				appendageBuilder.WriteByte('\n')
 				valColored = l.render(l.styles.ValueAppendage, "[json rendered below]")
 			} else if pv, ok := a.Value.Any().(valuelog.PrettyAnyValue); ok {
 				appendageBuilder.WriteString("\n" + a.Key + ":\n")
-				appendageBuilder.WriteString(StructToTree(pv.Any()))
+				appendageBuilder.WriteString(StructToTree(pv.Any(), l.styles, l.renderFunc))
 				appendageBuilder.WriteByte('\n')
 				valColored = l.render(l.styles.ValueAppendage, "[struct rendered below]")
 			} else {

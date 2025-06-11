@@ -211,7 +211,7 @@ func formatErrorStacks(groups []string, a slog.Attr) slog.Attr {
 				pkg := packageName(firstFramed)
 				uri := fmt.Sprintf("%s:%d", firstFramed.File, firstFramed.Line)
 				a.Value = slog.GroupValue(
-					slog.String("message", fmt.Sprintf("%v", err)),
+					slog.Any("error", err),
 					slog.String("func", strings.TrimPrefix(firstFramed.Function, pkg+".")),
 					slog.String("package", pkg),
 					// the quotes are to make sure the file name can be clicked by vscode/cursor
