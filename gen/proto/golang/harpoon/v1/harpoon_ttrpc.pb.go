@@ -8,28 +8,29 @@ import (
 )
 
 type TTRPCGuestServiceService interface {
-	Exec(context.Context, TTRPCGuestService_ExecServer) error
 	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
 	Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error)
-	Run(context.Context, *RunRequest) (*RunResponse, error)
+	RunSpec(context.Context, *RunSpecRequest) (*RunSpecResponse, error)
+	RunSpecSignal(context.Context, TTRPCGuestService_RunSpecSignalServer) error
+	RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error)
 }
 
-type TTRPCGuestService_ExecServer interface {
-	Send(*ExecResponse) error
-	Recv() (*ExecRequest, error)
+type TTRPCGuestService_RunSpecSignalServer interface {
+	Send(*RunSpecSignalResponse) error
+	Recv() (*RunSpecSignalRequest, error)
 	ttrpc.StreamServer
 }
 
-type ttrpcguestserviceExecServer struct {
+type ttrpcguestserviceRunSpecSignalServer struct {
 	ttrpc.StreamServer
 }
 
-func (x *ttrpcguestserviceExecServer) Send(m *ExecResponse) error {
+func (x *ttrpcguestserviceRunSpecSignalServer) Send(m *RunSpecSignalResponse) error {
 	return x.StreamServer.SendMsg(m)
 }
 
-func (x *ttrpcguestserviceExecServer) Recv() (*ExecRequest, error) {
-	m := new(ExecRequest)
+func (x *ttrpcguestserviceRunSpecSignalServer) Recv() (*RunSpecSignalRequest, error) {
+	m := new(RunSpecSignalRequest)
 	if err := x.StreamServer.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -53,18 +54,25 @@ func RegisterTTRPCGuestServiceService(srv *ttrpc.Server, svc TTRPCGuestServiceSe
 				}
 				return svc.Readiness(ctx, &req)
 			},
-			"Run": func(ctx context.Context, unmarshal func(interface{}) error) (interface{}, error) {
-				var req RunRequest
+			"RunSpec": func(ctx context.Context, unmarshal func(interface{}) error) (interface{}, error) {
+				var req RunSpecRequest
 				if err := unmarshal(&req); err != nil {
 					return nil, err
 				}
-				return svc.Run(ctx, &req)
+				return svc.RunSpec(ctx, &req)
+			},
+			"RunCommand": func(ctx context.Context, unmarshal func(interface{}) error) (interface{}, error) {
+				var req RunCommandRequest
+				if err := unmarshal(&req); err != nil {
+					return nil, err
+				}
+				return svc.RunCommand(ctx, &req)
 			},
 		},
 		Streams: map[string]ttrpc.Stream{
-			"Exec": {
+			"RunSpecSignal": {
 				Handler: func(ctx context.Context, stream ttrpc.StreamServer) (interface{}, error) {
-					return nil, svc.Exec(ctx, &ttrpcguestserviceExecServer{stream})
+					return nil, svc.RunSpecSignal(ctx, &ttrpcguestserviceRunSpecSignalServer{stream})
 				},
 				StreamingClient: true,
 				StreamingServer: true,
@@ -74,10 +82,11 @@ func RegisterTTRPCGuestServiceService(srv *ttrpc.Server, svc TTRPCGuestServiceSe
 }
 
 type TTRPCGuestServiceClient interface {
-	Exec(context.Context) (TTRPCGuestService_ExecClient, error)
 	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
 	Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error)
-	Run(context.Context, *RunRequest) (*RunResponse, error)
+	RunSpec(context.Context, *RunSpecRequest) (*RunSpecResponse, error)
+	RunSpecSignal(context.Context) (TTRPCGuestService_RunSpecSignalClient, error)
+	RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error)
 }
 
 type ttrpcguestserviceClient struct {
@@ -88,40 +97,6 @@ func NewTTRPCGuestServiceClient(client *ttrpc.Client) TTRPCGuestServiceClient {
 	return &ttrpcguestserviceClient{
 		client: client,
 	}
-}
-
-func (c *ttrpcguestserviceClient) Exec(ctx context.Context) (TTRPCGuestService_ExecClient, error) {
-	stream, err := c.client.NewStream(ctx, &ttrpc.StreamDesc{
-		StreamingClient: true,
-		StreamingServer: true,
-	}, "harpoon.v1.GuestService", "Exec", nil)
-	if err != nil {
-		return nil, err
-	}
-	x := &ttrpcguestserviceExecClient{stream}
-	return x, nil
-}
-
-type TTRPCGuestService_ExecClient interface {
-	Send(*ExecRequest) error
-	Recv() (*ExecResponse, error)
-	ttrpc.ClientStream
-}
-
-type ttrpcguestserviceExecClient struct {
-	ttrpc.ClientStream
-}
-
-func (x *ttrpcguestserviceExecClient) Send(m *ExecRequest) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *ttrpcguestserviceExecClient) Recv() (*ExecResponse, error) {
-	m := new(ExecResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 func (c *ttrpcguestserviceClient) TimeSync(ctx context.Context, req *TimeSyncRequest) (*TimeSyncResponse, error) {
@@ -140,9 +115,51 @@ func (c *ttrpcguestserviceClient) Readiness(ctx context.Context, req *ReadinessR
 	return &resp, nil
 }
 
-func (c *ttrpcguestserviceClient) Run(ctx context.Context, req *RunRequest) (*RunResponse, error) {
-	var resp RunResponse
-	if err := c.client.Call(ctx, "harpoon.v1.GuestService", "Run", req, &resp); err != nil {
+func (c *ttrpcguestserviceClient) RunSpec(ctx context.Context, req *RunSpecRequest) (*RunSpecResponse, error) {
+	var resp RunSpecResponse
+	if err := c.client.Call(ctx, "harpoon.v1.GuestService", "RunSpec", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *ttrpcguestserviceClient) RunSpecSignal(ctx context.Context) (TTRPCGuestService_RunSpecSignalClient, error) {
+	stream, err := c.client.NewStream(ctx, &ttrpc.StreamDesc{
+		StreamingClient: true,
+		StreamingServer: true,
+	}, "harpoon.v1.GuestService", "RunSpecSignal", nil)
+	if err != nil {
+		return nil, err
+	}
+	x := &ttrpcguestserviceRunSpecSignalClient{stream}
+	return x, nil
+}
+
+type TTRPCGuestService_RunSpecSignalClient interface {
+	Send(*RunSpecSignalRequest) error
+	Recv() (*RunSpecSignalResponse, error)
+	ttrpc.ClientStream
+}
+
+type ttrpcguestserviceRunSpecSignalClient struct {
+	ttrpc.ClientStream
+}
+
+func (x *ttrpcguestserviceRunSpecSignalClient) Send(m *RunSpecSignalRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *ttrpcguestserviceRunSpecSignalClient) Recv() (*RunSpecSignalResponse, error) {
+	m := new(RunSpecSignalResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *ttrpcguestserviceClient) RunCommand(ctx context.Context, req *RunCommandRequest) (*RunCommandResponse, error) {
+	var resp RunCommandResponse
+	if err := c.client.Call(ctx, "harpoon.v1.GuestService", "RunCommand", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

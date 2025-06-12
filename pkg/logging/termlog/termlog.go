@@ -158,19 +158,20 @@ func (l *TermLogger) Handle(ctx context.Context, r slog.Record) error {
 				appendageBuilder.WriteString(StructToTreeWithTitle(pv.Any(), a.Key, l.styles, l.renderFunc))
 				appendageBuilder.WriteString("\n")
 				valColored = l.render(l.styles.ValueAppendage, "󰙅 "+a.Key)
-			} else if (a.Key == "error" || a.Key == "err") && r.Level == slog.LevelError {
+			} else if (a.Key == "error" || a.Key == "err" || a.Key == "error.payload") && r.Level > slog.LevelWarn {
 				// Special handling for error values - use beautiful error trace display
 				if err, ok := a.Value.Any().(error); ok {
 					appendageBuilder.WriteString(ErrorToTrace(err, r, l.styles, l.renderFunc, l.hyperlinkFunc))
 					appendageBuilder.WriteString("\n")
 					valColored = l.render(l.styles.ValueAppendage, "[error rendered below]")
 				} else {
+
 					// Fallback for non-error values in "error" key
 					valStyle, ok := l.styles.Values[a.Key]
 					if !ok {
 						valStyle = l.styles.Value
 					}
-					val := fmt.Sprint(a.Value)
+					val := fmt.Sprintf("type: %T - %v", a.Value.Any(), a.Value.Any())
 					valColored = l.render(valStyle, val)
 				}
 			} else {

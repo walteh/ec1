@@ -56,23 +56,44 @@ func wrap[I, O any](e *errTaskService, f func(context.Context, I) (O, error)) fu
 	realNameS := strings.Split(filepath.Base(funcName), ".")
 	realName := realNameS[len(realNameS)-1]
 
-	return func(ctx context.Context, req I) (O, error) {
+	return func(ctx context.Context, req I) (resp O, retErr error) {
 		start := time.Now()
+
+		startLogRecord := slog.NewRecord(start, slog.LevelInfo, strings.ToUpper(realName)+"_START", pc)
+		startLogRecord.AddAttrs(
+			slog.String("method", realName),
+		)
+		slog.Default().Handler().Handle(ctx, startLogRecord)
+
+		defer func() {
+			end := time.Now()
+			endLogRecord := slog.NewRecord(end, slog.LevelInfo, strings.ToUpper(realName)+"_END", pc)
+			endLogRecord.AddAttrs(
+				slog.String("method", realName),
+				slog.Duration("duration", end.Sub(start)),
+			)
+			slog.Default().Handler().Handle(ctx, endLogRecord)
+			if err := recover(); err != nil {
+				slog.ErrorContext(ctx, "panic in task service", "error", err)
+				retErr = errors.Errorf("panic in task service in %s: %s", realName, err)
+			}
+		}()
 
 		ctx = slogctx.Append(ctx, slog.String("ttrpc_method", realName))
 
-		resp, err := f(ctx, req)
+		resp, retErr = f(ctx, req)
 
 		end := time.Now()
 
-		if err != nil && e.enableLogErrors {
-			if trac, ok := err.(errors.E); ok {
+		if retErr != nil && e.enableLogErrors {
+			if trac, ok := retErr.(errors.E); ok {
 				pc = trac.StackTrace()[0]
 			}
 
 			rec := slog.NewRecord(end, slog.LevelError, "error in task service", pc)
 			rec.AddAttrs(
-				slog.String("error", err.Error()),
+				// slog.String("NOTE", "the caller of this log has been adjusted for clarity"),
+				slog.Any("error", retErr),
 				slog.String("method", realName),
 				slog.Duration("duration", end.Sub(start)),
 			)
@@ -80,7 +101,7 @@ func wrap[I, O any](e *errTaskService, f func(context.Context, I) (O, error)) fu
 				slog.ErrorContext(ctx, "error logging error", "error", err)
 			}
 		}
-		if err == nil && e.enableLogSuccess {
+		if retErr == nil && e.enableLogSuccess {
 			rec := slog.NewRecord(end, slog.LevelInfo, "success in task service", pc)
 			rec.AddAttrs(
 				slog.String("method", realName),
@@ -90,7 +111,12 @@ func wrap[I, O any](e *errTaskService, f func(context.Context, I) (O, error)) fu
 				slog.ErrorContext(ctx, "error logging success", "error", err)
 			}
 		}
-		return resp, nil
+
+		// if retErr != nil {
+		// 	return resp, errdefs.Resolve(retErr)
+		// }
+
+		return resp, retErr
 	}
 }
 

@@ -15,7 +15,7 @@ type VirtualMachine interface {
 	VSockListen(ctx context.Context, port uint32) (net.Listener, error)
 	CurrentState() VirtualMachineStateType
 	StateChangeNotify(ctx context.Context) <-chan VirtualMachineStateChange
-	ListenNetworkBlockDevices(ctx context.Context) error
+	ServeBackgroundTasks(ctx context.Context) error
 	Devices() []virtio.VirtioDevice
 	StartGraphicApplication(width float64, height float64) error
 

@@ -10,279 +10,6 @@ import (
 // ptr is a helper function to get a pointer to a value
 func ptr[T any](v T) *T { return &v }
 
-// NewBytestream creates a new Bytestream using the builder pattern
-func NewBytestream(f func(*Bytestream_builder)) *Bytestream {
-	b := &Bytestream_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedBytestream creates a new Bytestream using the builder pattern with validation
-func NewValidatedBytestream(f func(*Bytestream_builder)) (*Bytestream, error) {
-	m := NewBytestream(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest creates a new ExecRequest using the builder pattern
-func NewExecRequest(f func(*ExecRequest_builder)) *ExecRequest {
-	b := &ExecRequest_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecRequest creates a new ExecRequest using the builder pattern with validation
-func NewValidatedExecRequest(f func(*ExecRequest_builder)) (*ExecRequest, error) {
-	m := NewExecRequest(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest_WithStart creates a new ExecRequest with the Start field set using the builder pattern
-func NewExecRequest_WithStart(f func(*ExecRequest_Start_builder)) *ExecRequest {
-	inner := NewExecRequest_Start(f)
-	return NewExecRequest(func(b *ExecRequest_builder) {
-		b.Start = inner
-	})
-}
-
-// NewValidatedExecRequest_WithStart creates a new ExecRequest with the Start field set using the builder pattern with validation
-func NewValidatedExecRequest_WithStart(f func(*ExecRequest_Start_builder)) (*ExecRequest, error) {
-	inner, err := NewValidatedExecRequest_Start(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecRequest(func(b *ExecRequest_builder) {
-		b.Start = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest_WithStdin creates a new ExecRequest with the Stdin field set using the builder pattern
-func NewExecRequest_WithStdin(f func(*Bytestream_builder)) *ExecRequest {
-	inner := NewBytestream(f)
-	return NewExecRequest(func(b *ExecRequest_builder) {
-		b.Stdin = inner
-	})
-}
-
-// NewValidatedExecRequest_WithStdin creates a new ExecRequest with the Stdin field set using the builder pattern with validation
-func NewValidatedExecRequest_WithStdin(f func(*Bytestream_builder)) (*ExecRequest, error) {
-	inner, err := NewValidatedBytestream(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecRequest(func(b *ExecRequest_builder) {
-		b.Stdin = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest_WithTerminate creates a new ExecRequest with the Terminate field set using the builder pattern
-func NewExecRequest_WithTerminate(f func(*ExecRequest_Terminate_builder)) *ExecRequest {
-	inner := NewExecRequest_Terminate(f)
-	return NewExecRequest(func(b *ExecRequest_builder) {
-		b.Terminate = inner
-	})
-}
-
-// NewValidatedExecRequest_WithTerminate creates a new ExecRequest with the Terminate field set using the builder pattern with validation
-func NewValidatedExecRequest_WithTerminate(f func(*ExecRequest_Terminate_builder)) (*ExecRequest, error) {
-	inner, err := NewValidatedExecRequest_Terminate(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecRequest(func(b *ExecRequest_builder) {
-		b.Terminate = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest_Start creates a new ExecRequest_Start using the builder pattern
-func NewExecRequest_Start(f func(*ExecRequest_Start_builder)) *ExecRequest_Start {
-	b := &ExecRequest_Start_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecRequest_Start creates a new ExecRequest_Start using the builder pattern with validation
-func NewValidatedExecRequest_Start(f func(*ExecRequest_Start_builder)) (*ExecRequest_Start, error) {
-	m := NewExecRequest_Start(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecRequest_Terminate creates a new ExecRequest_Terminate using the builder pattern
-func NewExecRequest_Terminate(f func(*ExecRequest_Terminate_builder)) *ExecRequest_Terminate {
-	b := &ExecRequest_Terminate_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecRequest_Terminate creates a new ExecRequest_Terminate using the builder pattern with validation
-func NewValidatedExecRequest_Terminate(f func(*ExecRequest_Terminate_builder)) (*ExecRequest_Terminate, error) {
-	m := NewExecRequest_Terminate(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse creates a new ExecResponse using the builder pattern
-func NewExecResponse(f func(*ExecResponse_builder)) *ExecResponse {
-	b := &ExecResponse_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecResponse creates a new ExecResponse using the builder pattern with validation
-func NewValidatedExecResponse(f func(*ExecResponse_builder)) (*ExecResponse, error) {
-	m := NewExecResponse(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_WithStdout creates a new ExecResponse with the Stdout field set using the builder pattern
-func NewExecResponse_WithStdout(f func(*Bytestream_builder)) *ExecResponse {
-	inner := NewBytestream(f)
-	return NewExecResponse(func(b *ExecResponse_builder) {
-		b.Stdout = inner
-	})
-}
-
-// NewValidatedExecResponse_WithStdout creates a new ExecResponse with the Stdout field set using the builder pattern with validation
-func NewValidatedExecResponse_WithStdout(f func(*Bytestream_builder)) (*ExecResponse, error) {
-	inner, err := NewValidatedBytestream(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecResponse(func(b *ExecResponse_builder) {
-		b.Stdout = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_WithStderr creates a new ExecResponse with the Stderr field set using the builder pattern
-func NewExecResponse_WithStderr(f func(*Bytestream_builder)) *ExecResponse {
-	inner := NewBytestream(f)
-	return NewExecResponse(func(b *ExecResponse_builder) {
-		b.Stderr = inner
-	})
-}
-
-// NewValidatedExecResponse_WithStderr creates a new ExecResponse with the Stderr field set using the builder pattern with validation
-func NewValidatedExecResponse_WithStderr(f func(*Bytestream_builder)) (*ExecResponse, error) {
-	inner, err := NewValidatedBytestream(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecResponse(func(b *ExecResponse_builder) {
-		b.Stderr = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_WithExit creates a new ExecResponse with the Exit field set using the builder pattern
-func NewExecResponse_WithExit(f func(*ExecResponse_Exit_builder)) *ExecResponse {
-	inner := NewExecResponse_Exit(f)
-	return NewExecResponse(func(b *ExecResponse_builder) {
-		b.Exit = inner
-	})
-}
-
-// NewValidatedExecResponse_WithExit creates a new ExecResponse with the Exit field set using the builder pattern with validation
-func NewValidatedExecResponse_WithExit(f func(*ExecResponse_Exit_builder)) (*ExecResponse, error) {
-	inner, err := NewValidatedExecResponse_Exit(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecResponse(func(b *ExecResponse_builder) {
-		b.Exit = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_WithError creates a new ExecResponse with the Error field set using the builder pattern
-func NewExecResponse_WithError(f func(*ExecResponse_Error_builder)) *ExecResponse {
-	inner := NewExecResponse_Error(f)
-	return NewExecResponse(func(b *ExecResponse_builder) {
-		b.Error = inner
-	})
-}
-
-// NewValidatedExecResponse_WithError creates a new ExecResponse with the Error field set using the builder pattern with validation
-func NewValidatedExecResponse_WithError(f func(*ExecResponse_Error_builder)) (*ExecResponse, error) {
-	inner, err := NewValidatedExecResponse_Error(f)
-	if err != nil {
-		return nil, err
-	}
-	m := NewExecResponse(func(b *ExecResponse_builder) {
-		b.Error = inner
-	})
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_Exit creates a new ExecResponse_Exit using the builder pattern
-func NewExecResponse_Exit(f func(*ExecResponse_Exit_builder)) *ExecResponse_Exit {
-	b := &ExecResponse_Exit_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecResponse_Exit creates a new ExecResponse_Exit using the builder pattern with validation
-func NewValidatedExecResponse_Exit(f func(*ExecResponse_Exit_builder)) (*ExecResponse_Exit, error) {
-	m := NewExecResponse_Exit(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// NewExecResponse_Error creates a new ExecResponse_Error using the builder pattern
-func NewExecResponse_Error(f func(*ExecResponse_Error_builder)) *ExecResponse_Error {
-	b := &ExecResponse_Error_builder{}
-	f(b)
-	return b.Build()
-}
-
-// NewValidatedExecResponse_Error creates a new ExecResponse_Error using the builder pattern with validation
-func NewValidatedExecResponse_Error(f func(*ExecResponse_Error_builder)) (*ExecResponse_Error, error) {
-	m := NewExecResponse_Error(f)
-	if err := protovalidate.Validate(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // NewTimeSyncRequest creates a new TimeSyncRequest using the builder pattern
 func NewTimeSyncRequest(f func(*TimeSyncRequest_builder)) *TimeSyncRequest {
 	b := &TimeSyncRequest_builder{}
@@ -290,8 +17,8 @@ func NewTimeSyncRequest(f func(*TimeSyncRequest_builder)) *TimeSyncRequest {
 	return b.Build()
 }
 
-// NewValidatedTimeSyncRequest creates a new TimeSyncRequest using the builder pattern with validation
-func NewValidatedTimeSyncRequest(f func(*TimeSyncRequest_builder)) (*TimeSyncRequest, error) {
+// NewTimeSyncRequestE creates a new TimeSyncRequest using the builder pattern with validation
+func NewTimeSyncRequestE(f func(*TimeSyncRequest_builder)) (*TimeSyncRequest, error) {
 	m := NewTimeSyncRequest(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
@@ -306,8 +33,8 @@ func NewTimeSyncResponse(f func(*TimeSyncResponse_builder)) *TimeSyncResponse {
 	return b.Build()
 }
 
-// NewValidatedTimeSyncResponse creates a new TimeSyncResponse using the builder pattern with validation
-func NewValidatedTimeSyncResponse(f func(*TimeSyncResponse_builder)) (*TimeSyncResponse, error) {
+// NewTimeSyncResponseE creates a new TimeSyncResponse using the builder pattern with validation
+func NewTimeSyncResponseE(f func(*TimeSyncResponse_builder)) (*TimeSyncResponse, error) {
 	m := NewTimeSyncResponse(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
@@ -322,8 +49,8 @@ func NewReadinessRequest(f func(*ReadinessRequest_builder)) *ReadinessRequest {
 	return b.Build()
 }
 
-// NewValidatedReadinessRequest creates a new ReadinessRequest using the builder pattern with validation
-func NewValidatedReadinessRequest(f func(*ReadinessRequest_builder)) (*ReadinessRequest, error) {
+// NewReadinessRequestE creates a new ReadinessRequest using the builder pattern with validation
+func NewReadinessRequestE(f func(*ReadinessRequest_builder)) (*ReadinessRequest, error) {
 	m := NewReadinessRequest(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
@@ -338,8 +65,8 @@ func NewReadinessResponse(f func(*ReadinessResponse_builder)) *ReadinessResponse
 	return b.Build()
 }
 
-// NewValidatedReadinessResponse creates a new ReadinessResponse using the builder pattern with validation
-func NewValidatedReadinessResponse(f func(*ReadinessResponse_builder)) (*ReadinessResponse, error) {
+// NewReadinessResponseE creates a new ReadinessResponse using the builder pattern with validation
+func NewReadinessResponseE(f func(*ReadinessResponse_builder)) (*ReadinessResponse, error) {
 	m := NewReadinessResponse(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
@@ -347,32 +74,96 @@ func NewValidatedReadinessResponse(f func(*ReadinessResponse_builder)) (*Readine
 	return m, nil
 }
 
-// NewRunRequest creates a new RunRequest using the builder pattern
-func NewRunRequest(f func(*RunRequest_builder)) *RunRequest {
-	b := &RunRequest_builder{}
+// NewRunSpecSignalRequest creates a new RunSpecSignalRequest using the builder pattern
+func NewRunSpecSignalRequest(f func(*RunSpecSignalRequest_builder)) *RunSpecSignalRequest {
+	b := &RunSpecSignalRequest_builder{}
 	f(b)
 	return b.Build()
 }
 
-// NewValidatedRunRequest creates a new RunRequest using the builder pattern with validation
-func NewValidatedRunRequest(f func(*RunRequest_builder)) (*RunRequest, error) {
-	m := NewRunRequest(f)
+// NewRunSpecSignalRequestE creates a new RunSpecSignalRequest using the builder pattern with validation
+func NewRunSpecSignalRequestE(f func(*RunSpecSignalRequest_builder)) (*RunSpecSignalRequest, error) {
+	m := NewRunSpecSignalRequest(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// NewRunResponse creates a new RunResponse using the builder pattern
-func NewRunResponse(f func(*RunResponse_builder)) *RunResponse {
-	b := &RunResponse_builder{}
+// NewRunSpecSignalResponse creates a new RunSpecSignalResponse using the builder pattern
+func NewRunSpecSignalResponse(f func(*RunSpecSignalResponse_builder)) *RunSpecSignalResponse {
+	b := &RunSpecSignalResponse_builder{}
 	f(b)
 	return b.Build()
 }
 
-// NewValidatedRunResponse creates a new RunResponse using the builder pattern with validation
-func NewValidatedRunResponse(f func(*RunResponse_builder)) (*RunResponse, error) {
-	m := NewRunResponse(f)
+// NewRunSpecSignalResponseE creates a new RunSpecSignalResponse using the builder pattern with validation
+func NewRunSpecSignalResponseE(f func(*RunSpecSignalResponse_builder)) (*RunSpecSignalResponse, error) {
+	m := NewRunSpecSignalResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunSpecRequest creates a new RunSpecRequest using the builder pattern
+func NewRunSpecRequest(f func(*RunSpecRequest_builder)) *RunSpecRequest {
+	b := &RunSpecRequest_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewRunSpecRequestE creates a new RunSpecRequest using the builder pattern with validation
+func NewRunSpecRequestE(f func(*RunSpecRequest_builder)) (*RunSpecRequest, error) {
+	m := NewRunSpecRequest(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunSpecResponse creates a new RunSpecResponse using the builder pattern
+func NewRunSpecResponse(f func(*RunSpecResponse_builder)) *RunSpecResponse {
+	b := &RunSpecResponse_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewRunSpecResponseE creates a new RunSpecResponse using the builder pattern with validation
+func NewRunSpecResponseE(f func(*RunSpecResponse_builder)) (*RunSpecResponse, error) {
+	m := NewRunSpecResponse(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunCommandRequest creates a new RunCommandRequest using the builder pattern
+func NewRunCommandRequest(f func(*RunCommandRequest_builder)) *RunCommandRequest {
+	b := &RunCommandRequest_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewRunCommandRequestE creates a new RunCommandRequest using the builder pattern with validation
+func NewRunCommandRequestE(f func(*RunCommandRequest_builder)) (*RunCommandRequest, error) {
+	m := NewRunCommandRequest(f)
+	if err := protovalidate.Validate(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// NewRunCommandResponse creates a new RunCommandResponse using the builder pattern
+func NewRunCommandResponse(f func(*RunCommandResponse_builder)) *RunCommandResponse {
+	b := &RunCommandResponse_builder{}
+	f(b)
+	return b.Build()
+}
+
+// NewRunCommandResponseE creates a new RunCommandResponse using the builder pattern with validation
+func NewRunCommandResponseE(f func(*RunCommandResponse_builder)) (*RunCommandResponse, error) {
+	m := NewRunCommandResponse(f)
 	if err := protovalidate.Validate(m); err != nil {
 		return nil, err
 	}

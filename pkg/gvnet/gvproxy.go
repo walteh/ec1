@@ -101,10 +101,28 @@ func GvproxyVersion() string {
 	return types.NewVersion("gvnet").String()
 }
 
-func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(ctx context.Context) error, error) {
+type gvproxy struct {
+	netdev *virtio.VirtioNet
+	waiter func(ctx context.Context) error
+}
+
+func (p *gvproxy) VirtioNetDevice() *virtio.VirtioNet {
+	return p.netdev
+}
+
+func (p *gvproxy) Wait(ctx context.Context) error {
+	return p.waiter(ctx)
+}
+
+type Proxy interface {
+	Wait(ctx context.Context) error
+	VirtioNetDevice() *virtio.VirtioNet
+}
+
+func NewProxy(ctx context.Context, cfg *GvproxyConfig) (Proxy, error) {
 
 	if ctx.Err() != nil {
-		return nil, nil, errors.Errorf("cant start gvproxy, context cancelled: %w", ctx.Err())
+		return nil, errors.Errorf("cant start gvproxy, context cancelled: %w", ctx.Err())
 	}
 
 	defer func() {
@@ -120,7 +138,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 
 	for _, socket := range cfg.sshConnections {
 		if err := socket.Validate(); err != nil {
-			return nil, nil, errors.Errorf("ssh connection validation: %w", err)
+			return nil, errors.Errorf("ssh connection validation: %w", err)
 		}
 	}
 
@@ -131,7 +149,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 	}
 
 	if cfg.VMHostPort == "" {
-		return nil, nil, errors.New("vmHostPort is required")
+		return nil, errors.New("vmHostPort is required")
 	}
 	dnss, err := searchDomains(ctx)
 	if err != nil {
@@ -149,7 +167,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 
 	m, err := NewGlobalHostPortStream(ctx, cfg.VMHostPort)
 	if err != nil {
-		return nil, nil, errors.Errorf("creating global host port: %w", err)
+		return nil, errors.Errorf("creating global host port: %w", err)
 	}
 
 	group.Always(m)
@@ -157,7 +175,7 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 	// start the vmFileSocket
 	device, runner, err := tapsock.NewDgramVirtioNet(ctx, VIRTUAL_GUEST_MAC)
 	if err != nil {
-		return nil, nil, errors.Errorf("vmFileSocket listen: %w", err)
+		return nil, errors.Errorf("vmFileSocket listen: %w", err)
 	}
 
 	// group.Always(runner)
@@ -218,31 +236,31 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 
 	vn, err := virtualnetwork.New(&config)
 	if err != nil {
-		return nil, nil, errors.Errorf("creating virtual network: %w", err)
+		return nil, errors.Errorf("creating virtual network: %w", err)
 	}
 
 	if err := runner.ApplyVirtualNetwork(vn); err != nil {
-		return nil, nil, errors.Errorf("applying virtual network: %w", err)
+		return nil, errors.Errorf("applying virtual network: %w", err)
 	}
 
 	stack, err := tapsock.IsolateNetworkStack(vn)
 	if err != nil {
-		return nil, nil, errors.Errorf("isolating network stack: %w", err)
+		return nil, errors.Errorf("isolating network stack: %w", err)
 	}
 
 	_, err = start(ctx, groupErrs, vn, m.mux, cfg, group)
 	if err != nil {
-		return nil, nil, errors.Errorf("starting gvproxy: %w", err)
+		return nil, errors.Errorf("starting gvproxy: %w", err)
 	}
 
 	err = m.ForwardCMUXMatchToGuestPort(ctx, stack, 22, cmux.PrefixMatcher("SSH-"))
 	if err != nil {
-		return nil, nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
+		return nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
 	}
 
 	err = m.ForwardCMUXMatchToGuestPort(ctx, stack, 80, cmux.Any())
 	if err != nil {
-		return nil, nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
+		return nil, errors.Errorf("forwarding cmux match to guest port: %w", err)
 	}
 
 	groupErrs.Go(func() error {
@@ -271,14 +289,17 @@ func NewProxy(ctx context.Context, cfg *GvproxyConfig) (*virtio.VirtioNet, func(
 		return nil
 	})
 
-	return device, func(ctx context.Context) error {
-		if err := groupErrs.Wait(); err != nil {
-			if err == context.Canceled {
-				return nil
+	return &gvproxy{
+		netdev: device,
+		waiter: func(ctx context.Context) error {
+			if err := groupErrs.Wait(); err != nil {
+				if err == context.Canceled {
+					return nil
+				}
+				return errors.Errorf("gvnet exiting: %v", err)
 			}
-			return errors.Errorf("gvnet exiting: %v", err)
-		}
-		return nil
+			return nil
+		},
 	}, nil
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"runtime"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -13,8 +12,10 @@ import (
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/errdefs/pkg/errgrpc"
+	"github.com/containerd/typeurl/v2"
 	"github.com/containers/common/pkg/strongunits"
 	"github.com/hashicorp/go-multierror"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
 
 	"github.com/walteh/ec1/pkg/units"
@@ -28,40 +29,66 @@ type container struct {
 	// These fields are readonly and filled when container is created
 	spec       *oci.Spec
 	bundlePath string
-	// rootfs        string
-	dnsSocketPath string
-	request       *task.CreateTaskRequest
-
+	request    *task.CreateTaskRequest
+	pid        int
 	// VMM-specific fields
 	vm         *vmm.RunningVM[*vf.VirtualMachine]
-	imageRef   string
 	hypervisor vmm.Hypervisor[*vf.VirtualMachine]
-	// cache      ec1oci.ImageFetchConverter
 
-	mu sync.Mutex
+	processesMu sync.Mutex
 
-	// primary is the primary process for the container.
-	// The lifetime of the container is tied to this process.
-	primary managedProcess
+	// the "" key is the primary process.
+	// Containerd will pass an empty string for the execID to signify the primary process.
+	processes map[string]*managedProcess
+}
 
-	// auxiliary is a map of additional processes that run in the jail.
-	auxiliary map[string]*managedProcess
+func (c *container) getAllProcesses() []*managedProcess {
+	c.processesMu.Lock()
+	defer c.processesMu.Unlock()
+
+	processes := make([]*managedProcess, 0, len(c.processes))
+	for _, p := range c.processes {
+		processes = append(processes, p)
+	}
+
+	return processes
+}
+
+func (c *container) getProcess(ctx context.Context, processID string) (*managedProcess, error) {
+	c.processesMu.Lock()
+	defer c.processesMu.Unlock()
+
+	if processID == "" {
+		processID = "primary"
+	}
+
+	p, ok := c.processes[processID]
+	if !ok {
+		return nil, errgrpc.ToGRPCf(errdefs.ErrNotFound, "process not found: %s", processID)
+	}
+
+	return p, nil
+}
+
+func (c *container) setProcess(ctx context.Context, p *managedProcess) error {
+	c.processesMu.Lock()
+	defer c.processesMu.Unlock()
+
+	if _, ok := c.processes[p.id]; ok {
+		return errgrpc.ToGRPCf(errdefs.ErrAlreadyExists, "process already exists: %s", p.id)
+	}
+
+	c.processes[p.id] = p
+	return nil
 }
 
 func (c *container) destroy() (retErr error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	// Stop all auxiliary processes first
-	for _, p := range c.auxiliary {
+	for _, p := range c.processes {
 		if err := p.destroy(); err != nil {
 			retErr = multierror.Append(retErr, err)
 		}
-	}
-
-	// Stop the primary process
-	if err := c.primary.destroy(); err != nil {
-		retErr = multierror.Append(retErr, err)
 	}
 
 	// Stop the VM if it's running
@@ -77,48 +104,27 @@ func (c *container) destroy() (retErr error) {
 		// Wait for VM to stop
 		if err := c.vm.WaitOnVmStopped(); err != nil {
 			slog.WarnContext(ctx, "error waiting for VM to stop", "error", err)
+			retErr = multierror.Append(retErr, err)
 		}
 	}
 
-	// Remove socket file to avoid continuity "failed to create irregular file" error during multiple Dockerfile  `RUN` steps
-	_ = os.Remove(c.dnsSocketPath)
+	// // Remove socket file to avoid continuity "failed to create irregular file" error during multiple Dockerfile  `RUN` steps
+	// _ = os.Remove(c.dnsSocketPath)
 
-	// if err := mount.UnmountRecursive(c.rootfs, unmountFlags); err != nil {
-	// 	retErr = multierror.Append(retErr, err)
-	// }
+	// // if err := mount.UnmountRecursive(c.rootfs, unmountFlags); err != nil {
+	// // 	retErr = multierror.Append(retErr, err)
+	// // }
 
-	return
+	return retErr
 }
 
-func (c *container) getProcessL(ctx context.Context, execID string) (*managedProcess, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.getProcess(ctx, execID)
-}
-
-func (c *container) getProcess(ctx context.Context, execID string) (*managedProcess, error) {
-	if execID == "" {
-		return &c.primary, nil
-	}
-
-	p := c.auxiliary[execID]
-
-	if p == nil {
-		slog.ErrorContext(ctx, "exec not found", "execID", execID)
-		return nil, errgrpc.ToGRPCf(errdefs.ErrNotFound, "exec not found: %s", execID)
-	}
-
-	return p, nil
-}
-
-// createVM creates and starts a new microVM for this container using the already-prepared rootfs
-func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, createRequest *task.CreateTaskRequest, stdio stdio) (retErr error) {
+// createContainerizedVM creates and starts a new microVM for this container using the already-prepared rootfs
+func createContainerizedVM[H vmm.VirtualMachine](ctx context.Context, hypervisor vmm.Hypervisor[H], spec *oci.Spec, createRequest *task.CreateTaskRequest, stdio stdio) (vm *vmm.RunningVM[H], retErr error) {
 
 	// Add panic recovery for VM creation
 	defer func() {
 		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", id)
+			slog.ErrorContext(ctx, "FATAL: createVM panic", "panic", r, "id", createRequest.ID)
 			retErr = errors.Errorf("VM creation panicked: %v", r)
 			panic(r)
 		}
@@ -128,40 +134,28 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, cre
 	memory := strongunits.MiB(128).ToBytes() // Use 512MB minimum for VZ compatibility
 	vcpus := uint64(1)                       // Default, TODO: Extract from spec.Process or other location
 
-	slog.InfoContext(ctx, "createVM: VM configuration", "memory", memory, "vcpus", vcpus)
-
-	// Determine platform based on the OCI spec content and runtime architecture
 	var platform units.Platform
-	arch := runtime.GOARCH
 
-	// Determine OS based on which platform-specific section is populated
-	var osType string
-	if c.spec.Linux != nil {
-		osType = "linux"
-	} else if c.spec.Windows != nil {
-		osType = "windows"
-	} else {
-		// Default to linux if no platform-specific section is found
-		osType = "linux"
+	if spec.Annotations["nerdctl/platform"] != "" {
+		platform = units.Platform(spec.Annotations["nerdctl/platform"])
 	}
 
-	// Create platform string and parse it
-	platformStr := osType + "/" + arch
-	platform, err := units.ParsePlatform(platformStr)
-	if err != nil {
-		// Fallback to ARM64 Linux if parsing fails
-		platform = units.PlatformLinuxARM64
-		slog.WarnContext(ctx, "createVM: Failed to parse platform, using fallback", "platformStr", platformStr, "fallback", platform)
+	if platform == "" {
+		if spec.Linux != nil {
+			platform = units.PlatformLinuxARM64
+		} else {
+			platform = units.PlatformDarwinARM64
+		}
 	}
 
-	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, c.hypervisor, vmm.ContainerizedVMConfig{
-		ID: id,
-		// RootfsPath:   c.rootfs,
+	// slog.InfoContext(ctx, "createVM: VM configuration", "memory", memory, "vcpus", vcpus, "spec", valuelog.NewPrettyValue(spec), "platform", platform)
+
+	vm, err := vmm.NewContainerizedVirtualMachineFromRootfs(ctx, hypervisor, vmm.ContainerizedVMConfig{
+		ID:           createRequest.ID,
 		RootfsMounts: createRequest.Rootfs,
 		StderrWriter: stdio.stderr,
 		StdoutWriter: stdio.stdout,
 		StdinReader:  stdio.stdin,
-		DNSPath:      c.dnsSocketPath,
 		Spec:         spec,
 		Platform:     platform,
 		Memory:       memory,
@@ -169,7 +163,7 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, cre
 	})
 
 	if err != nil {
-		return errors.Errorf("creating VM from rootfs: %w", err)
+		return nil, errors.Errorf("creating VM from rootfs: %w", err)
 	}
 
 	// to := time.NewTimer(10 * time.Second)
@@ -180,6 +174,59 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, cre
 	// }
 
 	slog.InfoContext(ctx, "createVM: VM created successfully")
-	c.vm = vm
-	return nil
+
+	return vm, nil
+}
+
+func NewContainer(ctx context.Context, hypervisor vmm.Hypervisor[*vf.VirtualMachine], spec *oci.Spec, createRequest *task.CreateTaskRequest) (*container, *managedProcess, error) {
+
+	iod, err := setupIO(ctx, createRequest.Stdin, createRequest.Stdout, createRequest.Stderr)
+	if err != nil {
+		return nil, nil, errors.Errorf("setting up IO: %w", err)
+	}
+	vm, err := createContainerizedVM(ctx, hypervisor, spec, createRequest, iod)
+	if err != nil {
+		return nil, nil, errors.Errorf("creating vm: %w", err)
+	}
+
+	c := &container{
+		request:    createRequest,
+		pid:        os.Getpid(),
+		vm:         vm,
+		spec:       spec,
+		bundlePath: createRequest.Bundle,
+		hypervisor: hypervisor,
+	}
+
+	primary := NewManagedProcess("primary", c, spec.Process, iod)
+	primary.pid = 0 //this is the primary process, so it doesn't have a pid
+	c.processes = map[string]*managedProcess{"primary": primary}
+
+	return c, primary, err
+}
+
+func (c *container) AddProcess(ctx context.Context, execRequest *task.ExecProcessRequest) (*managedProcess, error) {
+
+	iod, err := setupIO(ctx, execRequest.Stdin, execRequest.Stdout, execRequest.Stderr)
+	if err != nil {
+		return nil, errors.Errorf("setting up IO: %w", err)
+	}
+
+	specAny, err := typeurl.UnmarshalAny(execRequest.Spec)
+	if err != nil {
+		return nil, errors.Errorf("failed to unmarshal spec: %w", err)
+	}
+
+	spec, ok := specAny.(*specs.Process)
+	if !ok {
+		return nil, errors.Errorf("invalid spec type '%T', expected *specs.Process", specAny)
+	}
+
+	process := NewManagedProcess(execRequest.ExecID, c, spec, iod)
+
+	if err := c.setProcess(ctx, process); err != nil {
+		return nil, errors.Errorf("setting process: %w", err)
+	}
+
+	return process, nil
 }

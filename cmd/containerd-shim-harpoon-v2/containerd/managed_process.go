@@ -2,8 +2,6 @@ package containerd
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 	"os"
 	"sync"
 	"syscall"
@@ -13,29 +11,67 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"gitlab.com/tozd/go/errors"
-
-	"github.com/walteh/ec1/pkg/vmm"
-	"github.com/walteh/ec1/pkg/vmm/vf"
 )
 
 type managedProcess struct {
+	id      string
+	execID  string
 	spec    *specs.Process
 	io      stdio
 	console *os.File
 	mu      sync.Mutex
 
 	// VM-specific fields
-	vm  *vmm.RunningVM[*vf.VirtualMachine]
-	pid int
+	container *container
+	pid       int
 
-	waitblock  chan struct{}
-	status     taskt.Status
-	exitStatus uint32
-	exitedAt   time.Time
+	// waitblock  chan struct{}
+	// status     taskt.Status
+	// exitStatus uint32
+	// exitedAt   time.Time
 
 	// For tracking the running command
 	commandCtx    context.Context
 	commandCancel context.CancelFunc
+
+	runningCmd *signalRunner
+}
+
+func NewManagedProcess(execID string, container *container, spec *specs.Process, sio stdio) *managedProcess {
+	id := execID
+	if id == "" {
+		id = "primary"
+	}
+
+	return &managedProcess{
+		id:        id,
+		execID:    execID,
+		container: container,
+		spec:      spec,
+		io:        sio,
+	}
+}
+
+type ManagedProcessState struct {
+	Status   taskt.Status
+	ExitedAt time.Time
+	ExitCode int32
+}
+
+func (p *managedProcess) getStatus() ManagedProcessState {
+	if p.runningCmd == nil {
+		return ManagedProcessState{
+			Status:   taskt.Status_CREATED,
+			ExitedAt: time.Time{},
+			ExitCode: 0,
+		}
+	}
+
+	return ManagedProcessState{
+		Status:   p.runningCmd.status,
+		ExitedAt: p.runningCmd.exitedAt,
+		ExitCode: p.runningCmd.exitCode,
+	}
 }
 
 func (p *managedProcess) getConsoleL() *os.File {
@@ -54,6 +90,12 @@ func (p *managedProcess) destroy() (retErr error) {
 		p.commandCancel()
 	}
 
+	if p.runningCmd != nil {
+		if err := p.runningCmd.SendSignal(syscall.SIGKILL); err != nil {
+			retErr = multierror.Append(retErr, err)
+		}
+	}
+
 	if err := p.io.Close(); err != nil {
 		retErr = multierror.Append(retErr, err)
 	}
@@ -64,95 +106,85 @@ func (p *managedProcess) destroy() (retErr error) {
 		}
 	}
 
-	if p.status != taskt.Status_STOPPED {
-		p.status = taskt.Status_STOPPED
-		p.exitedAt = time.Now()
-		p.exitStatus = uint32(syscall.SIGKILL)
-	}
-
 	return
 }
 
-func (p *managedProcess) kill(signal syscall.Signal) error {
+func (p *managedProcess) StartSignalRunner(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// For VM-based processes, we need to send the signal via the VM
-	if p.vm != nil && p.pid > 0 {
-		// Execute kill command in the VM
-		ctx := context.Background()
-		killCmd := fmt.Sprintf("kill -%d %d", int(signal), p.pid)
-		_, _, _, err := p.vm.Exec(ctx, killCmd)
-		return err
-	}
-
-	// If we have a command context, cancel it
-	if p.commandCancel != nil {
-		p.commandCancel()
-	}
-
-	return nil
-}
-
-func (p *managedProcess) setup(ctx context.Context, stdin string, stdout string, stderr string) error {
-	var err error
-
-	p.io, err = setupIO(ctx, stdin, stdout, stderr)
+	guestService, err := p.container.vm.GuestService(ctx)
 	if err != nil {
-		return errors.Errorf("setting up IO: %w", err)
+		return errors.Errorf("getting guest service: %w", err)
 	}
 
-	if len(p.spec.Args) <= 0 {
-		// Default to shell if no args provided
-		p.spec.Args = []string{"/bin/sh"}
-	}
-
-	return nil
-}
-
-func (p *managedProcess) start(ctx context.Context, vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	exitCode, err := vm.Run(ctx)
+	signalClient, err := guestService.RunSpecSignal(ctx)
 	if err != nil {
 		return errors.Errorf("running process in VM: %w", err)
 	}
 
-	p.exitStatus = uint32(exitCode)
-
-	p.status = taskt.Status_STOPPED
-	p.exitedAt = time.Now()
-
-	return nil
-}
-
-func (p *managedProcess) startIO(ctx context.Context, vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
-	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM")
-	defer func() {
-		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "panic in startIO", "error", r)
-		}
-		slog.InfoContext(ctx, "startIO: finished")
-	}()
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	exitCode, err := vm.RunWithStdio(ctx, nil, p.io.stdin, p.io.stdout, p.io.stderr)
-	if err != nil {
-		return errors.Errorf("running with stdio: %w", err)
+	p.runningCmd = &signalRunner{
+		done:         make(chan struct{}),
+		status:       taskt.Status_RUNNING,
+		signalClient: signalClient,
+		error:        nil,
+		exitCode:     0,
 	}
 
-	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM", "exitCode", exitCode)
-
-	p.exitStatus = uint32(exitCode)
-
-	p.status = taskt.Status_STOPPED
-	p.exitedAt = time.Now()
-
 	return nil
 }
+
+func (p *managedProcess) SendSignalToRunningCmd(signal syscall.Signal) error {
+
+	if p.runningCmd == nil {
+		return errors.Errorf("no running command")
+	}
+
+	return p.runningCmd.SendSignal(signal)
+}
+
+// func (p *managedProcess) setup(ctx context.Context, stdin string, stdout string, stderr string) error {
+// 	var err error
+
+// 	p.io, err = setupIO(ctx, stdin, stdout, stderr)
+// 	if err != nil {
+// 		return errors.Errorf("setting up IO: %w", err)
+// 	}
+
+// 	if len(p.spec.Args) <= 0 {
+// 		// Default to shell if no args provided
+// 		p.spec.Args = []string{"/bin/sh"}
+// 	}
+
+// 	return nil
+// }
+
+// func (p *managedProcess) startIO(ctx context.Context, vm *vmm.RunningVM[*vf.VirtualMachine]) (err error) {
+// 	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM")
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			slog.ErrorContext(ctx, "panic in startIO", "error", r)
+// 		}
+// 		slog.InfoContext(ctx, "startIO: finished")
+// 	}()
+
+// 	p.mu.Lock()
+// 	defer p.mu.Unlock()
+
+// 	exitCode, err := vm.RunWithStdio(ctx, nil, p.io.stdin, p.io.stdout, p.io.stderr)
+// 	if err != nil {
+// 		return errors.Errorf("running with stdio: %w", err)
+// 	}
+
+// 	slog.InfoContext(ctx, "managedProcess.startIO: starting process in VM", "exitCode", exitCode)
+
+// 	p.exitStatus = uint32(exitCode)
+
+// 	p.status = taskt.Status_STOPPED
+// 	p.exitedAt = time.Now()
+
+// 	return nil
+// }
 
 // 	slog.Info("managedProcess.start: Starting process in VM")
 

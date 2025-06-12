@@ -44,7 +44,7 @@ func TestHarpoon(t *testing.T) {
 		ctx := tlog.SetupSlogForTest(t)
 		ctx = tctx.WithContext(ctx, t)
 		// Create a real VM for testing
-		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
+		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ManifestImageConfig{
 			ImageRef: oci_image_cache.OVEN_BUN_ALPINE.String(),
 			Platform: units.PlatformLinuxARM64,
 			Memory:   strongunits.MiB(64).ToBytes(),
@@ -88,7 +88,7 @@ func TestHarpoon(t *testing.T) {
 		ctx := tlog.SetupSlogForTest(t)
 		ctx = tctx.WithContext(ctx, t)
 
-		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
+		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ManifestImageConfig{
 			ImageRef: oci_image_cache.ALPINE_SOCAT_LATEST.String(),
 			Platform: units.PlatformLinuxARM64,
 			Memory:   strongunits.MiB(64).ToBytes(),
@@ -159,7 +159,7 @@ func TestHarpoon(t *testing.T) {
 		ctx = tctx.WithContext(ctx, t)
 
 		// Create a real VM for testing
-		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
+		rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ManifestImageConfig{
 			ImageRef: oci_image_cache.BUSYBOX_GLIBC.String(),
 			Platform: units.PlatformLinuxARM64,
 			Memory:   strongunits.MiB(64).ToBytes(),

@@ -1,13 +1,11 @@
 package vmm
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/containerd/ttrpc"
@@ -16,10 +14,7 @@ import (
 
 	harpoonv1 "github.com/walteh/ec1/gen/proto/golang/harpoon/v1"
 	"github.com/walteh/ec1/pkg/ec1init"
-	"github.com/walteh/ec1/pkg/logging"
-	"github.com/walteh/ec1/pkg/streamexec"
-	"github.com/walteh/ec1/pkg/streamexec/protocol"
-	"github.com/walteh/ec1/pkg/streamexec/transport"
+	"github.com/walteh/ec1/pkg/gvnet"
 )
 
 const (
@@ -37,14 +32,19 @@ type Hypervisor[VM VirtualMachine] interface {
 
 type RunningVM[VM VirtualMachine] struct {
 	// streamExecReady bool
-	manager                *VSockManager
+	// manager                *VSockManager
 	guestServiceConnection harpoonv1.TTRPCGuestServiceClient
+	bootloader             Bootloader
 
-	streamexec   *streamexec.Client
-	ec1DataDir   string
+	// streamexec   *streamexec.Client
 	portOnHostIP uint16
-	wait         <-chan error
+	wait         chan error
 	vm           VM
+	netdev       gvnet.Proxy
+	workingDir   string
+	stdin        io.Reader
+	stdout       io.Writer
+	stderr       io.Writer
 	// connStatus      <-chan VSockManagerState
 	start time.Time
 }
@@ -91,7 +91,7 @@ func connectToVsockWithRetry(ctx context.Context, vm VirtualMachine, port uint32
 	}
 }
 
-func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestServiceClient, error) {
+func (r *RunningVM[VM]) GuestService(ctx context.Context) (harpoonv1.TTRPCGuestServiceClient, error) {
 	if r.guestServiceConnection != nil {
 		return r.guestServiceConnection, nil
 	}
@@ -123,96 +123,99 @@ func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestS
 	}
 }
 
-func NewRunningContainerdVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP uint16, start time.Time, wait <-chan error) *RunningVM[VM] {
+// func NewRunningContainerdVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP uint16, start time.Time, workingDir string, ec1DataDir string, cfg *ContainerizedVMConfig) *RunningVM[VM] {
 
-	return &RunningVM[VM]{
-		start: start,
-		vm:    vm,
-
-		// manager: transporz,
-		// connStatus:      connStatus,
-		portOnHostIP: portOnHostIP,
-		wait:         wait,
-		// streamExecReady: false,
-		// streamexec: client,
-	}
-}
+// 	return &RunningVM[VM]{
+// 		start:                  start,
+// 		vm:                     vm,
+// 		stdin:                  cfg.StdinReader,
+// 		stdout:                 cfg.StdoutWriter,
+// 		stderr:                 cfg.StderrWriter,
+// 		portOnHostIP:           portOnHostIP,
+// 		wait:                   make(chan error, 1),
+// 		manager:                nil,
+// 		guestServiceConnection: nil,
+// 		streamexec:             nil,
+// 		workingDir:             workingDir,
+// 		netdev:                 nil,
+// 	}
+// }
 
 func (r *RunningVM[VM]) ForwardStdio(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	return ForwardStdio(ctx, r.vm, stdin, stdout, stderr)
 }
 
-func NewRunningVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP uint16, start time.Time, wait <-chan error) *RunningVM[VM] {
+// func NewRunningVM[VM VirtualMachine](ctx context.Context, vm VM, portOnHostIP uint16, start time.Time) *RunningVM[VM] {
 
-	transporz := NewVSockManager(func(ctx context.Context) (io.ReadWriteCloser, error) {
-		return vm.VSockConnect(ctx, uint32(ExecVSockPort))
-	})
+// 	transporz := NewVSockManager(func(ctx context.Context) (io.ReadWriteCloser, error) {
+// 		return vm.VSockConnect(ctx, uint32(ExecVSockPort))
+// 	})
 
-	tfunc := transport.NewFunctionTransport(func() (io.ReadWriteCloser, error) {
-		slog.Info("dialing vm transport")
-		conn, err := transporz.Dial(ctx)
-		if err != nil {
-			slog.Error("failed to dial vm transport", "error", err)
-			return nil, errors.Errorf("dialing vm transport: %w", err)
-		}
-		slog.Info("dialed vm transport")
-		return conn, nil
-	}, nil)
+// 	tfunc := transport.NewFunctionTransport(func() (io.ReadWriteCloser, error) {
+// 		slog.Info("dialing vm transport")
+// 		conn, err := transporz.Dial(ctx)
+// 		if err != nil {
+// 			slog.Error("failed to dial vm transport", "error", err)
+// 			return nil, errors.Errorf("dialing vm transport: %w", err)
+// 		}
+// 		slog.Info("dialed vm transport")
+// 		return conn, nil
+// 	}, nil)
 
-	client := streamexec.NewClient(tfunc, func(conn io.ReadWriter) protocol.Protocol {
-		return protocol.NewFramedProtocol(conn)
-	})
+// 	client := streamexec.NewClient(tfunc, func(conn io.ReadWriter) protocol.Protocol {
+// 		return protocol.NewFramedProtocol(conn)
+// 	})
 
-	go func() {
-		slog.Info("dialing vm")
-		err := client.Connect(ctx)
-		if err != nil {
-			slog.Error("failed to connect to vm", "error", err)
-		} else {
-			slog.Info("connected to vm")
-		}
+// 	go func() {
+// 		slog.Info("dialing vm")
+// 		err := client.Connect(ctx)
+// 		if err != nil {
+// 			slog.Error("failed to connect to vm", "error", err)
+// 		} else {
+// 			slog.Info("connected to vm")
+// 		}
 
-	}()
+// 	}()
 
-	// connStatus := transporz.AddStateNotifier()
+// 	// connStatus := transporz.AddStateNotifier()
 
-	return &RunningVM[VM]{
-		start:   start,
-		vm:      vm,
-		manager: transporz,
-		// connStatus:      connStatus,
-		portOnHostIP: portOnHostIP,
-		wait:         wait,
-		// streamExecReady: false,
-		streamexec: client,
-	}
-}
+// 	return &RunningVM[VM]{
+// 		start:   start,
+// 		vm:      vm,
+// 		manager: transporz,
+// 		// connStatus:      connStatus,
+// 		portOnHostIP: portOnHostIP,
+// 		wait:         make(chan error, 1),
+// 		// streamExecReady: false,
+// 		streamexec: client,
+// 	}
+// }
 
 func (r *RunningVM[VM]) WaitOnVmStopped() error {
 	return <-r.wait
 }
 
-func (r *RunningVM[VM]) WaitOnVMReadyToExec() <-chan struct{} {
-	ch := make(chan struct{})
+// func (r *RunningVM[VM]) WaitOnVMReadyToExec() <-chan struct{} {
+// 	ch := make(chan struct{})
 
-	if r.manager.State() == StateConnected {
-		close(ch)
-		return ch
-	}
-	check := r.manager.AddStateNotifier()
-	go func() {
-		defer close(check)
-		for {
-			select {
-			case <-check:
-				if r.manager.State() == StateConnected {
-					close(ch)
-				}
-			}
-		}
-	}()
-	return ch
-}
+// 	if r.manager.State() == StateConnected {
+// 		close(ch)
+// 		return ch
+// 	}
+// 	check := r.manager.AddStateNotifier()
+// 	go func() {
+// 		defer close(check)
+// 		for {
+// 			select {
+// 			case <-check:
+// 				if r.manager.State() == StateConnected {
+// 					close(ch)
+// 				}
+// 			}
+// 		}
+// 	}()
+// 	return ch
+// }
 
 // func (r *RunningVM[VM]) WaitOnVMReady(ctx context.Context) <-chan struct{} {
 // 	ch := make(chan struct{})
@@ -237,243 +240,225 @@ func (r *RunningVM[VM]) PortOnHostIP() uint16 {
 	return r.portOnHostIP
 }
 
-func (r *RunningVM[VM]) Run(ctx context.Context) (int64, error) {
-	// if stdin == nil {
-	// 	stdin = bytes.NewReader([]byte{})
-	// }
-
-	guestService, err := r.guestService(ctx)
+func (r *RunningVM[VM]) RunCommandSimple(ctx context.Context, command string) ([]byte, []byte, int64, error) {
+	guestService, err := r.GuestService(ctx)
 	if err != nil {
-		return 0, errors.Errorf("getting guest service: %w", err)
+		return nil, nil, 0, errors.Errorf("getting guest service: %w", err)
 	}
 
-	// stdinData, err := io.ReadAll(stdin)
-	// if err != nil {
-	// 	return 0, errors.Errorf("reading stdin: %w", err)
-	// }
+	fields := strings.Fields(command)
+
+	argc := fields[0]
+	argv := []string{}
+	for _, field := range fields[1:] {
+		argv = append(argv, field)
+	}
 
 	// req, err := harpoonv1.NewValidatedRunRequest(func(b *harpoonv1.RunRequest_builder) {
 	// 	// b.Stdin = stdinData
 	// })
-	req := harpoonv1.NewRunRequest(func(b *harpoonv1.RunRequest_builder) {
-		// b.Stdin = stdinData
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	exec, err := guestService.Run(ctx, req)
-	if err != nil {
-		return 0, err
-	}
-
-	// wg := sync.WaitGroup{}
-	// wg.Add(2)
-
-	// go func() {
-	// 	defer wg.Done()
-	// 	_, err = stdout.Write(exec.GetStdout())
-	// 	if err != nil {
-	// 		slog.Error("failed to write stdout", "error", err)
-	// 	}
-	// }()
-
-	// go func() {
-	// 	defer wg.Done()
-	// 	_, err = stderr.Write(exec.GetStderr())
-	// 	if err != nil {
-	// 		slog.Error("failed to write stderr", "error", err)
-	// 	}
-	// }()
-
-	// wg.Wait()
-
-	return int64(exec.GetExitCode()), nil
-}
-
-func (r *RunningVM[VM]) Exec(ctx context.Context, command string) (stdout []byte, stderr []byte, errorcode []byte, err error) {
-	if r.manager.State() != StateConnected {
-		return nil, nil, nil, errors.New("stream exec not ready")
-	}
-	return r.streamexec.ExecuteCommand(ctx, command)
-}
-
-func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) (errorcode int32, err error) {
-
-	slog.InfoContext(ctx, "RunWithStdio: starting")
-
-	defer func() {
-		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "panic in RunWithStdio", "error", r)
-			fmt.Fprintln(logging.GetDefaultLogWriter(), string(debug.Stack()))
-			errorcode = -1
-			err = errors.Errorf("panic in RunWithStdio: %v", r)
-			return
-		}
-		slog.InfoContext(ctx, "RunWithStdio: finished")
-
-	}()
-
-	guestService, err := r.guestService(ctx)
-	if err != nil {
-		return 0, errors.Errorf("getting guest service: %w", err)
-	}
-
-	slog.InfoContext(ctx, "RunWithStdio: got guest service")
-
-	if term == nil {
-		term = make(chan bool)
-	}
-
-	if stdin == nil {
-		stdin = bytes.NewReader([]byte{})
-	}
-
-	slog.InfoContext(ctx, "RunWithStdio: creating exec request")
-	//
-	e, err := guestService.Exec(ctx)
-	if err != nil {
-		return 0, errors.Errorf("creating start request: %w", err)
-	}
-
-	slog.InfoContext(ctx, "RunWithStdio: sending start request")
-
-	start := harpoonv1.NewExecRequest_WithStart(func(b *harpoonv1.ExecRequest_Start_builder) {
-		b.Argc = ptr("")
-		b.Argv = []string{}
-		b.Stdin = ptr(true)
+	req, err := harpoonv1.NewRunCommandRequestE(func(b *harpoonv1.RunCommandRequest_builder) {
+		b.Argc = ptr(argc)
+		b.Argv = argv
 		b.EnvVars = map[string]string{}
+		b.Stdin = []byte{}
+		b.UseEntrypoint = ptr(false)
 	})
 	if err != nil {
-		return 0, errors.Errorf("creating start request: %w", err)
+		return nil, nil, 0, err
 	}
 
-	err = e.Send(start)
+	exec, err := guestService.RunCommand(ctx, req)
 	if err != nil {
-		return 0, errors.Errorf("sending start request: %w", err)
+		return nil, nil, 0, err
 	}
 
-	slog.InfoContext(ctx, "RunWithStdio: start request sent")
-
-	terminate := func(force bool) {
-		req := harpoonv1.NewExecRequest_WithTerminate(func(b *harpoonv1.ExecRequest_Terminate_builder) {
-			b.Force = ptr(force)
-		})
-		if err != nil {
-			slog.Error("failed to create terminate request", "error", err)
-			return
-		}
-		err = e.Send(req)
-		if err != nil {
-			slog.Error("failed to send terminate to guest service", "error", err)
-		}
-
-	}
-
-	defer terminate(false)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "panic in term goroutine", "error", r)
-				slog.DebugContext(ctx, string(debug.Stack()))
-				panic(r)
-			}
-		}()
-		select {
-		case <-ctx.Done():
-			slog.InfoContext(ctx, "RunWithStdio: context done")
-			terminate(false)
-			return
-		case force := <-term:
-			slog.InfoContext(ctx, "RunWithStdio: term signal received", "force", force)
-			terminate(force)
-			return
-		}
-
-	}()
-
-	slog.InfoContext(ctx, "RunWithStdio: stating goroutines")
-
-	// copy stdin to the guest service
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "panic in stdin goroutine", "error", r)
-				slog.DebugContext(ctx, string(debug.Stack()))
-				panic(r)
-			}
-		}()
-		buf := make([]byte, 1024)
-		for {
-
-			n, err := stdin.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
-						b.Data = buf[:n]
-						b.Done = ptr(true)
-					})
-					if err != nil {
-						slog.Error("failed to create exec request", "error", err)
-						return
-					}
-					err = e.Send(req)
-					if err != nil {
-						slog.Error("failed to send stdin to guest service", "error", err)
-					}
-					return
-				}
-				slog.Error("failed to read stdin", "error", err)
-			}
-			if n == 0 {
-				slog.InfoContext(ctx, "RunWithStdio: stdin read 0 bytes")
-				return
-			}
-
-			req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
-				b.Data = buf[:n]
-				b.Done = ptr(false)
-			})
-			if err != nil {
-				slog.Error("failed to create exec request", "error", err)
-				return
-			}
-
-			err = e.Send(req)
-			if err != nil {
-				slog.Error("failed to send stdin to guest service", "error", err)
-			}
-		}
-	}()
-
-	slog.InfoContext(ctx, "RunWithStdio: starting recv loop")
-
-	for {
-
-		slog.InfoContext(ctx, "RunWithStdio: recv loop started")
-
-		msg, err := e.Recv()
-		if err != nil {
-			slog.Error("failed to receive message from guest service", "error", err)
-			return 0, errors.Errorf("failed to receive message from guest service: %w", err)
-		}
-
-		if msg.GetError() == nil {
-			err = errors.Errorf("error: %s", msg.GetError().GetError())
-		} else if msg.GetStderr() != nil {
-			stderr.Write(msg.GetStderr().GetData())
-		} else if msg.GetStdout() != nil {
-			stdout.Write(msg.GetStdout().GetData())
-		} else if msg.GetExit() != nil {
-			errorcode = msg.GetExit().GetExitCode()
-			return errorcode, err
-		} else {
-			err = errors.Errorf("unknown message: %v", msg)
-		}
-	}
-
+	return exec.GetStdout(), exec.GetStderr(), int64(exec.GetExitCode()), nil
 }
+
+// func (r *RunningVM[VM]) Exec(ctx context.Context, command string) (stdout []byte, stderr []byte, errorcode []byte, err error) {
+// 	if r.manager.State() != StateConnected {
+// 		return nil, nil, nil, errors.New("stream exec not ready")
+// 	}
+// 	return r.streamexec.ExecuteCommand(ctx, command)
+// }
+
+// func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) (errorcode int32, err error) {
+
+// 	slog.InfoContext(ctx, "RunWithStdio: starting")
+
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			slog.ErrorContext(ctx, "panic in RunWithStdio", "error", r)
+// 			fmt.Fprintln(logging.GetDefaultLogWriter(), string(debug.Stack()))
+// 			errorcode = -1
+// 			err = errors.Errorf("panic in RunWithStdio: %v", r)
+// 			return
+// 		}
+// 		slog.InfoContext(ctx, "RunWithStdio: finished")
+
+// 	}()
+
+// 	guestService, err := r.GuestService(ctx)
+// 	if err != nil {
+// 		return 0, errors.Errorf("getting guest service: %w", err)
+// 	}
+
+// 	slog.InfoContext(ctx, "RunWithStdio: got guest service")
+
+// 	if term == nil {
+// 		term = make(chan bool)
+// 	}
+
+// 	if stdin == nil {
+// 		stdin = bytes.NewReader([]byte{})
+// 	}
+
+// 	slog.InfoContext(ctx, "RunWithStdio: creating exec request")
+// 	//
+// 	e, err := guestService.Exec(ctx)
+// 	if err != nil {
+// 		return 0, errors.Errorf("creating start request: %w", err)
+// 	}
+
+// 	slog.InfoContext(ctx, "RunWithStdio: sending start request")
+
+// 	start := harpoonv1.NewExecRequest_WithStart(func(b *harpoonv1.ExecRequest_Start_builder) {
+// 		b.Argc = ptr("")
+// 		b.Argv = []string{}
+// 		b.Stdin = ptr(true)
+// 		b.EnvVars = map[string]string{}
+// 	})
+// 	if err != nil {
+// 		return 0, errors.Errorf("creating start request: %w", err)
+// 	}
+
+// 	err = e.Send(start)
+// 	if err != nil {
+// 		return 0, errors.Errorf("sending start request: %w", err)
+// 	}
+
+// 	slog.InfoContext(ctx, "RunWithStdio: start request sent")
+
+// 	terminate := func(force bool) {
+// 		req := harpoonv1.NewExecRequest_WithTerminate(func(b *harpoonv1.ExecRequest_Terminate_builder) {
+// 			b.Force = ptr(force)
+// 		})
+// 		if err != nil {
+// 			slog.Error("failed to create terminate request", "error", err)
+// 			return
+// 		}
+// 		err = e.Send(req)
+// 		if err != nil {
+// 			slog.Error("failed to send terminate to guest service", "error", err)
+// 		}
+
+// 	}
+
+// 	defer terminate(false)
+
+// 	go func() {
+// 		defer func() {
+// 			if r := recover(); r != nil {
+// 				slog.ErrorContext(ctx, "panic in term goroutine", "error", r)
+// 				slog.DebugContext(ctx, string(debug.Stack()))
+// 				panic(r)
+// 			}
+// 		}()
+// 		select {
+// 		case <-ctx.Done():
+// 			slog.InfoContext(ctx, "RunWithStdio: context done")
+// 			terminate(false)
+// 			return
+// 		case force := <-term:
+// 			slog.InfoContext(ctx, "RunWithStdio: term signal received", "force", force)
+// 			terminate(force)
+// 			return
+// 		}
+
+// 	}()
+
+// 	slog.InfoContext(ctx, "RunWithStdio: stating goroutines")
+
+// 	// copy stdin to the guest service
+// 	go func() {
+// 		defer func() {
+// 			if r := recover(); r != nil {
+// 				slog.ErrorContext(ctx, "panic in stdin goroutine", "error", r)
+// 				slog.DebugContext(ctx, string(debug.Stack()))
+// 				panic(r)
+// 			}
+// 		}()
+// 		buf := make([]byte, 1024)
+// 		for {
+
+// 			n, err := stdin.Read(buf)
+// 			if err != nil {
+// 				if err == io.EOF {
+// 					req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+// 						b.Data = buf[:n]
+// 						b.Done = ptr(true)
+// 					})
+// 					if err != nil {
+// 						slog.Error("failed to create exec request", "error", err)
+// 						return
+// 					}
+// 					err = e.Send(req)
+// 					if err != nil {
+// 						slog.Error("failed to send stdin to guest service", "error", err)
+// 					}
+// 					return
+// 				}
+// 				slog.Error("failed to read stdin", "error", err)
+// 			}
+// 			if n == 0 {
+// 				slog.InfoContext(ctx, "RunWithStdio: stdin read 0 bytes")
+// 				return
+// 			}
+
+// 			req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+// 				b.Data = buf[:n]
+// 				b.Done = ptr(false)
+// 			})
+// 			if err != nil {
+// 				slog.Error("failed to create exec request", "error", err)
+// 				return
+// 			}
+
+// 			err = e.Send(req)
+// 			if err != nil {
+// 				slog.Error("failed to send stdin to guest service", "error", err)
+// 			}
+// 		}
+// 	}()
+
+// 	slog.InfoContext(ctx, "RunWithStdio: starting recv loop")
+
+// 	for {
+
+// 		slog.InfoContext(ctx, "RunWithStdio: recv loop started")
+
+// 		msg, err := e.Recv()
+// 		if err != nil {
+// 			slog.Error("failed to receive message from guest service", "error", err)
+// 			return 0, errors.Errorf("failed to receive message from guest service: %w", err)
+// 		}
+
+// 		if msg.GetError() == nil {
+// 			err = errors.Errorf("error: %s", msg.GetError().GetError())
+// 		} else if msg.GetStderr() != nil {
+// 			stderr.Write(msg.GetStderr().GetData())
+// 		} else if msg.GetStdout() != nil {
+// 			stdout.Write(msg.GetStdout().GetData())
+// 		} else if msg.GetExit() != nil {
+// 			errorcode = msg.GetExit().GetExitCode()
+// 			return errorcode, err
+// 		} else {
+// 			err = errors.Errorf("unknown message: %v", msg)
+// 		}
+// 	}
+
+// }
 
 // type WrappedWriter struct {
 // 	cli harpoonv1.TTRPCGuestService_ExecClient

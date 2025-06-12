@@ -8,8 +8,7 @@ import "google/protobuf/go_features.proto";
 option features.(pb.go).api_level = API_OPAQUE;
 
 service GuestService {
-	rpc Exec(stream ExecRequest) returns (stream ExecResponse);
-
+	// rpc Exec(stream ExecRequest) returns (stream ExecResponse);
 
 	rpc TimeSync(TimeSyncRequest) returns (TimeSyncResponse);
 
@@ -17,74 +16,80 @@ service GuestService {
 	rpc Readiness(ReadinessRequest) returns (ReadinessResponse);
 
 
-	rpc Run(RunRequest) returns (RunResponse);
+	rpc RunSpec(RunSpecRequest) returns (RunSpecResponse);
+
+
+	rpc RunSpecSignal(stream RunSpecSignalRequest) returns (stream RunSpecSignalResponse);
+
+
+	rpc RunCommand(RunCommandRequest) returns (RunCommandResponse);
 }
 
-message Bytestream {
-	// the data to send
-	bytes data = 1 [
-		(buf.validate.field).required = true
-	];
+// message Bytestream {
+//  // the data to send
+//  bytes data = 1 [
+//   (buf.validate.field).required = true
+//  ];
 
-	bool done = 2 [
-		(buf.validate.field).required = true
-	];
-}
+//  bool done = 2 [
+//   (buf.validate.field).required = true
+//  ];
+// }
 
-message ExecRequest {
-	message Start {
-		// the executable to run
-		string argc = 1 [
-			(buf.validate.field).required = true
-		];
+// message ExecRequest {
+//  message Start {
+//   // the executable to run
+//   string argc = 1 [
+//    (buf.validate.field).required = true
+//   ];
 
-		// the arguments to pass to the executable
-		repeated string argv = 2 [
-			(buf.validate.field).required = false
-		];
+//   // the arguments to pass to the executable
+//   repeated string argv = 2 [
+//    (buf.validate.field).required = false
+//   ];
 
-		// the environment variables to set for the executable
-		map<string, string> env_vars = 3 [
-			(buf.validate.field).required = false
-		];
+//   // the environment variables to set for the executable
+//   map<string, string> env_vars = 3 [
+//    (buf.validate.field).required = false
+//   ];
 
-		// whether to read stdin from the client
-		bool stdin = 4 [
-			(buf.validate.field).required = true
-		];
-	}
+//   // whether to read stdin from the client
+//   bool stdin = 4 [
+//    (buf.validate.field).required = true
+//   ];
+//  }
 
-	message Terminate {
-		// whether to force the termination
-		bool force = 1 [
-			(buf.validate.field).required = true
-		];
-	}
+//  message Terminate {
+//   // whether to force the termination
+//   bool force = 1 [
+//    (buf.validate.field).required = true
+//   ];
+//  }
 
-	oneof request {
-		// the start request
-		Start      start     = 1;
-		Bytestream stdin     = 2;
-		Terminate  terminate = 3;
-	}
-}
+//  oneof request {
+//   // the start request
+//   Start      start     = 1;
+//   Bytestream stdin     = 2;
+//   Terminate  terminate = 3;
+//  }
+// }
 
-message ExecResponse {
-	message Exit {
-		int32 exit_code = 1;
-	}
+// message ExecResponse {
+//  message Exit {
+//   int32 exit_code = 1;
+//  }
 
-	message Error {
-		string error = 1;
-	}
+//  message Error {
+//   string error = 1;
+//  }
 
-	oneof response {
-		Bytestream stdout = 1;
-		Bytestream stderr = 2;
-		Exit       exit   = 3;
-		Error      error  = 4;
-	}
-}
+//  oneof response {
+//   Bytestream stdout = 1;
+//   Bytestream stderr = 2;
+//   Exit       exit   = 3;
+//   Error      error  = 4;
+//  }
+// }
 
 message TimeSyncRequest {
 	uint64 unix_time_ns = 1 [
@@ -109,33 +114,53 @@ message ReadinessResponse {
 	];
 }
 
-message RunRequest {
+message RunSpecSignalRequest {
+	int32 signal = 1 [
+		(buf.validate.field).required = false
+	];
+}
+
+message RunSpecSignalResponse {
+	int32 exit_code = 1 [
+		(buf.validate.field).required = true
+	];
+}
+
+message RunSpecRequest {}
+
+message RunSpecResponse {
+	int32 exit_code = 1 [
+		(buf.validate.field).required = true
+	];
+}
+
+message RunCommandRequest {
 	bytes stdin = 1 [
 		(buf.validate.field).required = false
 	];
 
-	// // the executable to run
-	// string argc = 1 [
-	//  (buf.validate.field).required = true
-	// ];
+	// the executable to run
+	string argc = 2 [
+		(buf.validate.field).required = true
+	];
 
-	// // the arguments to pass to the executable
-	// repeated string argv = 2 [
-	//  (buf.validate.field).required = true
-	// ];
+	// the arguments to pass to the executable
+	repeated string argv = 3 [
+		(buf.validate.field).required = true
+	];
 
-	// // the environment variables to set for the executable
-	// map<string, string> env_vars = 3 [
-	//  (buf.validate.field).required = true
-	// ];
+	// the environment variables to set for the executable
+	map<string, string> env_vars = 4 [
+		(buf.validate.field).required = true
+	];
 
-	// // whether to append the entrypoint to argc
-	// bool use_entrypoint = 4 [
-	//  (buf.validate.field).required = true
-	// ];
+	// whether to append the entrypoint to argc
+	bool use_entrypoint = 5 [
+		(buf.validate.field).required = true
+	];
 }
 
-message RunResponse {
+message RunCommandResponse {
 	bytes stdout = 1 [
 		(buf.validate.field).required = false
 	];

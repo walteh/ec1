@@ -18,6 +18,7 @@ import (
 	"github.com/walteh/ec1/gen/harpoon/harpoon_vmlinux_arm64"
 	"github.com/walteh/ec1/pkg/binembed"
 	"github.com/walteh/ec1/pkg/ext/osx"
+	"github.com/walteh/ec1/pkg/units"
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
@@ -61,7 +62,28 @@ func (bootloader *LinuxBootloader) isBootloader() {}
 func (bootloader *EFIBootloader) isBootloader()   {}
 func (bootloader *MacOSBootloader) isBootloader() {}
 
-func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, wg *errgroup.Group) (Bootloader, []virtio.VirtioDevice, error) {
+func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, platform units.Platform) (Bootloader, []virtio.VirtioDevice, error) {
+	groupErrs := errgroup.Group{}
+
+	bl, bldevs, err := PrepareHarpoonLinuxBootloaderAsync(ctx, wrkdir, platform, &groupErrs)
+	if err != nil {
+		return nil, nil, errors.Errorf("getting boot loader config: %w", err)
+	}
+
+	err = groupErrs.Wait()
+	if err != nil {
+		return nil, nil, errors.Errorf("error waiting for errgroup: %w", err)
+	}
+
+	return bl, bldevs, nil
+}
+
+func init() {
+	go binembed.GetDecompressed(harpoon_initramfs_arm64.BinaryXZChecksum)
+	go binembed.GetDecompressed(harpoon_vmlinux_arm64.BinaryXZChecksum)
+}
+
+func PrepareHarpoonLinuxBootloaderAsync(ctx context.Context, wrkdir string, platform units.Platform, wg *errgroup.Group) (Bootloader, []virtio.VirtioDevice, error) {
 	targetVmLinuxPath := filepath.Join(wrkdir, "vmlinux")
 	targetInitramfsPath := filepath.Join(wrkdir, "initramfs.cpio.gz")
 
@@ -70,14 +92,12 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 
 	devices := []virtio.VirtioDevice{}
 
-	groupErrs := errgroup.Group{}
-
 	var kernelXz, initramfsGz io.Reader
 	var err error
 
 	startTime := time.Now()
 
-	if imageConfig.Platform.Arch() == "arm64" {
+	if platform.Arch() == "arm64" {
 		kernelXz, err = binembed.GetDecompressed(harpoon_vmlinux_arm64.BinaryXZChecksum)
 		if err != nil {
 			return nil, nil, errors.Errorf("getting kernel: %w", err)
@@ -96,8 +116,6 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 			return nil, nil, errors.Errorf("getting initramfs: %w", err)
 		}
 	}
-
-	// for path, innerPath := range imageConfig.StaticFiles {
 	// 	data, err := os.ReadFile(path)
 	// 	if err != nil {
 	// 		return nil, nil, errors.Errorf("reading file: %w", err)
@@ -108,6 +126,7 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 	// 	}
 	// 	initramfs.StreamInjectHyper(ctx, initramfsGz, header, data)
 	// }
+	// for path, innerPath := range imageConfig.StaticFiles {
 
 	files := map[string]io.Reader{
 		targetVmLinuxPath:   kernelXz,
@@ -115,20 +134,13 @@ func PrepareHarpoonLinuxBootloader(ctx context.Context, wrkdir string, imageConf
 	}
 
 	for path, reader := range files {
-		err = osx.WriteFileFromReaderAsync(ctx, path, reader, 0644, &groupErrs)
+		err = osx.WriteFileFromReaderAsync(ctx, path, reader, 0644, wg)
 		if err != nil {
 			return nil, nil, errors.Errorf("writing files: %w", err)
 		}
-		// os.Chown(path, 1000, 1000)
 	}
 
-	// cmdLine := linuxVMIProvider.KernelArgs() + " console=hvc0 cloud-init=disabled network-config=disabled" + extraArgs
 	cmdLine := strings.TrimSpace(" console=hvc0 " + extraArgs + " -- " + extraInitArgs)
-
-	err = groupErrs.Wait()
-	if err != nil {
-		return nil, nil, errors.Errorf("error waiting for errgroup: %w", err)
-	}
 
 	slog.InfoContext(ctx, "linux boot loader ready", "duration", time.Since(startTime))
 

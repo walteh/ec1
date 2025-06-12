@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/walteh/ec1/pkg/ec1init"
 	"github.com/walteh/ec1/pkg/harpoon"
 	"github.com/walteh/ec1/pkg/logging"
+	"github.com/walteh/ec1/pkg/logging/logrusshim"
 )
 
 type mode string
@@ -32,6 +34,10 @@ const (
 	modeOCI      mode = "oci"
 	modeManifest mode = "manifest"
 )
+
+func init() {
+	logrusshim.ForwardLogrusToSlogGlobally()
+}
 
 var binariesToCopy = []string{
 	"/hbin/lshw",
@@ -66,17 +72,30 @@ func main() {
 
 	ctx = slogctx.Append(ctx, slog.Int("pid", pid))
 
-	defer func() {
-		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "panic in main", "error", r)
-			os.Exit(1)
-		}
-	}()
-	err := safeMain(ctx)
+	err := recoveryMain(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "error in main", "error", err)
 		os.Exit(1)
 	}
+}
+
+func recoveryMain(ctx context.Context) (err error) {
+	errChan := make(chan error)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				debug.PrintStack()
+				fmt.Println("panic in main", r)
+				slog.ErrorContext(ctx, "panic in main", "error", r)
+				err = errors.Errorf("panic in main: %v", r)
+				errChan <- err
+			}
+		}()
+		err = safeMain(ctx)
+		errChan <- err
+	}()
+
+	return <-errChan
 }
 
 func safeMain(ctx context.Context) error {
@@ -161,16 +180,13 @@ func logDirContents(ctx context.Context, path string) {
 }
 
 func runContainerd(ctx context.Context) error {
+	fmt.Println() // i think this might fix the color issue to reset the ansi colors
 	ctx = slogctx.Append(ctx, slog.String("mode", string(modeRootfs)))
 	slog.InfoContext(ctx, "running in rootfs, gonna just wait to be killed")
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	// spec, _, _, err := loadSpecOrManifest(ctx)
-	// if err != nil {
-	// 	slog.ErrorContext(ctx, "problem loading spec or manifest", "error", err)
-	// 	return errors.Errorf("loading spec or manifest: %w", err)
-	// }
+	// go harpoon.DumpHeapProfileAfter(ctx, 60*time.Second)
 
 	// // if spec == nil {
 	// // 	return errors.Errorf("no spec found")
@@ -223,6 +239,14 @@ func runContainerd(ctx context.Context) error {
 
 	go func() {
 		for tick := range ticker.C {
+			// consumers, err := harpoon.TopMemoryConsumers(10)
+			// if err != nil {
+			// 	slog.ErrorContext(ctx, "problem getting top memory consumers", "error", err)
+			// }
+			// for i := 0; i < 5 && i < len(consumers); i++ {
+			// 	fmt.Printf("%-6d %-20s %8.1f\n",
+			// 		consumers[i].Process.Pid, consumers[i].Name, float64(consumers[i].MemoryInfo.RSS)/1024/1024)
+			// }
 			slog.InfoContext(ctx, "still running in rootfs, waiting to be killed", "tick", tick)
 		}
 	}()
@@ -231,6 +255,17 @@ func runContainerd(ctx context.Context) error {
 }
 
 func runTtrpc(ctx context.Context) error {
+
+	spec, exists, err := loadSpec(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "problem loading spec", "error", err)
+		return errors.Errorf("loading spec: %w", err)
+	}
+
+	if !exists {
+		slog.ErrorContext(ctx, "spec not found")
+		return errors.Errorf("spec not found")
+	}
 
 	forwarder, err := harpoon.NewVsockStdioForwarder(ctx, harpoon.VsockStdioForwarderOpts{
 		StdinPort:  uint32(ec1init.VsockStdinPort),
@@ -242,7 +277,7 @@ func runTtrpc(ctx context.Context) error {
 		return errors.Errorf("running stdio forwarding: %w", err)
 	}
 
-	service := harpoon.NewAgentService(forwarder)
+	service := harpoon.NewAgentService(forwarder, spec)
 
 	runner, err := harpoon.NewGuestServiceRunner(ctx, harpoon.GuestServiceRunnerOpts{
 		VsockPort:      uint32(ec1init.VsockPort),
@@ -540,16 +575,10 @@ func switchRoot(ctx context.Context) error {
 }
 
 func loadSpecOrManifest(ctx context.Context) (spec *oci.Spec, manifest *v1.Image, bindMounts []specs.Mount, err error) {
-	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
+
+	spec, _, err = loadSpec(ctx)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, nil, nil, errors.Errorf("reading spec: %w", err)
-		}
-	} else {
-		err = json.Unmarshal(specd, &spec)
-		if err != nil {
-			return nil, nil, nil, errors.Errorf("unmarshalling spec: %w", err)
-		}
+		return nil, nil, nil, errors.Errorf("loading spec: %w", err)
 	}
 
 	manifestd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerManifestFile))
@@ -578,4 +607,21 @@ func loadSpecOrManifest(ctx context.Context) (spec *oci.Spec, manifest *v1.Image
 	}
 
 	return spec, manifest, bindMounts, nil
+}
+
+func loadSpec(ctx context.Context) (spec *oci.Spec, exists bool, err error) {
+	specd, err := os.ReadFile(filepath.Join(ec1init.Ec1AbsPath, ec1init.ContainerSpecFile))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, errors.Errorf("reading spec: %w", err)
+	}
+
+	err = json.Unmarshal(specd, &spec)
+	if err != nil {
+		return nil, false, errors.Errorf("unmarshalling spec: %w", err)
+	}
+
+	return spec, true, nil
 }

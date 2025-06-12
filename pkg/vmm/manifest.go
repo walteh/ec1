@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -25,29 +24,24 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
-type ConatinerImageConfig struct {
-	ImageRef string
-	// Cmdline  []string
-	Platform units.Platform
-	Memory   strongunits.B
-	VCPUs    uint64
-	// StaticFiles map[string]string
+type ManifestImageConfig struct {
+	ImageRef     string
+	Platform     units.Platform
+	Memory       strongunits.B
+	VCPUs        uint64
+	StdinReader  io.Reader
+	StdoutWriter io.Writer
+	StderrWriter io.Writer
 }
 
-type ContainerVMConfig struct {
-	Platform units.Platform
-	Memory   strongunits.B
-	VCPUs    uint64
-}
-
-func NewContainerizedVirtualMachine[VM VirtualMachine](
+func NewManifestVirtualMachine[VM VirtualMachine](
 	ctx context.Context,
 	hpv Hypervisor[VM],
 	cache oci.ImageFetchConverter,
-	imageConfig ConatinerImageConfig,
+	imageConfig ManifestImageConfig,
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 
-	id := "vm-" + xid.New().String()
+	id := "vm-manifest-" + xid.New().String()
 	errgrp, ctx := errgroup.WithContext(ctx)
 
 	ctx = appendContext(ctx, id)
@@ -74,7 +68,7 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 
 	switch imageConfig.Platform.OS() {
 	case "linux":
-		bl, bldevs, err := PrepareHarpoonLinuxBootloader(ctx, workingDir, imageConfig, errgrp)
+		bl, bldevs, err := PrepareHarpoonLinuxBootloaderAsync(ctx, workingDir, imageConfig.Platform, errgrp)
 		if err != nil {
 			return nil, errors.Errorf("getting boot loader config: %w", err)
 		}
@@ -89,28 +83,11 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		Append: false,
 	})
 
-	// errgrp.Go(func() error {
-	// 	t, err := tail.TailFile(filepath.Join(workingDir, "console.log"), tail.Config{
-	// 		Follow:        true,
-	// 		CompleteLines: true,
-	// 		MustExist:     true,
-	// 	})
-	// 	if err != nil {
-	// 		return errors.Errorf("tailing console.log: %w", err)
-	// 	}
-	// 	defer t.Cleanup()
-	// 	slog.InfoContext(ctx, "tailing console.log")
-	// 	for line := range t.Lines {
-	// 		fmt.Fprintf(os.Stdout, "%s\n", line.Text)
-	// 	}
-	// 	return t.Err()
-	// })
-
-	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
+	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
 	}
-	devices = append(devices, netdev)
+	devices = append(devices, netdev.VirtioNetDevice())
 
 	opts := NewVMOptions{
 		Vcpus:   imageConfig.VCPUs,
@@ -118,68 +95,77 @@ func NewContainerizedVirtualMachine[VM VirtualMachine](
 		Devices: devices,
 	}
 
+	if err = errgrp.Wait(); err != nil {
+		return nil, errors.Errorf("error waiting for errgroup: %w", err)
+	}
+
 	vm, err := hpv.NewVirtualMachine(ctx, id, &opts, bootloader)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
 
-	if ctx.Err() != nil {
-		return nil, errors.Errorf("ahhh context cancelled: %w", ctx.Err())
+	runner := &RunningVM[VM]{
+		bootloader:             bootloader,
+		start:                  startTime,
+		vm:                     vm,
+		stdin:                  imageConfig.StdinReader,
+		stdout:                 imageConfig.StdoutWriter,
+		stderr:                 imageConfig.StderrWriter,
+		portOnHostIP:           hostIPPort,
+		wait:                   make(chan error, 1),
+		guestServiceConnection: nil,
+		workingDir:             workingDir,
+		netdev:                 netdev,
 	}
 
-	err = bootContainerVM(ctx, vm)
-	if err != nil {
-		return nil, errors.Errorf("booting virtual machine: %w", err)
-	}
+	// if ctx.Err() != nil {
+	// 	return nil, errors.Errorf("ahhh context cancelled: %w", ctx.Err())
+	// }
 
-	runErrGroup, runCancel, err := runContainerVM(ctx, vm)
-	if err != nil {
-		return nil, errors.Errorf("running virtual machine: %w", err)
-	}
+	// err = bootContainerVM(ctx, vm)
+	// if err != nil {
+	// 	return nil, errors.Errorf("booting virtual machine: %w", err)
+	// }
 
-	// For container runtimes, we want the VM to stay running, not wait for it to stop
-	slog.InfoContext(ctx, "VM is ready for container execution")
+	// errgrp.Go(func() error {
+	// 	return vm.ServeBackgroundTasks(ctx)
+	// })
 
-	// Create an error channel that will receive VM state changes
-	errCh := make(chan error, 1)
-	go func() {
-		// Wait for errgroup to finish (this handles cleanup when context is cancelled)
-		if err := errgrp.Wait(); err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
-		}
+	// // For container runtimes, we want the VM to stay running, not wait for it to stop
+	// slog.InfoContext(ctx, "VM is ready for container execution")
 
-		// Wait for runtime services to finish
-		if err := runErrGroup.Wait(); err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "error running runtime services", "error", err)
-			errCh <- err
-			return
-		}
+	// // Create an error channel that will receive VM state changes
+	// errCh := make(chan error, 1)
+	// go func() {
+	// 	// Wait for errgroup to finish (this handles cleanup when context is cancelled)
+	// 	if err := errgrp.Wait(); err != nil && err != context.Canceled {
+	// 		slog.ErrorContext(ctx, "error running gvproxy", "error", err)
+	// 	}
 
-		// Only send error if VM actually encounters an error state
-		stateNotify := vm.StateChangeNotify(ctx)
-		for {
-			select {
-			case state := <-stateNotify:
-				if state.StateType == VirtualMachineStateTypeError {
-					errCh <- fmt.Errorf("VM entered error state")
-					return
-				}
-				if state.StateType == VirtualMachineStateTypeStopped {
-					slog.InfoContext(ctx, "VM stopped")
-					errCh <- nil
-					return
-				}
-			case <-ctx.Done():
-				runCancel()
-				return
-			}
-		}
-	}()
+	// 	// Only send error if VM actually encounters an error state
+	// 	stateNotify := vm.StateChangeNotify(ctx)
+	// 	for {
+	// 		select {
+	// 		case state := <-stateNotify:
+	// 			if state.StateType == VirtualMachineStateTypeError {
+	// 				errCh <- fmt.Errorf("VM entered error state")
+	// 				return
+	// 			}
+	// 			if state.StateType == VirtualMachineStateTypeStopped {
+	// 				slog.InfoContext(ctx, "VM stopped")
+	// 				errCh <- nil
+	// 				return
+	// 			}
+	// 		case <-ctx.Done():
+	// 			return
+	// 		}
+	// 	}
+	// }()
 
-	return NewRunningVM(ctx, vm, hostIPPort, startTime, errCh), nil
+	return runner, nil
 }
 
-func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ConatinerImageConfig, cache oci.ImageFetchConverter, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
+func PrepareContainerVirtioDevices(ctx context.Context, wrkdir string, imageConfig ManifestImageConfig, cache oci.ImageFetchConverter, wg *errgroup.Group) ([]virtio.VirtioDevice, error) {
 
 	ec1DataPath := filepath.Join(wrkdir, "harpoon-runtime-fs-device")
 
@@ -280,36 +266,35 @@ func bootContainerVM[VM VirtualMachine](ctx context.Context, vm VM) error {
 	return nil
 }
 
-func runContainerVM[VM VirtualMachine](ctx context.Context, vm VM) (*errgroup.Group, func(), error) {
-	runCtx, bootCancel := context.WithCancel(ctx)
-	errGroup, ctx := errgroup.WithContext(runCtx)
+// func runContainerVM[VM VirtualMachine](ctx context.Context, vm VM) (func(), error) {
+// 	runCtx, bootCancel := context.WithCancel(ctx)
 
-	if err := vm.ListenNetworkBlockDevices(runCtx); err != nil {
-		bootCancel()
-		return nil, nil, errors.Errorf("listening network block devices: %w", err)
-	}
+// 	// if err := vm.ListenNetworkBlockDevices(runCtx); err != nil {
+// 	// 	bootCancel()
+// 	// 	return nil, errors.Errorf("listening network block devices: %w", err)
+// 	// }
 
-	if err := StartVSockDevices(runCtx, vm); err != nil {
-		bootCancel()
-		return nil, nil, errors.Errorf("starting vsock devices: %w", err)
-	}
+// 	// if err := StartVSockDevices(runCtx, vm); err != nil {
+// 	// 	bootCancel()
+// 	// 	return nil, errors.Errorf("starting vsock devices: %w", err)
+// 	// }
 
-	gpuDevs := virtio.VirtioDevicesOfType[*virtio.VirtioGPU](vm.Devices())
-	for _, gpuDev := range gpuDevs {
-		if gpuDev.UsesGUI {
-			runtime.LockOSThread()
-			err := vm.StartGraphicApplication(float64(gpuDev.Width), float64(gpuDev.Height))
-			runtime.UnlockOSThread()
-			if err != nil {
-				bootCancel()
-				return nil, nil, errors.Errorf("starting graphic application: %w", err)
-			}
-			break
-		} else {
-			slog.DebugContext(ctx, "not starting GUI")
-		}
-	}
+// 	// gpuDevs := virtio.VirtioDevicesOfType[*virtio.VirtioGPU](vm.Devices())
+// 	// for _, gpuDev := range gpuDevs {
+// 	// 	if gpuDev.UsesGUI {
+// 	// 		runtime.LockOSThread()
+// 	// 		err := vm.StartGraphicApplication(float64(gpuDev.Width), float64(gpuDev.Height))
+// 	// 		runtime.UnlockOSThread()
+// 	// 		if err != nil {
+// 	// 			bootCancel()
+// 	// 			return nil, errors.Errorf("starting graphic application: %w", err)
+// 	// 		}
+// 	// 		break
+// 	// 	} else {
+// 	// 		slog.DebugContext(ctx, "not starting GUI")
+// 	// 	}
+// 	// }
 
-	return errGroup, bootCancel, nil
+// 	return bootCancel, nil
 
-}
+// }

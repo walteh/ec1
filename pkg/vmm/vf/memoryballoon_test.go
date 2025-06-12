@@ -32,7 +32,7 @@ func TestMemoryBalloonDevices(t *testing.T) {
 	// }
 
 	// Create a real VM for testing
-	rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
+	rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ManifestImageConfig{
 		ImageRef: "docker.io/library/alpine:latest",
 		Platform: units.PlatformLinuxARM64,
 		Memory:   strongunits.MiB(1024).ToBytes(),
@@ -66,7 +66,7 @@ func TestSetTargetVirtualMachineMemorySize(t *testing.T) {
 	startingMemory := strongunits.MiB(512)
 	targetMemory := strongunits.MiB(300)
 
-	rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ConatinerImageConfig{
+	rvm := tvmm.RunHarpoonVM(t, ctx, vf.NewHypervisor(), vmm.ManifestImageConfig{
 		ImageRef: "docker.io/library/alpine:latest",
 		Platform: units.PlatformLinuxARM64,
 		Memory:   startingMemory.ToBytes(),

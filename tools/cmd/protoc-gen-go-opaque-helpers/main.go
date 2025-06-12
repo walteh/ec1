@@ -46,7 +46,7 @@ func generateFile(gen *protogen.Plugin, file *protogen.File, enableValidation bo
 	generateFileHeader(g, file)
 
 	var hasValidationHelpers bool
-	
+
 	// Process all messages recursively (including nested ones)
 	var processMessages func([]*protogen.Message)
 	processMessages = func(messages []*protogen.Message) {
@@ -62,7 +62,7 @@ func generateFile(gen *protogen.Plugin, file *protogen.File, enableValidation bo
 			processMessages(message.Messages)
 		}
 	}
-	
+
 	processMessages(file.Messages)
 
 	if hasValidationHelpers {
@@ -93,12 +93,12 @@ func shouldGenerateHelpers(message *protogen.Message) bool {
 	if message.Desc.IsMapEntry() {
 		return false
 	}
-	
+
 	// Skip messages that are oneofs (ending with underscore)
 	if strings.HasSuffix(string(message.Desc.Name()), "_") {
 		return false
 	}
-	
+
 	// Generate helpers for both top-level messages and nested messages
 	// (like ExecRequest_Start, ExecResponse_Exit, etc.)
 	// In edition 2023/2024 with opaque API, all non-map, non-oneof messages have builders
@@ -108,8 +108,8 @@ func shouldGenerateHelpers(message *protogen.Message) bool {
 func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message, enableValidation bool) {
 	messageName := message.GoIdent.GoName
 	builderName := messageName + "_builder"
-	
-	// Generate New helper
+
+	// Generate New helper (direct creation, no error)
 	g.P("// New", messageName, " creates a new ", messageName, " using the builder pattern")
 	g.P("func New", messageName, "(f func(*", builderName, ")) *", messageName, " {")
 	g.P("	b := &", builderName, "{}")
@@ -117,20 +117,27 @@ func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message
 	g.P("	return b.Build()")
 	g.P("}")
 	g.P()
-	
+
+	// Always generate the "E" version - with validation if enabled, without if disabled
 	if enableValidation {
 		validateIdent := g.QualifiedGoIdent(protogen.GoIdent{
 			GoName:       "Validate",
 			GoImportPath: "buf.build/go/protovalidate",
 		})
-		
-		// Generate NewValidated helper
-		g.P("// NewValidated", messageName, " creates a new ", messageName, " using the builder pattern with validation")
-		g.P("func NewValidated", messageName, "(f func(*", builderName, ")) (*", messageName, ", error) {")
+
+		g.P("// New", messageName, "E creates a new ", messageName, " using the builder pattern with validation")
+		g.P("func New", messageName, "E(f func(*", builderName, ")) (*", messageName, ", error) {")
 		g.P("	m := New", messageName, "(f)")
 		g.P("	if err := ", validateIdent, "(m); err != nil {")
 		g.P("		return nil, err")
 		g.P("	}")
+		g.P("	return m, nil")
+		g.P("}")
+		g.P()
+	} else {
+		g.P("// New", messageName, "E creates a new ", messageName, " using the builder pattern (validation disabled)")
+		g.P("func New", messageName, "E(f func(*", builderName, ")) (*", messageName, ", error) {")
+		g.P("	m := New", messageName, "(f)")
 		g.P("	return m, nil")
 		g.P("}")
 		g.P()
@@ -140,18 +147,18 @@ func generateMessageHelpers(g *protogen.GeneratedFile, message *protogen.Message
 func generateOneofHelpers(g *protogen.GeneratedFile, message *protogen.Message, enableValidation bool) {
 	messageName := message.GoIdent.GoName
 	builderName := messageName + "_builder"
-	
+
 	// Iterate through all fields to find oneof fields
 	for _, field := range message.Fields {
 		if field.Oneof == nil {
 			continue // Skip non-oneof fields
 		}
-		
+
 		// Get the field type for the oneof
 		fieldName := field.GoName
 		var fieldTypeName string
 		var fieldBuilderName string
-		
+
 		// Determine the type name and builder name based on the field type
 		if field.Message != nil {
 			// Field is a message type
@@ -161,7 +168,7 @@ func generateOneofHelpers(g *protogen.GeneratedFile, message *protogen.Message, 
 			// Field is a scalar type - skip for now as they don't have builders
 			continue
 		}
-		
+
 		// Generate combined helper: NewMessage_WithField
 		funcName := "New" + messageName + "_With" + fieldName
 		g.P("// ", funcName, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern")
@@ -172,18 +179,18 @@ func generateOneofHelpers(g *protogen.GeneratedFile, message *protogen.Message, 
 		g.P("	})")
 		g.P("}")
 		g.P()
-		
+
+		// Always generate "E" version - with validation if enabled, without if disabled
+		validatedFuncNameE := "New" + messageName + "_With" + fieldName + "E"
 		if enableValidation {
 			validateIdent := g.QualifiedGoIdent(protogen.GoIdent{
 				GoName:       "Validate",
 				GoImportPath: "buf.build/go/protovalidate",
 			})
-			
-			// Generate validated combined helper: NewValidatedMessage_WithField
-			validatedFuncName := "NewValidated" + messageName + "_With" + fieldName
-			g.P("// ", validatedFuncName, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern with validation")
-			g.P("func ", validatedFuncName, "(f func(*", fieldBuilderName, ")) (*", messageName, ", error) {")
-			g.P("	inner, err := NewValidated", fieldTypeName, "(f)")
+
+			g.P("// ", validatedFuncNameE, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern with validation")
+			g.P("func ", validatedFuncNameE, "(f func(*", fieldBuilderName, ")) (*", messageName, ", error) {")
+			g.P("	inner, err := New", fieldTypeName, "E(f)")
 			g.P("	if err != nil {")
 			g.P("		return nil, err")
 			g.P("	}")
@@ -193,6 +200,16 @@ func generateOneofHelpers(g *protogen.GeneratedFile, message *protogen.Message, 
 			g.P("	if err := ", validateIdent, "(m); err != nil {")
 			g.P("		return nil, err")
 			g.P("	}")
+			g.P("	return m, nil")
+			g.P("}")
+			g.P()
+		} else {
+			g.P("// ", validatedFuncNameE, " creates a new ", messageName, " with the ", fieldName, " field set using the builder pattern (validation disabled)")
+			g.P("func ", validatedFuncNameE, "(f func(*", fieldBuilderName, ")) (*", messageName, ", error) {")
+			g.P("	inner := New", fieldTypeName, "(f)")
+			g.P("	m := New", messageName, "(func(b *", builderName, ") {")
+			g.P("		b.", fieldName, " = inner")
+			g.P("	})")
 			g.P("	return m, nil")
 			g.P("}")
 			g.P()

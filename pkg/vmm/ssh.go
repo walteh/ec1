@@ -57,11 +57,8 @@ func ObtainSSHConnectionWithGuest(ctx context.Context, address string, cfg *ssh.
 }
 
 func Exec[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM], command string) (string, string, string, error) {
-	guestListenPort := uint32(2019)
 
-	slog.DebugContext(ctx, "Exposing vsock port", "guestPort", guestListenPort)
-
-	stdout, stderr, errd, err := rvm.Exec(ctx, command)
+	stdout, stderr, errd, err := rvm.RunCommandSimple(ctx, command)
 	if err != nil {
 		return "", "", "", errors.Errorf("Failed to execute command: %w", err)
 	}
@@ -73,7 +70,7 @@ func Exec[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM], command st
 func parseMemInfo(r io.Reader) (*procfs.Meminfo, error)
 
 func ProcMemInfo[VM VirtualMachine](ctx context.Context, rvm *RunningVM[VM]) (*procfs.Meminfo, error) {
-	stdout, stderr, errcode, err := rvm.Exec(ctx, "/bin/cat /proc/meminfo")
+	stdout, stderr, errcode, err := rvm.RunCommandSimple(ctx, "/bin/cat /proc/meminfo")
 	if err != nil {
 		return nil, errors.Errorf("Failed to execute command: %w", err)
 	}

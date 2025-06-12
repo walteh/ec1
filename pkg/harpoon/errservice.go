@@ -24,19 +24,24 @@ type errService struct {
 	enableLogSuccess bool
 }
 
-// Exec implements harpoonv1.TTRPCGuestServiceService.
-func (e *errService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestService_ExecServer) error {
-	return streamWrap(e, e.ref.Exec)(ctx, server)
-}
-
 // Readiness implements harpoonv1.TTRPCGuestServiceService.
 func (e *errService) Readiness(ctx context.Context, req *harpoonv1.ReadinessRequest) (*harpoonv1.ReadinessResponse, error) {
 	return wrap(e, e.ref.Readiness)(ctx, req)
 }
 
-// Run implements harpoonv1.TTRPCGuestServiceService.
-func (e *errService) Run(ctx context.Context, req *harpoonv1.RunRequest) (*harpoonv1.RunResponse, error) {
-	return wrap(e, e.ref.Run)(ctx, req)
+// RunSpec implements harpoonv1.TTRPCGuestServiceService.
+func (e *errService) RunSpec(ctx context.Context, req *harpoonv1.RunSpecRequest) (*harpoonv1.RunSpecResponse, error) {
+	return wrap(e, e.ref.RunSpec)(ctx, req)
+}
+
+// RunSpecSignal implements harpoonv1.TTRPCGuestServiceService.
+func (e *errService) RunSpecSignal(ctx context.Context, reqz harpoonv1.TTRPCGuestService_RunSpecSignalServer) error {
+	return streamWrap(e, e.ref.RunSpecSignal)(ctx, reqz)
+}
+
+// RunCommand implements harpoonv1.TTRPCGuestServiceService.
+func (e *errService) RunCommand(ctx context.Context, req *harpoonv1.RunCommandRequest) (*harpoonv1.RunCommandResponse, error) {
+	return wrap(e, e.ref.RunCommand)(ctx, req)
 }
 
 // TimeSync implements harpoonv1.TTRPCGuestServiceService.
@@ -62,18 +67,18 @@ func streamWrap[I any](e *errService, f func(context.Context, I) error) func(con
 
 		ctx = slogctx.Append(ctx, slog.String("ttrpc_method", realName))
 
-		err := f(ctx, req)
+		retErr := f(ctx, req)
 
 		end := time.Now()
 
-		if err != nil && e.enableLogErrors {
-			if trac, ok := err.(errors.E); ok {
+		if retErr != nil && e.enableLogErrors {
+			if trac, ok := retErr.(errors.E); ok {
 				pc = trac.StackTrace()[0]
 			}
 
 			rec := slog.NewRecord(end, slog.LevelError, "error in task service", pc)
 			rec.AddAttrs(
-				slog.String("error", err.Error()),
+				slog.Any("error", retErr),
 				slog.String("method", realName),
 				slog.Duration("duration", end.Sub(start)),
 			)
@@ -81,7 +86,7 @@ func streamWrap[I any](e *errService, f func(context.Context, I) error) func(con
 				slog.ErrorContext(ctx, "error logging error", "error", err)
 			}
 		}
-		if err == nil && e.enableLogSuccess {
+		if retErr == nil && e.enableLogSuccess {
 			rec := slog.NewRecord(end, slog.LevelInfo, "success in task service", pc)
 			rec.AddAttrs(
 				slog.String("method", realName),
@@ -92,7 +97,7 @@ func streamWrap[I any](e *errService, f func(context.Context, I) error) func(con
 			}
 		}
 
-		return err
+		return retErr
 	}
 }
 
@@ -108,18 +113,18 @@ func wrap[I, O any](e *errService, f func(context.Context, I) (O, error)) func(c
 
 		ctx = slogctx.Append(ctx, slog.String("ttrpc_method", realName))
 
-		resp, err := f(ctx, req)
+		resp, retErr := f(ctx, req)
 
 		end := time.Now()
 
-		if err != nil && e.enableLogErrors {
-			if trac, ok := err.(errors.E); ok {
+		if retErr != nil && e.enableLogErrors {
+			if trac, ok := retErr.(errors.E); ok {
 				pc = trac.StackTrace()[0]
 			}
 
 			rec := slog.NewRecord(end, slog.LevelError, "error in task service", pc)
 			rec.AddAttrs(
-				slog.String("error", err.Error()),
+				slog.Any("error", retErr),
 				slog.String("method", realName),
 				slog.Duration("duration", end.Sub(start)),
 			)
@@ -127,7 +132,7 @@ func wrap[I, O any](e *errService, f func(context.Context, I) (O, error)) func(c
 				slog.ErrorContext(ctx, "error logging error", "error", err)
 			}
 		}
-		if err == nil && e.enableLogSuccess {
+		if retErr == nil && e.enableLogSuccess {
 			rec := slog.NewRecord(end, slog.LevelInfo, "success in task service", pc)
 			rec.AddAttrs(
 				slog.String("method", realName),
@@ -137,6 +142,6 @@ func wrap[I, O any](e *errService, f func(context.Context, I) (O, error)) func(c
 				slog.ErrorContext(ctx, "error logging success", "error", err)
 			}
 		}
-		return resp, nil
+		return resp, retErr
 	}
 }

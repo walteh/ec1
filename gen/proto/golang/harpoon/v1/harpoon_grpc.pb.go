@@ -19,20 +19,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GuestService_Exec_FullMethodName      = "/harpoon.v1.GuestService/Exec"
-	GuestService_TimeSync_FullMethodName  = "/harpoon.v1.GuestService/TimeSync"
-	GuestService_Readiness_FullMethodName = "/harpoon.v1.GuestService/Readiness"
-	GuestService_Run_FullMethodName       = "/harpoon.v1.GuestService/Run"
+	GuestService_TimeSync_FullMethodName      = "/harpoon.v1.GuestService/TimeSync"
+	GuestService_Readiness_FullMethodName     = "/harpoon.v1.GuestService/Readiness"
+	GuestService_RunSpec_FullMethodName       = "/harpoon.v1.GuestService/RunSpec"
+	GuestService_RunSpecSignal_FullMethodName = "/harpoon.v1.GuestService/RunSpecSignal"
+	GuestService_RunCommand_FullMethodName    = "/harpoon.v1.GuestService/RunCommand"
 )
 
 // GuestServiceClient is the client API for GuestService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GuestServiceClient interface {
-	Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error)
 	TimeSync(ctx context.Context, in *TimeSyncRequest, opts ...grpc.CallOption) (*TimeSyncResponse, error)
 	Readiness(ctx context.Context, in *ReadinessRequest, opts ...grpc.CallOption) (*ReadinessResponse, error)
-	Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error)
+	RunSpec(ctx context.Context, in *RunSpecRequest, opts ...grpc.CallOption) (*RunSpecResponse, error)
+	RunSpecSignal(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RunSpecSignalRequest, RunSpecSignalResponse], error)
+	RunCommand(ctx context.Context, in *RunCommandRequest, opts ...grpc.CallOption) (*RunCommandResponse, error)
 }
 
 type guestServiceClient struct {
@@ -42,19 +44,6 @@ type guestServiceClient struct {
 func NewGuestServiceClient(cc grpc.ClientConnInterface) GuestServiceClient {
 	return &guestServiceClient{cc}
 }
-
-func (c *guestServiceClient) Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecRequest, ExecResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &GuestService_ServiceDesc.Streams[0], GuestService_Exec_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ExecRequest, ExecResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type GuestService_ExecClient = grpc.BidiStreamingClient[ExecRequest, ExecResponse]
 
 func (c *guestServiceClient) TimeSync(ctx context.Context, in *TimeSyncRequest, opts ...grpc.CallOption) (*TimeSyncResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -76,10 +65,33 @@ func (c *guestServiceClient) Readiness(ctx context.Context, in *ReadinessRequest
 	return out, nil
 }
 
-func (c *guestServiceClient) Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error) {
+func (c *guestServiceClient) RunSpec(ctx context.Context, in *RunSpecRequest, opts ...grpc.CallOption) (*RunSpecResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RunResponse)
-	err := c.cc.Invoke(ctx, GuestService_Run_FullMethodName, in, out, cOpts...)
+	out := new(RunSpecResponse)
+	err := c.cc.Invoke(ctx, GuestService_RunSpec_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *guestServiceClient) RunSpecSignal(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RunSpecSignalRequest, RunSpecSignalResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &GuestService_ServiceDesc.Streams[0], GuestService_RunSpecSignal_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RunSpecSignalRequest, RunSpecSignalResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GuestService_RunSpecSignalClient = grpc.BidiStreamingClient[RunSpecSignalRequest, RunSpecSignalResponse]
+
+func (c *guestServiceClient) RunCommand(ctx context.Context, in *RunCommandRequest, opts ...grpc.CallOption) (*RunCommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunCommandResponse)
+	err := c.cc.Invoke(ctx, GuestService_RunCommand_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,10 +102,11 @@ func (c *guestServiceClient) Run(ctx context.Context, in *RunRequest, opts ...gr
 // All implementations must embed UnimplementedGuestServiceServer
 // for forward compatibility.
 type GuestServiceServer interface {
-	Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error
 	TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error)
 	Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error)
-	Run(context.Context, *RunRequest) (*RunResponse, error)
+	RunSpec(context.Context, *RunSpecRequest) (*RunSpecResponse, error)
+	RunSpecSignal(grpc.BidiStreamingServer[RunSpecSignalRequest, RunSpecSignalResponse]) error
+	RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error)
 	mustEmbedUnimplementedGuestServiceServer()
 }
 
@@ -104,17 +117,20 @@ type GuestServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGuestServiceServer struct{}
 
-func (UnimplementedGuestServiceServer) Exec(grpc.BidiStreamingServer[ExecRequest, ExecResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method Exec not implemented")
-}
 func (UnimplementedGuestServiceServer) TimeSync(context.Context, *TimeSyncRequest) (*TimeSyncResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TimeSync not implemented")
 }
 func (UnimplementedGuestServiceServer) Readiness(context.Context, *ReadinessRequest) (*ReadinessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Readiness not implemented")
 }
-func (UnimplementedGuestServiceServer) Run(context.Context, *RunRequest) (*RunResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
+func (UnimplementedGuestServiceServer) RunSpec(context.Context, *RunSpecRequest) (*RunSpecResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RunSpec not implemented")
+}
+func (UnimplementedGuestServiceServer) RunSpecSignal(grpc.BidiStreamingServer[RunSpecSignalRequest, RunSpecSignalResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method RunSpecSignal not implemented")
+}
+func (UnimplementedGuestServiceServer) RunCommand(context.Context, *RunCommandRequest) (*RunCommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RunCommand not implemented")
 }
 func (UnimplementedGuestServiceServer) mustEmbedUnimplementedGuestServiceServer() {}
 func (UnimplementedGuestServiceServer) testEmbeddedByValue()                      {}
@@ -136,13 +152,6 @@ func RegisterGuestServiceServer(s grpc.ServiceRegistrar, srv GuestServiceServer)
 	}
 	s.RegisterService(&GuestService_ServiceDesc, srv)
 }
-
-func _GuestService_Exec_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(GuestServiceServer).Exec(&grpc.GenericServerStream[ExecRequest, ExecResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type GuestService_ExecServer = grpc.BidiStreamingServer[ExecRequest, ExecResponse]
 
 func _GuestService_TimeSync_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TimeSyncRequest)
@@ -180,20 +189,45 @@ func _GuestService_Readiness_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _GuestService_Run_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RunRequest)
+func _GuestService_RunSpec_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunSpecRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GuestServiceServer).Run(ctx, in)
+		return srv.(GuestServiceServer).RunSpec(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: GuestService_Run_FullMethodName,
+		FullMethod: GuestService_RunSpec_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GuestServiceServer).Run(ctx, req.(*RunRequest))
+		return srv.(GuestServiceServer).RunSpec(ctx, req.(*RunSpecRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GuestService_RunSpecSignal_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GuestServiceServer).RunSpecSignal(&grpc.GenericServerStream[RunSpecSignalRequest, RunSpecSignalResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GuestService_RunSpecSignalServer = grpc.BidiStreamingServer[RunSpecSignalRequest, RunSpecSignalResponse]
+
+func _GuestService_RunCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GuestServiceServer).RunCommand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GuestService_RunCommand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GuestServiceServer).RunCommand(ctx, req.(*RunCommandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -214,14 +248,18 @@ var GuestService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _GuestService_Readiness_Handler,
 		},
 		{
-			MethodName: "Run",
-			Handler:    _GuestService_Run_Handler,
+			MethodName: "RunSpec",
+			Handler:    _GuestService_RunSpec_Handler,
+		},
+		{
+			MethodName: "RunCommand",
+			Handler:    _GuestService_RunCommand_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Exec",
-			Handler:       _GuestService_Exec_Handler,
+			StreamName:    "RunSpecSignal",
+			Handler:       _GuestService_RunSpecSignal_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

@@ -3,6 +3,7 @@ package harpoon
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 
 	"github.com/containerd/ttrpc"
 	"github.com/mdlayher/vsock"
@@ -57,32 +58,36 @@ func NewGuestServiceRunner(ctx context.Context, opts GuestServiceRunnerOpts) (*G
 	}, nil
 }
 
-// func runTtrpc(ctx context.Context) error {
-
-// 	if err != nil {
-// 		slog.ErrorContext(ctx, "problem running stdio forwarding", "error", err)
-// 		return errors.Errorf("running stdio forwarding: %w", err)
-// 	}
-
-// 	listener, err := vsock.ListenContextID(3, uint32(ec1init.VsockPort), nil)
-// 	if err != nil {
-// 		return errors.Errorf("dialing vsock: %w", err)
-// 	}
-
-// 	return ttrpcServe.Serve(ctx, listener)
-// }
-
-func (p *GuestServiceRunner) Run(ctx context.Context) error {
-	p.alive = true
-	defer func() {
-		p.alive = false
+func goSafe(ctx context.Context, f func() error) error {
+	errChan := make(chan error)
+	go func() {
+		var err error
+		defer func() {
+			if r := recover(); r != nil {
+				slog.ErrorContext(ctx, "goroutine panic", "err", r,
+					"stack", string(debug.Stack()))
+				errChan <- errors.Errorf("goroutine panic: %v", r)
+			} else {
+				errChan <- err
+			}
+		}()
+		err = f()
 	}()
 
-	err := p.ttrpcServer.Serve(ctx, p.vsock)
-	if err != nil {
-		return errors.Errorf("serving ttrpc: %w", err)
-	}
-	return nil
+	return <-errChan
+}
+
+func (p *GuestServiceRunner) Run(ctx context.Context) error {
+	err := goSafe(ctx, func() error {
+		// any panics inside Serve's child goroutines will unwind to here
+		if err := p.ttrpcServer.Serve(ctx, p.vsock); err != nil {
+			slog.ErrorContext(ctx, "ttrpc server exited", "err", err)
+			return errors.Errorf("serving ttrpc: %w", err)
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (p *GuestServiceRunner) Close(ctx context.Context) error {

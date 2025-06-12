@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -56,7 +57,7 @@ func ErrorToTrace(err error, record slog.Record, styles *Styles, render renderFu
 	// Get the root error message for header (avoid repetition)
 	rootError := getRootError(err)
 	header := render(styles.Error.Main, rootError.Error())
-	content := strings.Join(sections, "\n")
+	content := strings.Join(sections, "\n\n")
 
 	return render(styles.Error.Container, header+"\n\n"+content)
 }
@@ -97,6 +98,8 @@ func buildErrorTraces(err error, styles *Styles, render renderFunc, hyperlink Hy
 		current = next
 	}
 
+	slices.Reverse(traces)
+
 	return traces
 }
 
@@ -110,15 +113,15 @@ func buildSimpleStackTrace(err error, styles *Styles, render renderFunc, hyperli
 		}
 
 		var rows []string
-	HERE:
+		// HERE:
 		for _, frame := range frames {
 			enhancedSource := NewEnhancedSource(frame.PC)
 			locationDisplay := enhancedSource.Render(styles, render, hyperlink)
-			for _, trace := range errorTraces {
-				if strings.Contains(trace, locationDisplay) {
-					continue HERE
-				}
-			}
+			// for _, trace := range errorTraces {
+			// 	if strings.Contains(trace, locationDisplay) {
+			// 		continue HERE
+			// 	}
+			// }
 			rows = append(rows, locationDisplay)
 		}
 

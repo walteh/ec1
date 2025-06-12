@@ -2,20 +2,15 @@ package containerd
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"net"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/containerd/containerd/api/events"
 	"github.com/containerd/containerd/api/runtime/task/v3"
-	"github.com/containerd/containerd/api/types"
-	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/core/runtime"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
@@ -26,36 +21,37 @@ import (
 	"github.com/containerd/errdefs/pkg/errgrpc"
 	"github.com/containerd/log"
 	"github.com/containerd/ttrpc"
-	"github.com/containerd/typeurl/v2"
 	"github.com/creack/pty"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	slogctx "github.com/veqryn/slog-context"
 	"gitlab.com/tozd/go/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	taskt "github.com/containerd/containerd/api/types/task"
 	ptypes "github.com/containerd/containerd/v2/pkg/protobuf/types"
 
 	"github.com/walteh/ec1/pkg/logging/valuelog"
+	"github.com/walteh/ec1/pkg/vmm"
 	"github.com/walteh/ec1/pkg/vmm/vf"
 )
+
+type service struct {
+	containersMu sync.Mutex
+	containers   map[string]*container
+	events       chan interface{}
+	sd           shutdown.Service
+	hypervisor   vmm.Hypervisor[*vf.VirtualMachine]
+	pid          int
+}
 
 func NewTaskService(ctx context.Context, publisher shim.Publisher, sd shutdown.Service) (taskService, error) {
 	s := service{
 		containers: make(map[string]*container),
 		sd:         sd,
 		events:     make(chan interface{}, 128),
+		hypervisor: vf.NewHypervisor(),
+		pid:        os.Getpid(),
 	}
 
 	go s.forward(ctx, publisher)
 	return &s, nil
-}
-
-type service struct {
-	mu         sync.Mutex
-	containers map[string]*container
-	events     chan interface{}
-	sd         shutdown.Service
 }
 
 func (s *service) forward(ctx context.Context, publisher shim.Publisher) {
@@ -70,7 +66,26 @@ func (s *service) forward(ctx context.Context, publisher shim.Publisher) {
 	_ = publisher.Close()
 }
 
+func (s *service) setContainer(ctx context.Context, c *container) error {
+	s.containersMu.Lock()
+	defer s.containersMu.Unlock()
+
+	if _, ok := s.containers[c.request.ID]; ok {
+		return errgrpc.ToGRPCf(errdefs.ErrAlreadyExists, "container already exists: %s", c.request.ID)
+	}
+
+	s.containers[c.request.ID] = c
+	return nil
+}
+
 func (s *service) getContainer(ctx context.Context, id string) (*container, error) {
+	s.containersMu.Lock()
+	defer s.containersMu.Unlock()
+
+	if id == "" {
+		return nil, errgrpc.ToGRPCf(errdefs.ErrNotFound, "container not created")
+	}
+
 	c := s.containers[id]
 	if c == nil {
 		slog.ErrorContext(ctx, "container not found", "id", id)
@@ -79,11 +94,28 @@ func (s *service) getContainer(ctx context.Context, id string) (*container, erro
 	return c, nil
 }
 
-func (s *service) getContainerL(ctx context.Context, id string) (*container, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func getContainerProcess(ctx context.Context, s *service, input interface {
+	GetID() string
+	GetExecID() string
+}) (*container, *managedProcess, error) {
+	c, err := s.getContainer(ctx, input.GetID())
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return s.getContainer(ctx, id)
+	p, err := c.getProcess(ctx, input.GetExecID())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return c, p, nil
+}
+
+func (s *service) deleteContainer(ctx context.Context, id string) {
+	s.containersMu.Lock()
+	defer s.containersMu.Unlock()
+
+	delete(s.containers, id)
 }
 
 func (s *service) RegisterTTRPC(server *ttrpc.Server) error {
@@ -91,42 +123,37 @@ func (s *service) RegisterTTRPC(server *ttrpc.Server) error {
 	return nil
 }
 
+func protobufTimestamp(t time.Time) *timestamppb.Timestamp {
+	if t.IsZero() {
+		return nil
+	}
+	return protobuf.ToTimestamp(t)
+}
+
 func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.StateResponse, error) {
-	log.G(ctx).WithField("request", request).Info("STATE")
-	defer log.G(ctx).Info("STATE_DONE")
 
-	c, err := s.getContainerL(ctx, request.ID)
+	c, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
+		return nil, err
 	}
 
-	p, err := c.getProcessL(ctx, request.ExecID)
-	if err != nil {
-		return nil, errors.Errorf("getting process: %w", err)
-	}
-
-	var pid int = p.pid
-	var exitedAtPB *timestamppb.Timestamp = nil
-
-	if !p.exitedAt.IsZero() {
-		exitedAtPB = protobuf.ToTimestamp(p.exitedAt)
-	}
+	state := p.getStatus()
 
 	resp := &task.StateResponse{
 		ID:         request.ID,
 		Bundle:     c.bundlePath,
-		Pid:        uint32(pid),
-		Status:     p.status,
+		Pid:        uint32(p.pid),
+		Status:     state.Status,
 		Stdin:      p.io.stdinPath,
 		Stdout:     p.io.stdoutPath,
 		Stderr:     p.io.stderrPath,
 		Terminal:   c.spec.Process.Terminal,
-		ExitedAt:   exitedAtPB,
-		ExitStatus: p.exitStatus,
+		ExitedAt:   protobufTimestamp(state.ExitedAt),
+		ExitStatus: uint32(state.ExitCode),
 		ExecID:     request.ExecID,
 	}
 
-	slog.InfoContext(ctx, "STATE", "response", valuelog.NewPrettyValue(resp), "pid", p.pid, "status", p.status)
+	slog.InfoContext(ctx, "STATE", "response", valuelog.NewPrettyValue(resp), "pid", p.pid, "status", state.Status)
 
 	// For VM-based processes, we use the stored pid
 
@@ -134,22 +161,20 @@ func (s *service) State(ctx context.Context, request *task.StateRequest) (*task.
 }
 
 func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (_ *task.CreateTaskResponse, retErr error) {
-	log.G(ctx).WithField("request", request).Info("CREATE")
-	defer log.G(ctx).Info("CREATE_DONE")
-
-	specPath := path.Join(request.Bundle, oci.ConfigFilename)
-
-	spec, err := oci.ReadSpec(path.Join(request.Bundle, oci.ConfigFilename))
-	if err != nil {
-		return nil, errors.Errorf("reading spec at %s/: %w", specPath, err)
-	}
 
 	slog.InfoContext(ctx, "CREATE", "request", valuelog.NewPrettyValue(request))
 
-	rootfs, err := mount.CanonicalizePath(spec.Root.Path)
+	specPath := path.Join(request.Bundle, oci.ConfigFilename)
+
+	spec, err := oci.ReadSpec(specPath)
 	if err != nil {
-		return nil, errors.Errorf("canonicalizing rootfs at %s/: %w", rootfs, err)
+		return nil, errors.Errorf("reading spec: %w", err)
 	}
+
+	// rootfs, err := mount.CanonicalizePath(spec.Root.Path)
+	// if err != nil {
+	// 	return nil, errors.Errorf("canonicalizing rootfs: %w", err)
+	// }
 
 	// canonicalizedRootfs, err := mount.CanonicalizePath(request.Rootfs[0].Target)
 	// if err != nil {
@@ -159,63 +184,23 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 	// slog.InfoContext(ctx, "CREATE", "spec.Root.Path", spec.Root.Path, "spec.Root.Path[canonicalized]", rootfs, "request.Rootfs", request.Rootfs, "canonicalizedRootfs")
 
 	// Workaround for 104-char limit of UNIX socket path
-	shortenedRootfsPath, err := shortenPath(rootfs)
-	if err != nil {
-		return nil, errors.Errorf("shortening rootfs at %s/: %w", rootfs, err)
-	}
-
-	dnsSocketPath := path.Join(shortenedRootfsPath, "var", "run", "mDNSResponder")
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	c := &container{
-		request: request,
-		// rootfs:        rootfs,
-		spec:          spec,
-		bundlePath:    request.Bundle,
-		dnsSocketPath: dnsSocketPath,
-		hypervisor:    vf.NewHypervisor(),
-		primary: managedProcess{
-			spec:      spec.Process,
-			waitblock: make(chan struct{}),
-			status:    taskt.Status_CREATED,
-		},
-		auxiliary: make(map[string]*managedProcess),
-	}
-
-	defer func() {
-		if retErr != nil {
-			if err := c.destroy(); err != nil {
-				log.G(ctx).WithError(err).Warn("failed to cleanup container")
-			}
-		}
-	}()
-
-	log.G(ctx).WithField("request", request).Info("CREATE_SETUP_START")
-
-	if err = c.primary.setup(ctx, request.Stdin, request.Stdout, request.Stderr); err != nil {
-		return nil, errors.Errorf("setting up primary process: %w", err)
-	}
-
-	log.G(ctx).Info("Starting VM creation")
-	// Create and start the VM for this container
-	if err := c.createVM(ctx, c.spec, request.ID, request, c.primary.io); err != nil {
-
-		return nil, errors.Errorf("failed to create VM: %w", err)
-	}
-
-	// mounts, err := processMounts(c.rootfs, request.Rootfs, spec.Mounts)
+	// shortenedRootfsPath, err := shortenPath(rootfs)
 	// if err != nil {
-	// 	return nil, errors.Errorf("processing mounts: %w", err)
+	// 	return nil, errors.Errorf("shortening rootfs at %s/: %w", rootfs, err)
 	// }
 
-	// if err = mount.All(mounts, c.rootfs); err != nil {
-	// 	return nil, errors.Errorf("mounting rootfs component: %w", err)
-	// }
+	// dnsSocketPath := path.Join(shortenedRootfsPath, "var", "run", "mDNSResponder")
 
-	// TODO: Check if container already exists?
-	s.containers[request.ID] = c
+	// start := time.Now()
+
+	c, primaryProcess, err := NewContainer(ctx, s.hypervisor, spec, request)
+	if err != nil {
+		return nil, errors.Errorf("creating vm: %w", err)
+	}
+
+	if err := s.setContainer(ctx, c); err != nil {
+		return nil, errors.Errorf("setting container: %w", err)
+	}
 
 	s.events <- &events.TaskCreate{
 		ContainerID: request.ID,
@@ -228,210 +213,121 @@ func (s *service) Create(ctx context.Context, request *task.CreateTaskRequest) (
 			Terminal: c.spec.Process.Terminal,
 		},
 		Checkpoint: request.Checkpoint,
+		Pid:        uint32(primaryProcess.pid),
 	}
 
 	return &task.CreateTaskResponse{
-		Pid: uint32(c.primary.pid),
+		Pid: uint32(primaryProcess.pid),
 	}, nil
 }
 
-func shortenPath(p string) (string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", errors.Errorf("getting working directory: %w", err)
-	}
-
-	shortened, err := filepath.Rel(wd, path.Join(p))
-	if err != nil || len(shortened) > len(p) {
-		return p, nil
-	}
-
-	return shortened, nil
-}
-
-func processMounts(targetRoot string, rootfs []*types.Mount, specMounts []specs.Mount) ([]mount.Mount, error) {
-	var mounts []mount.Mount
-	for _, m := range rootfs {
-		mm, err := processMount(targetRoot, m.Type, m.Source, m.Target, m.Options)
-		if err != nil {
-			return nil, errors.Errorf("processing mount: %w", err)
-		}
-
-		if mm != nil {
-			mounts = append(mounts, *mm)
-		}
-	}
-
-	for _, m := range specMounts {
-		mm, err := processMount(targetRoot, m.Type, m.Source, m.Destination, m.Options)
-		if err != nil {
-			return nil, errors.Errorf("processing mount: %w", err)
-		}
-
-		if mm != nil {
-			mounts = append(mounts, *mm)
-		}
-	}
-
-	return mounts, nil
-}
-
-func processMount(rootfs, mtype, source, target string, options []string) (*mount.Mount, error) {
-	m := &mount.Mount{
-		Type:    mtype,
-		Source:  source,
-		Target:  target,
-		Options: options,
-	}
-
-	switch mtype {
-	case "bind":
-		stat, err := os.Stat(source)
-		if err != nil {
-			return nil, errors.Errorf("statting source '%s': %w", source, err)
-		}
-
-		if stat.IsDir() {
-			fullPath := filepath.Join(rootfs, target)
-			if err = os.MkdirAll(fullPath, 0o755); err != nil {
-				return nil, errors.Errorf("creating directory '%s' to mount '%s': %w", fullPath, source, err)
-			}
-
-			return m, nil
-		} else {
-			// skip, only dirs are supported by bindfs
-		}
-	case "devfs":
-		return m, nil
-	}
-
-	mountJson, err := json.Marshal(m)
-	if err != nil {
-		return nil, errors.Errorf("marshalling mount: %w", err)
-	}
-
-	log.L.Warn("skipping mount: ", string(mountJson))
-	return nil, nil
-}
-
-func unixSocketCopy(from, to *net.UnixConn) error {
-	for {
-		// TODO: How we determine buffer size that is guaranteed to be enough?
-		b := make([]byte, 1024)
-		oob := make([]byte, 1024)
-		n, oobn, _, addr, err := from.ReadMsgUnix(b, oob)
-		if err != nil {
-			return err
-		}
-		_, _, err = to.WriteMsgUnix(b[:n], oob[:oobn], addr)
-		if err != nil {
-			return err
-		}
-	}
-}
-
 func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.StartResponse, error) {
-	log.G(ctx).WithField("request", request).Info("START")
-	defer log.G(ctx).Info("START_DONE")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	c, err := s.getContainer(ctx, request.ID)
+	c, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	p, err := c.getProcess(ctx, request.ExecID)
-	if err != nil {
-		return nil, errors.Errorf("getting process: %w", err)
+	if err := c.vm.Start(ctx); err != nil {
+		return nil, errors.Errorf("starting vm: %w", err)
 	}
 
-	// Set a fake PID for compatibility (VM processes don't have host PIDs)
-	p.pid = os.Getpid()
-	p.status = taskt.Status_RUNNING // Set as running immediately
+	go func() {
+		err := c.vm.Wait(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "vm run complete with error", "error", err)
+		} else {
+			slog.InfoContext(ctx, "vm run complete")
+		}
+	}()
+
+	if err := p.StartSignalRunner(ctx); err != nil {
+		return nil, errors.Errorf("starting signal runner: %w", err)
+	}
+
+	// // Set a fake PID for compatibility (VM processes don't have host PIDs)
+	// p.pid = os.Getpid()
+	// p.status = taskt.Status_RUNNING // Set as running immediately
 
 	// Start VM creation asynchronously with better error handling
-	go func() {
+	// go func() {
 
-		// Use background context since the request context might be cancelled
-		vmCtx := context.Background()
-		attrs := slogctx.ExtractAppended(ctx, time.Now(), slog.LevelDebug, "start_vm_done")
-		for _, attr := range attrs {
-			vmCtx = slogctx.Append(vmCtx, attr)
-		}
+	// 	// Use background context since the request context might be cancelled
+	// 	vmCtx := context.Background()
+	// 	attrs := slogctx.ExtractAppended(ctx, time.Now(), slog.LevelDebug, "start_vm_done")
+	// 	for _, attr := range attrs {
+	// 		vmCtx = slogctx.Append(vmCtx, attr)
+	// 	}
 
-		defer func() {
-			defer func() {
-				close(p.waitblock)
-			}()
+	// 	defer func() {
+	// 		defer func() {
+	// 			close(p.waitblock)
+	// 		}()
 
-			if r := recover(); r != nil {
-				log.G(ctx).WithField("panic", r).WithField("pid", p.pid).Error("PANIC in VM creation")
-				p.status = taskt.Status_STOPPED
-				p.exitStatus = 1
-				// Send task exit event to notify containerd of failure
-				s.events <- &events.TaskExit{
-					ContainerID: request.ID,
-					ID:          request.ExecID,
-					Pid:         uint32(p.pid),
-					ExitStatus:  1,
-					ExitedAt:    protobuf.ToTimestamp(time.Now()),
-				}
-				// Ensure waitblock is closed in case of panic
-				select {
-				case <-p.waitblock:
-					// Already closed
-				default:
-					close(p.waitblock)
-				}
-			}
-			log.G(ctx).Info("START_VM_WAIT_DONE")
-		}()
+	// 		if r := recover(); r != nil {
+	// 			log.G(ctx).WithField("panic", r).WithField("pid", p.pid).Error("PANIC in VM creation")
+	// 			p.status = taskt.Status_STOPPED
+	// 			p.exitStatus = 1
+	// 			// Send task exit event to notify containerd of failure
+	// 			s.events <- &events.TaskExit{
+	// 				ContainerID: request.ID,
+	// 				ID:          request.ExecID,
+	// 				Pid:         uint32(p.pid),
+	// 				ExitStatus:  1,
+	// 				ExitedAt:    protobuf.ToTimestamp(time.Now()),
+	// 			}
+	// 			// Ensure waitblock is closed in case of panic
+	// 			select {
+	// 			case <-p.waitblock:
+	// 				// Already closed
+	// 			default:
+	// 				close(p.waitblock)
+	// 			}
+	// 		}
+	// 		log.G(ctx).Info("START_VM_WAIT_DONE")
+	// 	}()
 
-		// log.G(ctx).Info("Starting VM creation")
-		// // Create and start the VM for this container
-		// if err := c.createVM(vmCtx, c.spec, request.ID, c.rootfs, c.primary.io); err != nil {
-		// 	log.G(ctx).WithError(err).Error("failed to create VM")
-		// 	p.status = taskt.Status_STOPPED
-		// 	p.exitStatus = 1
+	// 	// log.G(ctx).Info("Starting VM creation")
+	// 	// // Create and start the VM for this container
+	// 	// if err := c.createVM(vmCtx, c.spec, request.ID, c.rootfs, c.primary.io); err != nil {
+	// 	// 	log.G(ctx).WithError(err).Error("failed to create VM")
+	// 	// 	p.status = taskt.Status_STOPPED
+	// 	// 	p.exitStatus = 1
 
-		// 	// Send task exit event to notify containerd of failure
-		// 	s.events <- &events.TaskExit{
-		// 		ContainerID: request.ID,
-		// 		ID:          request.ExecID,
-		// 		Pid:         uint32(p.pid),
-		// 		ExitStatus:  1,
-		// 		ExitedAt:    protobuf.ToTimestamp(time.Now()),
-		// 	}
-		// 	// Close waitblock since start won't be called
-		// 	close(p.waitblock)
-		// 	return
-		// }
+	// 	// 	// Send task exit event to notify containerd of failure
+	// 	// 	s.events <- &events.TaskExit{
+	// 	// 		ContainerID: request.ID,
+	// 	// 		ID:          request.ExecID,
+	// 	// 		Pid:         uint32(p.pid),
+	// 	// 		ExitStatus:  1,
+	// 	// 		ExitedAt:    protobuf.ToTimestamp(time.Now()),
+	// 	// 	}
+	// 	// 	// Close waitblock since start won't be called
+	// 	// 	close(p.waitblock)
+	// 	// 	return
+	// 	// }
 
-		// Start the process in the VM now that VM is created
-		if err := p.start(ctx, c.vm); err != nil {
-			log.G(ctx).WithError(err).Error("failed to start process in VM")
-			p.status = taskt.Status_STOPPED
-			p.exitStatus = 1
-			// Send task exit event to notify containerd of failure
-			s.events <- &events.TaskExit{
-				ContainerID: request.ID,
-				ID:          request.ExecID,
-				Pid:         uint32(p.pid),
-				ExitStatus:  1,
-				ExitedAt:    protobuf.ToTimestamp(time.Now()),
-			}
-			// Close waitblock since start failed
-			close(p.waitblock)
-			return
-		}
+	// 	// Start the process in the VM now that VM is created
+	// 	rs, err := p.runSignal(ctx)
+	// 	if err != nil {
+	// 		log.G(ctx).WithError(err).Error("failed to start process in VM")
+	// 		p.status = taskt.Status_STOPPED
+	// 		p.exitStatus = 1
+	// 		// Send task exit event to notify containerd of failure
+	// 		s.events <- &events.TaskExit{
+	// 			ContainerID: request.ID,
+	// 			ID:          request.ExecID,
+	// 			Pid:         uint32(p.pid),
+	// 			ExitStatus:  1,
+	// 			ExitedAt:    protobuf.ToTimestamp(time.Now()),
+	// 		}
+	// 		// Close waitblock since start failed
+	// 		close(p.waitblock)
+	// 		return
+	// 	}
 
-		log.G(ctx).Info("VM and process started successfully")
-	}()
+	// 	log.G(ctx).Info("VM and process started successfully")
+	// }()
 
 	// Return immediately - VM will boot in background
 	s.events <- &events.TaskStart{
@@ -445,134 +341,108 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 }
 
 func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*task.DeleteResponse, error) {
-	log.G(ctx).WithField("request", request).Info("DELETE")
-	defer log.G(ctx).Info("DELETE_DONE")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	c, err := s.getContainer(ctx, request.ID)
+	c, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
-	}
-
-	if request.ExecID != "" {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-
-		p, err := c.getProcess(ctx, request.ExecID)
-		if err != nil {
-			return nil, errors.Errorf("getting process: %w", err)
-		}
-
-		if err := p.destroy(); err != nil {
-			log.G(ctx).WithError(err).Warn("failed to destroy exec")
-		}
-		delete(c.auxiliary, request.ExecID)
-
-		return &task.DeleteResponse{
-			ExitedAt:   protobuf.ToTimestamp(p.exitedAt),
-			ExitStatus: p.exitStatus,
-		}, nil
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
 	if err := c.destroy(); err != nil {
 		log.G(ctx).WithError(err).Warn("failed to cleanup container")
 	}
 
-	delete(s.containers, request.ID)
+	s.deleteContainer(ctx, request.ID)
 
-	var pid uint32 = uint32(c.primary.pid)
+	state := p.getStatus()
+
+	var pid uint32 = uint32(p.pid)
 
 	s.events <- &events.TaskDelete{
 		ContainerID: request.ID,
-		ExitedAt:    protobuf.ToTimestamp(c.primary.exitedAt),
-		ExitStatus:  c.primary.exitStatus,
+		ExitedAt:    protobufTimestamp(state.ExitedAt),
+		ExitStatus:  uint32(state.ExitCode),
 		ID:          request.ID,
 		Pid:         pid,
 	}
 
 	return &task.DeleteResponse{
-		ExitedAt:   protobuf.ToTimestamp(c.primary.exitedAt),
-		ExitStatus: c.primary.exitStatus,
+		ExitedAt:   protobufTimestamp(state.ExitedAt),
+		ExitStatus: uint32(state.ExitCode),
 		Pid:        pid,
 	}, nil
 }
 
 func (s *service) Pids(ctx context.Context, request *task.PidsRequest) (*task.PidsResponse, error) {
-	log.G(ctx).WithField("request", request).Info("PIDS")
 
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Pause(ctx context.Context, request *task.PauseRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("PAUSE")
 
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Resume(ctx context.Context, request *task.ResumeRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("RESUME")
 
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Checkpoint(ctx context.Context, request *task.CheckpointTaskRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("CHECKPOINT")
 
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Kill(ctx context.Context, request *task.KillRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("KILL")
-	defer log.G(ctx).Info("KILL_DONE")
 
-	c, err := s.getContainerL(ctx, request.ID)
+	slog.InfoContext(ctx, "KILL", "request", valuelog.NewPrettyValue(request))
+
+	c, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
-	if request.ExecID != "" {
-		p, err := c.getProcessL(ctx, request.ExecID)
-		if err != nil {
-			return nil, errors.Errorf("getting process: %w", err)
+	if p.runningCmd != nil && p.runningCmd.exitCode == 0 {
+		if err := p.SendSignalToRunningCmd(syscall.Signal(request.Signal)); err != nil {
+			return nil, errors.Errorf("sending signal to running command: %w", err)
 		}
-
-		// TODO: Do we care about error here?
-		_ = p.kill(syscall.Signal(request.Signal))
-
 	}
+
+	if err := p.destroy(); err != nil {
+		return nil, errors.Errorf("destroying process: %w", err)
+	}
+
+	if err := c.destroy(); err != nil {
+		return nil, errors.Errorf("destroying container: %w", err)
+	}
+
+	s.deleteContainer(ctx, request.ID)
+
+	// if err := p.io.Close(); err != nil {
+	// 	return nil, errors.Errorf("closing io: %w", err)
+	// }
+
+	// if p.id != "primary" {
+	// 	if err != nil {
+	// 		return nil, errors.Errorf("getting process: %w", err)
+	// 	}
+
+	// 	// TODO: Do we care about error here?
+	// 	_ = p.kill(syscall.Signal(request.Signal))
+	// }
 
 	return &ptypes.Empty{}, nil
 }
 
 func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_ *ptypes.Empty, retErr error) {
-	log.G(ctx).WithField("request", request).Info("EXEC")
 
-	specAny, err := typeurl.UnmarshalAny(request.Spec)
+	c, _, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		log.G(ctx).WithError(err).Error("failed to unmarshal spec")
-		return nil, errors.Errorf("failed to unmarshal spec: %w", err)
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
-	spec, ok := specAny.(*specs.Process)
-	if !ok {
-		log.G(ctx).Error("mismatched type for spec")
-		return nil, errors.Errorf("mismatched type for spec")
-	}
-
-	c, err := s.getContainerL(ctx, request.ID)
+	aux, err := c.AddProcess(ctx, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	aux := &managedProcess{
-		spec:      spec,
-		waitblock: make(chan struct{}),
-		status:    taskt.Status_CREATED,
+		return nil, errors.Errorf("adding process: %w", err)
 	}
 
 	defer func() {
@@ -583,13 +453,6 @@ func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_
 		}
 	}()
 
-	if err = aux.setup(ctx, request.Stdin, request.Stdout, request.Stderr); err != nil {
-		return nil, err
-	}
-
-	// TODO: Check if aux already exists?
-	c.auxiliary[request.ExecID] = aux
-
 	s.events <- &events.TaskExecAdded{
 		ContainerID: request.ID,
 		ExecID:      request.ExecID,
@@ -599,15 +462,13 @@ func (s *service) Exec(ctx context.Context, request *task.ExecProcessRequest) (_
 }
 
 func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("RESIZEPTY")
-	defer log.G(ctx).Info("RESIZEPTY_DONE")
 
-	c, err := s.getContainerL(ctx, request.ID)
+	c, err := s.getContainer(ctx, request.ID)
 	if err != nil {
 		return nil, errors.Errorf("getting container: %w", err)
 	}
 
-	p, err := c.getProcessL(ctx, request.ExecID)
+	p, err := c.getProcess(ctx, request.ExecID)
 	if err != nil {
 		return nil, errors.Errorf("getting process: %w", err)
 	}
@@ -622,16 +483,10 @@ func (s *service) ResizePty(ctx context.Context, request *task.ResizePtyRequest)
 }
 
 func (s *service) CloseIO(ctx context.Context, request *task.CloseIORequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("CLOSEIO")
 
-	c, err := s.getContainerL(ctx, request.ID)
+	_, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
-	}
-
-	p, err := c.getProcessL(ctx, request.ExecID)
-	if err != nil {
-		return nil, errors.Errorf("getting process: %w", err)
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
 	if stdin := p.io.stdin; stdin != nil {
@@ -642,66 +497,65 @@ func (s *service) CloseIO(ctx context.Context, request *task.CloseIORequest) (*p
 }
 
 func (s *service) Update(ctx context.Context, request *task.UpdateTaskRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("UPDATE")
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.WaitResponse, error) {
-	log.G(ctx).WithField("request", request).Info("WAIT")
-	defer log.G(ctx).Info("WAIT_DONE")
 
-	c, err := s.getContainerL(ctx, request.ID)
+	_, p, err := getContainerProcess(ctx, s, request)
 	if err != nil {
-		return nil, errors.Errorf("getting container: %w", err)
+		return nil, errors.Errorf("getting container process: %w", err)
 	}
 
-	p, err := c.getProcessL(ctx, request.ExecID)
-	if err != nil {
-		return nil, errors.Errorf("getting process: %w", err)
+	if p.runningCmd == nil {
+		return nil, errdefs.ErrUnavailable
 	}
-
-	log.G(ctx).WithField("request", request).Info("WAIT_BLOCK_START")
 
 	// libdispatch.DispatchMain()
 
-	<-p.waitblock
+	exitCode, err := p.runningCmd.Serve(ctx)
+	if err != nil {
+		return nil, errors.Errorf("serving signal: %w", err)
+	}
 
-	log.G(ctx).WithField("request", request).Info("WAIT_BLOCK_DONE")
+	slog.InfoContext(ctx, "wait has completed", "exitCode", exitCode)
 
 	return &task.WaitResponse{
-		ExitedAt:   protobuf.ToTimestamp(p.exitedAt),
-		ExitStatus: p.exitStatus,
+		ExitedAt:   protobuf.ToTimestamp(p.runningCmd.exitedAt),
+		ExitStatus: uint32(exitCode),
 	}, nil
 }
 
 func (s *service) Stats(ctx context.Context, request *task.StatsRequest) (*task.StatsResponse, error) {
-	log.G(ctx).WithField("request", request).Info("STATS")
 	return nil, errdefs.ErrNotImplemented
 }
 
 func (s *service) Connect(ctx context.Context, request *task.ConnectRequest) (*task.ConnectResponse, error) {
-	log.G(ctx).WithField("request", request).Info("CONNECT")
-	defer log.G(ctx).Info("CONNECT_DONE")
 
-	var pid int
-	if c, err := s.getContainerL(ctx, request.ID); err == nil {
-		pid = c.primary.pid
+	container, err := s.getContainer(ctx, request.ID)
+	if err != nil {
+		return nil, errors.Errorf("getting container: %w", err)
 	}
+
+	// var pid int
+	// if _, p, err := getContainerProcess(ctx, s, request); err == nil {
+	// 	pid = p.pid
+	// }
 
 	return &task.ConnectResponse{
 		ShimPid: uint32(os.Getpid()),
-		TaskPid: uint32(pid),
+		TaskPid: uint32(container.pid),
+		Version: "v2",
 	}, nil
 }
 
 func (s *service) Shutdown(ctx context.Context, request *task.ShutdownRequest) (*ptypes.Empty, error) {
-	log.G(ctx).WithField("request", request).Info("SHUTDOWN")
-	defer log.G(ctx).Info("SHUTDOWN_DONE")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// s.containersMu.Lock()
+	// defer s.containersMu.Unlock()
 
 	if len(s.containers) > 0 {
+		// todo: do we need to kill them all first?
 		return &ptypes.Empty{}, nil
 	}
 

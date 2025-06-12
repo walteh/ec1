@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"runtime"
 	"time"
 
 	"github.com/Code-Hex/vz/v3"
 	"github.com/containers/common/pkg/strongunits"
 	"gitlab.com/tozd/go/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/walteh/ec1/pkg/virtio"
 	"github.com/walteh/ec1/pkg/vmm"
@@ -328,7 +330,28 @@ func (vm *VirtualMachine) Opts() *vmm.NewVMOptions {
 	return vm.opts
 }
 
-func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
+func (vm *VirtualMachine) ServeBackgroundTasks(ctx context.Context) error {
+
+	errGroup, ctx := errgroup.WithContext(ctx)
+
+	errGroup.Go(func() error {
+
+		gpuDevs := virtio.VirtioDevicesOfType[*virtio.VirtioGPU](vm.Devices())
+		for _, gpuDev := range gpuDevs {
+			if gpuDev.UsesGUI {
+				runtime.LockOSThread()
+				err := vm.StartGraphicApplication(float64(gpuDev.Width), float64(gpuDev.Height))
+				runtime.UnlockOSThread()
+				if err != nil {
+					return errors.Errorf("starting graphic application: %w", err)
+				}
+				break
+			} else {
+				slog.DebugContext(ctx, "not starting GUI")
+			}
+		}
+		return nil
+	})
 
 	for _, dev := range vm.configuration.StorageDevices() {
 		if nbdDev, isNbdDev := dev.(vzNetworkBlockDevice); isNbdDev {
@@ -337,8 +360,9 @@ func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
 				slog.InfoContext(ctx, "Found NBD device with no NBD attachment. Please file a vfkit bug.")
 				return errors.Errorf("NetworkBlockDevice must use a NBD attachment")
 			}
+			slog.WarnContext(ctx, "this code is not tested and probably super broken")
 			nbdConfig := nbdDev.config
-			go func() {
+			errGroup.Go(func() error {
 				for {
 					select {
 					case err := <-nbdAttachment.DidEncounterError():
@@ -347,9 +371,10 @@ func (vm *VirtualMachine) ListenNetworkBlockDevices(ctx context.Context) error {
 						slog.InfoContext(ctx, "Successfully connected to NBD server", "uri", nbdConfig.URI)
 					}
 				}
-			}()
+			})
 		}
 	}
+
 	return nil
 }
 

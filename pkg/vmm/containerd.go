@@ -40,14 +40,9 @@ import (
 type ContainerizedVMConfig struct {
 	ID           string
 	RootfsMounts []*types.Mount
-	RootfsPath   string
 	StderrWriter io.Writer
 	StdoutWriter io.Writer
 	StdinReader  io.Reader
-	DNSPath      string
-	StdinPath    string
-	StdoutPath   string
-	StderrPath   string
 	Spec         *oci.Spec
 	Memory       strongunits.B
 	VCPUs        uint64
@@ -91,7 +86,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	devices ...virtio.VirtioDevice) (*RunningVM[VM], error) {
 
 	id := "harpoon-oci-" + ctrconfig.ID[:8]
-	errgrp, ctx := errgroup.WithContext(ctx)
+	creationErrGroup, ctx := errgroup.WithContext(ctx)
 
 	ctx = appendContext(ctx, id)
 
@@ -114,15 +109,21 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 
 	devices = append(devices, mountDevices...)
 
+	// // get real location of symlink location spec.root.path
+	// realRootfsPath, err := os.Readlink(ctrconfig.Spec.Root.Path)
+	// if err != nil {
+	// 	return nil, errors.Errorf("reading rootfs path: %w", err)
+	// }
+
 	slog.InfoContext(ctx, "about to set up rootfs",
-		"ctrconfig.RootfsPath", ctrconfig.RootfsPath,
 		"ctrconfig.RootfsMounts", valuelog.NewPrettyValue(ctrconfig.RootfsMounts),
+		// "realRootfsPath", realRootfsPath,
 		// "bindMounts", tint.NewPrettyValue(bindMounts),
 		"spec.Root.Path", ctrconfig.Spec.Root.Path,
 		"spec.Root.Readonly", ctrconfig.Spec.Root.Readonly,
 	)
 
-	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, ctrconfig.RootfsMounts, bindMounts, errgrp)
+	ec1Devices, err := PrepareContainerVirtioDevicesFromRootfs(ctx, workingDir, ctrconfig.Spec, ctrconfig.RootfsMounts, bindMounts, creationErrGroup)
 	if err != nil {
 		return nil, errors.Errorf("creating ec1 block device from rootfs: %w", err)
 	}
@@ -132,18 +133,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 
 	switch ctrconfig.Platform.OS() {
 	case "linux":
-		// staticFiles := map[string]string{}
-		// for _, mount := range bindMounts {
-		// 	if mount.Type == "copy" {
-		// 		staticFiles[mount.Source] = mount.Destination
-		// 	}
-		// }
-		bl, bldevs, err := PrepareHarpoonLinuxBootloader(ctx, workingDir, ConatinerImageConfig{
-			Platform: ctrconfig.Platform,
-			Memory:   ctrconfig.Memory,
-			VCPUs:    ctrconfig.VCPUs,
-			// StaticFiles: staticFiles,
-		}, errgrp)
+		bl, bldevs, err := PrepareHarpoonLinuxBootloaderAsync(ctx, workingDir, ctrconfig.Platform, creationErrGroup)
 		if err != nil {
 			return nil, errors.Errorf("getting boot loader config: %w", err)
 		}
@@ -161,20 +151,16 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 			Path:   filepath.Join(workingDir, "console.log"),
 			Append: false,
 		})
-		devices = append(devices, &virtio.VirtioSerialStdioPipes{
-			Stdin:  ctrconfig.StdinPath,
-			Stdout: ctrconfig.StdoutPath,
-			Stderr: ctrconfig.StderrPath,
-		})
+
 	}
 
 	// add vsock and memory devices
 
-	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx, errgrp)
+	netdev, hostIPPort, err := PrepareVirtualNetwork(ctx)
 	if err != nil {
 		return nil, errors.Errorf("creating net device: %w", err)
 	}
-	devices = append(devices, netdev)
+	devices = append(devices, netdev.VirtioNetDevice())
 
 	slog.InfoContext(ctx, "devices", "devices", valuelog.NewPrettyValue(devices))
 
@@ -187,29 +173,69 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		Devices: devices,
 	}
 
+	waitStart := time.Now()
+
+	err = creationErrGroup.Wait()
+	if err != nil {
+		return nil, errors.Errorf("error waiting for errgroup: %w", err)
+	}
+
+	slog.InfoContext(ctx, "ready to create vm", "async_wait_duration", time.Since(waitStart))
+
 	vm, err := hpv.NewVirtualMachine(ctx, id, &opts, bootloader)
 	if err != nil {
 		return nil, errors.Errorf("creating virtual machine: %w", err)
 	}
 
-	err = bootContainerVM(ctx, vm)
-	if err != nil {
-		if err := TryAppendingConsoleLog(ctx, workingDir); err != nil {
-			slog.ErrorContext(ctx, "error appending console log", "error", err)
-		}
-		return nil, errors.Errorf("booting virtual machine: %w", err)
+	runner := &RunningVM[VM]{
+		bootloader:             bootloader,
+		start:                  startTime,
+		vm:                     vm,
+		stdin:                  ctrconfig.StdinReader,
+		stdout:                 ctrconfig.StdoutWriter,
+		stderr:                 ctrconfig.StderrWriter,
+		portOnHostIP:           hostIPPort,
+		wait:                   make(chan error, 1),
+		guestServiceConnection: nil,
+		workingDir:             workingDir,
+		netdev:                 netdev,
 	}
 
-	runErrGroup, runCancel, err := runContainerVM(ctx, vm)
+	return runner, nil
+}
+
+func (rvm *RunningVM[VM]) Start(ctx context.Context) error {
+
+	errgrp, ctx := errgroup.WithContext(ctx)
+
+	errgrp.Go(func() error {
+		err := rvm.netdev.Wait(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "error waiting for netdev", "error", err)
+			return errors.Errorf("waiting for netdev: %w", err)
+		}
+		return nil
+	})
+
+	err := bootContainerVM(ctx, rvm.VM())
 	if err != nil {
-		if err := TryAppendingConsoleLog(ctx, workingDir); err != nil {
+		if err := TryAppendingConsoleLog(ctx, rvm.workingDir); err != nil {
 			slog.ErrorContext(ctx, "error appending console log", "error", err)
 		}
-		return nil, errors.Errorf("running virtual machine: %w", err)
+		return errors.Errorf("booting virtual machine: %w", err)
 	}
 
 	errgrp.Go(func() error {
-		err = ForwardStdio(ctx, vm, ctrconfig.StdinReader, ctrconfig.StdoutWriter, ctrconfig.StderrWriter)
+		err = rvm.VM().ServeBackgroundTasks(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "error serving background tasks", "error", err)
+			return errors.Errorf("serving background tasks: %w", err)
+		}
+		return nil
+	})
+
+	errgrp.Go(func() error {
+		err = rvm.ForwardStdio(ctx, rvm.stdin, rvm.stdout, rvm.stderr)
 		if err != nil {
 			slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
 			return errors.Errorf("forwarding stdio: %w", err)
@@ -218,12 +244,7 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 		return nil
 	})
 
-	if err != nil {
-		slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
-		return nil, errors.Errorf("forwarding stdio: %w", err)
-	}
-
-	err = TailConsoleLog(ctx, workingDir)
+	err = TailConsoleLog(ctx, rvm.workingDir)
 	if err != nil {
 		slog.ErrorContext(ctx, "error tailing console log", "error", err)
 	}
@@ -232,59 +253,61 @@ func NewContainerizedVirtualMachineFromRootfs[VM VirtualMachine](
 	slog.InfoContext(ctx, "VM is ready for container execution")
 
 	// Create an error channel that will receive VM state changes
-	errCh := make(chan error, 1)
+
 	go func() {
+
 		// Wait for errgroup to finish (this handles cleanup when context is cancelled)
 		if err := errgrp.Wait(); err != nil && err != context.Canceled {
 			slog.ErrorContext(ctx, "error running gvproxy", "error", err)
 		}
 
-		// Wait for runtime services to finish
-		if err := runErrGroup.Wait(); err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "error running runtime services", "error", err)
-			errCh <- err
-			return
-		}
+		// // Wait for runtime services to finish
+		// if err := runErrGroup.Wait(); err != nil && err != context.Canceled {
+		// 	slog.ErrorContext(ctx, "error running runtime services", "error", err)
+		// 	errCh <- err
+		// 	return
+		// }
 
 		// Only send error if VM actually encounters an error state
-		stateNotify := vm.StateChangeNotify(ctx)
+		stateNotify := rvm.VM().StateChangeNotify(ctx)
 		for {
 			select {
 			case state := <-stateNotify:
 				if state.StateType == VirtualMachineStateTypeError {
-					errCh <- fmt.Errorf("VM entered error state")
+					rvm.wait <- errors.Errorf("VM entered error state")
 					return
 				}
 				if state.StateType == VirtualMachineStateTypeStopped {
 					slog.InfoContext(ctx, "VM stopped")
-					errCh <- nil
+					rvm.wait <- nil
 					return
 				}
 				slog.InfoContext(ctx, "VM state changed", "state", state.StateType, "metadata", state.Metadata)
 			case <-ctx.Done():
-				runCancel()
 				return
 			}
 		}
 	}()
 
-	runner := NewRunningContainerdVM(ctx, vm, hostIPPort, startTime, errCh)
-
-	connection, err := runner.guestService(ctx)
+	connection, err := rvm.GuestService(ctx)
 	if err != nil {
-		return nil, errors.Errorf("failed to get guest service: %w", err)
+		return errors.Errorf("failed to get guest service: %w", err)
 	}
 
 	response, err := connection.TimeSync(ctx, harpoonv1.NewTimeSyncRequest(func(b *harpoonv1.TimeSyncRequest_builder) {
 		b.UnixTimeNs = ptr(uint64(time.Now().UnixNano()))
 	}))
 	if err != nil {
-		return nil, errors.Errorf("failed to time sync: %w", err)
+		return errors.Errorf("failed to time sync: %w", err)
 	}
 
 	slog.InfoContext(ctx, "time sync", "response", response)
 
-	return runner, nil
+	return nil
+}
+
+func (rvm *RunningVM[VM]) Wait(ctx context.Context) error {
+	return <-rvm.wait
 }
 
 func ptr[T any](v T) *T { return &v }

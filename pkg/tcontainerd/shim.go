@@ -94,7 +94,7 @@ func ShimMain() {
 
 	go func() {
 		sig := <-signalChan
-		slog.ErrorContext(ctx, "SHIM_EXIT_SIGNAL", "signal", sig)
+		slog.ErrorContext(ctx, "SHIM_EXIT_SIGNAL", "signal", sig, "args", os.Args[1:])
 		// Log stack trace of all goroutines
 		buf := make([]byte, 64*1024)
 		n := runtime.Stack(buf, true)

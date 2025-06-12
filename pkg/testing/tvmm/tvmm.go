@@ -22,14 +22,24 @@ import (
 	"github.com/walteh/ec1/pkg/vmm"
 )
 
-func RunHarpoonVM[VM vmm.VirtualMachine](t *testing.T, ctx context.Context, hv vmm.Hypervisor[VM], cfg vmm.ConatinerImageConfig, cache oci.ImageFetchConverter) *vmm.RunningVM[VM] {
+func RunHarpoonVM[VM vmm.VirtualMachine](t *testing.T, ctx context.Context, hv vmm.Hypervisor[VM], cfg vmm.ManifestImageConfig, cache oci.ImageFetchConverter) *vmm.RunningVM[VM] {
 
 	ctx = slogctx.WithGroup(ctx, "test-vm-setup")
 
 	slog.DebugContext(ctx, "running vm", "memory", humanize.Bytes(uint64(cfg.Memory.ToBytes())))
 
-	rvm, err := vmm.NewContainerizedVirtualMachine(ctx, hv, cache, cfg)
+	rvm, err := vmm.NewManifestVirtualMachine(ctx, hv, cache, cfg)
 	require.NoError(t, err)
+
+	if err := rvm.Start(ctx); err != nil {
+		t.Fatalf("failed to start vm: %v", err)
+	}
+
+	go func() {
+		slog.DebugContext(ctx, "vm running, waiting for vm to finsih")
+		err := rvm.Wait(ctx)
+		assert.NoError(t, err)
+	}()
 
 	go func() {
 		slog.DebugContext(ctx, "vm running, waiting for vm to stop")
@@ -46,11 +56,6 @@ func RunHarpoonVM[VM vmm.VirtualMachine](t *testing.T, ctx context.Context, hv v
 	err = vmm.WaitForVMState(ctx, rvm.VM(), vmm.VirtualMachineStateTypeRunning, time.After(30*time.Second))
 	require.NoError(t, err, "timeout waiting for vm to be running: %v", err)
 
-	select {
-	case <-rvm.WaitOnVMReadyToExec():
-	case <-time.After(3 * time.Second):
-		t.Fatalf("timeout waiting for vm to be ready to exec")
-	}
 	return rvm
 }
 

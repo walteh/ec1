@@ -23,12 +23,6 @@ import (
 )
 
 func ForwardStdio(ctx context.Context, vm VirtualMachine, stdin io.Reader, stdout io.Writer, stderr io.Writer) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			slog.ErrorContext(ctx, "panic in ForwardStdio", "error", r)
-			err = errors.Errorf("panic in ForwardStdio: %v", r)
-		}
-	}()
 
 	errgroup := errgroup.Group{}
 
@@ -79,18 +73,16 @@ func ForwardStdio(ctx context.Context, vm VirtualMachine, stdin io.Reader, stdou
 		return nil
 	})
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.ErrorContext(ctx, "panic in ForwardStdio", "error", r)
-				err = errors.Errorf("panic in ForwardStdio: %v", r)
-			}
-		}()
-		err = errgroup.Wait()
-		if err != nil {
-			slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic in ForwardStdio", "error", r)
+			err = errors.Errorf("panic in ForwardStdio: %v", r)
 		}
 	}()
+	err = errgroup.Wait()
+	if err != nil {
+		slog.ErrorContext(ctx, "error forwarding stdio", "error", err)
+	}
 
 	return
 }
