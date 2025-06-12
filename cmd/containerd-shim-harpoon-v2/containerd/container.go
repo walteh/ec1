@@ -125,8 +125,8 @@ func (c *container) createVM(ctx context.Context, spec *oci.Spec, id string, cre
 	}()
 
 	// Extract configuration from the OCI spec
-	memory := strongunits.MiB(64).ToBytes() // Use 512MB minimum for VZ compatibility
-	vcpus := uint64(1)                      // Default, TODO: Extract from spec.Process or other location
+	memory := strongunits.MiB(128).ToBytes() // Use 512MB minimum for VZ compatibility
+	vcpus := uint64(1)                       // Default, TODO: Extract from spec.Process or other location
 
 	slog.InfoContext(ctx, "createVM: VM configuration", "memory", memory, "vcpus", vcpus)
 

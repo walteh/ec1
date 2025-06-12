@@ -72,17 +72,19 @@ func connectToVsockWithRetry(ctx context.Context, vm VirtualMachine, port uint32
 	defer ticker.Stop()
 	defer timeout.Stop()
 
+	lastError := error(errors.Errorf("initial error"))
+
 	for {
 		select {
 		case <-ticker.C:
 			conn, err := vm.VSockConnect(ctx, port)
 			if err != nil {
-				slog.Error("failed to dial vsock", "error", err)
+				lastError = err
 				continue
 			}
 			return conn, nil
 		case <-timeout.C:
-			return nil, errors.Errorf("timeout waiting for guest service connection")
+			return nil, errors.Errorf("timeout waiting for guest service connection: %w", lastError)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -99,12 +101,14 @@ func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestS
 	defer ticker.Stop()
 	defer timeout.Stop()
 
+	lastError := error(errors.Errorf("initial error"))
+
 	for {
 		select {
 		case <-ticker.C:
 			conn, err := r.vm.VSockConnect(ctx, uint32(ec1init.VsockPort))
 			if err != nil {
-				slog.Error("failed to dial vsock", "error", err)
+				lastError = err
 				continue
 			}
 			r.guestServiceConnection = harpoonv1.NewTTRPCGuestServiceClient(ttrpc.NewClient(conn, ttrpc.WithClientDebugging(), ttrpc.WithOnCloseError(func(err error) {
@@ -112,7 +116,7 @@ func (r *RunningVM[VM]) guestService(ctx context.Context) (harpoonv1.TTRPCGuestS
 			})))
 			return r.guestServiceConnection, nil
 		case <-timeout.C:
-			return nil, errors.Errorf("timeout waiting for guest service connection")
+			return nil, errors.Errorf("timeout waiting for guest service connection: %w", lastError)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -248,7 +252,10 @@ func (r *RunningVM[VM]) Run(ctx context.Context) (int64, error) {
 	// 	return 0, errors.Errorf("reading stdin: %w", err)
 	// }
 
-	req, err := harpoonv1.NewValidatedRunRequest(func(b *harpoonv1.RunRequest_builder) {
+	// req, err := harpoonv1.NewValidatedRunRequest(func(b *harpoonv1.RunRequest_builder) {
+	// 	// b.Stdin = stdinData
+	// })
+	req := harpoonv1.NewRunRequest(func(b *harpoonv1.RunRequest_builder) {
 		// b.Stdin = stdinData
 	})
 	if err != nil {
@@ -331,7 +338,7 @@ func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin 
 
 	slog.InfoContext(ctx, "RunWithStdio: sending start request")
 
-	start, err := harpoonv1.NewValidatedExecRequest_WithStart(func(b *harpoonv1.ExecRequest_Start_builder) {
+	start := harpoonv1.NewExecRequest_WithStart(func(b *harpoonv1.ExecRequest_Start_builder) {
 		b.Argc = ptr("")
 		b.Argv = []string{}
 		b.Stdin = ptr(true)
@@ -349,7 +356,7 @@ func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin 
 	slog.InfoContext(ctx, "RunWithStdio: start request sent")
 
 	terminate := func(force bool) {
-		req, err := harpoonv1.NewValidatedExecRequest_WithTerminate(func(b *harpoonv1.ExecRequest_Terminate_builder) {
+		req := harpoonv1.NewExecRequest_WithTerminate(func(b *harpoonv1.ExecRequest_Terminate_builder) {
 			b.Force = ptr(force)
 		})
 		if err != nil {
@@ -403,7 +410,7 @@ func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin 
 			n, err := stdin.Read(buf)
 			if err != nil {
 				if err == io.EOF {
-					req, err := harpoonv1.NewValidatedExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+					req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
 						b.Data = buf[:n]
 						b.Done = ptr(true)
 					})
@@ -424,7 +431,7 @@ func (r *RunningVM[VM]) RunWithStdio(ctx context.Context, term chan bool, stdin 
 				return
 			}
 
-			req, err := harpoonv1.NewValidatedExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
+			req := harpoonv1.NewExecRequest_WithStdin(func(b *harpoonv1.Bytestream_builder) {
 				b.Data = buf[:n]
 				b.Done = ptr(false)
 			})

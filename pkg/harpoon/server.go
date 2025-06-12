@@ -151,7 +151,10 @@ func (s *GuestService) Run(ctx context.Context, req *harpoonv1.RunRequest) (resp
 		}
 	}
 
-	resp, err = harpoonv1.NewValidatedRunResponse(func(b *harpoonv1.RunResponse_builder) {
+	// resp, err = harpoonv1.NewValidatedRunResponse(func(b *harpoonv1.RunResponse_builder) {
+	// 	b.ExitCode = ptr(int32(exitCode))
+	// })
+	resp = harpoonv1.NewRunResponse(func(b *harpoonv1.RunResponse_builder) {
 		b.ExitCode = ptr(int32(exitCode))
 	})
 	if err != nil {
@@ -315,14 +318,18 @@ func (s *GuestService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 		for err := range errch {
 			slog.ErrorContext(ctx, "err goroutine received error", "error", err)
 			errs = append(errs, err)
-			er, err := harpoonv1.NewValidatedExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
+			// er, err := harpoonv1.NewValidatedExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
+			// 	b.Error = ptr(err.Error())
+			// })
+			// if err != nil {
+			// 	slog.ErrorContext(ctx, "building error response", "error", err)
+			// 	errs = append(errs, err)
+			// 	continue
+			// }
+			er := harpoonv1.NewExecResponse_WithError(func(b *harpoonv1.ExecResponse_Error_builder) {
 				b.Error = ptr(err.Error())
 			})
-			if err != nil {
-				slog.ErrorContext(ctx, "building error response", "error", err)
-				errs = append(errs, err)
-				continue
-			}
+
 			err = server.Send(er)
 			if err != nil {
 				slog.ErrorContext(ctx, "sending error response", "error", err)
@@ -417,7 +424,7 @@ func (s *GuestService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 		ctx,
 		stdout,
 		server,
-		harpoonv1.NewValidatedExecResponse_WithStdout,
+		harpoonv1.NewExecResponse_WithStdout,
 		errch,
 		stdoutDone,
 		"stdout",
@@ -428,7 +435,7 @@ func (s *GuestService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 		ctx,
 		stderr,
 		server,
-		harpoonv1.NewValidatedExecResponse_WithStderr,
+		harpoonv1.NewExecResponse_WithStderr,
 		errch,
 		stderrDone,
 		"stderr",
@@ -447,13 +454,16 @@ func (s *GuestService) Exec(ctx context.Context, server harpoonv1.TTRPCGuestServ
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) {
 				c := int32(exitErr.ExitCode())
-				ec, err := harpoonv1.NewValidatedExecResponse_WithExit(func(b *harpoonv1.ExecResponse_Exit_builder) {
+				// ec, err := harpoonv1.NewValidatedExecResponse_WithExit(func(b *harpoonv1.ExecResponse_Exit_builder) {
+				// 	b.ExitCode = &c
+				// })
+				// if err != nil {
+				// 	errch <- errors.Errorf("building exit response: %w", err)
+				// 	return
+				// }
+				ec := harpoonv1.NewExecResponse_WithExit(func(b *harpoonv1.ExecResponse_Exit_builder) {
 					b.ExitCode = &c
 				})
-				if err != nil {
-					errch <- errors.Errorf("building exit response: %w", err)
-					return
-				}
 
 				err = server.Send(ec)
 				if err != nil {
@@ -492,7 +502,7 @@ func streamOutput(
 	ctx context.Context,
 	reader io.Reader,
 	server harpoonv1.TTRPCGuestService_ExecServer,
-	responseBuilder func(func(*harpoonv1.Bytestream_builder)) (*harpoonv1.ExecResponse, error),
+	responseBuilder func(func(*harpoonv1.Bytestream_builder)) *harpoonv1.ExecResponse,
 	errch chan<- error,
 	done chan<- struct{},
 	streamType string,
@@ -515,14 +525,18 @@ func streamOutput(
 			return
 		}
 
-		resp, err := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
+		// resp, err := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
+		// 	b.Data = buf[:n]
+		// 	b.Done = ptr(false)
+		// })
+		// if err != nil {
+		// 	errch <- errors.Errorf("building %s response: %w", streamType, err)
+		// 	return
+		// }
+		resp := responseBuilder(func(b *harpoonv1.Bytestream_builder) {
 			b.Data = buf[:n]
 			b.Done = ptr(false)
 		})
-		if err != nil {
-			errch <- errors.Errorf("building %s response: %w", streamType, err)
-			return
-		}
 
 		err = server.Send(resp)
 		if err != nil {
