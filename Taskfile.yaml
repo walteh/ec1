@@ -78,10 +78,16 @@ tasks:
     mockery:
         desc: generates mocks for interfaces with '//go:mock' comment
         vars:
-            TMP_DIR: ./gen/config
+            TMP_DIR:
+                sh: mktemp -d
             MOCKERY_INTERFACE_DATA:
                 sh: |-
-                    grep -rl "//go:mock" --include="*.go" . | xargs -I{} bash -c 'd=$(dirname {}); d=${d#./}; awk -v d="$d {}" '\''/\/\/go:mock/ {getline; if($1=="type") print d, $2}'\'' {}'
+                    grep -rl "//go:mock" --include="*.go" . | xargs -I{} sh -c '
+                        f="{}"
+                        d=$(dirname "$f"); d=${d#./}
+                        raw=$(awk "/\/\/go:mock/{getline; if(\$1==\"type\") print \$2}" "$f")
+                        name=${raw%%\[*}
+                        echo "$d $f $name"'
             MOCKERY_SOURCE_FILES:
                 sh: |-
                     grep -rl "//go:mock" --include="*.go" .
@@ -93,11 +99,12 @@ tasks:
           - ./gen/config/.mockery.yaml
         cmds:
           - cmd: mkdir -p {{.TMP_DIR}}
+          - defer: rm -rf {{.TMP_DIR}}
           - cmd: cp .mockery.yaml {{.TMP_DIR}}/.mockery.yaml
           - for: {var: "MOCKERY_INTERFACE_DATA", split: "\n", as: ITEM}
             cmd: |-
                 set -e
-                yq -i ".packages.\"{{ .GO_ROOT_PKG }}/{{ splitList \" \" .ITEM | first }}\".interfaces.{{ splitList \" \" .ITEM | last }} = {}" {{.TMP_DIR}}/.mockery.yaml
+                yq -i ".packages.\"{{ .GO_ROOT_PKG }}/{{ splitList " " .ITEM | first }}\".interfaces.{{ splitList " " .ITEM | last }} = {}" {{.TMP_DIR}}/.mockery.yaml
           - cmd: |-
                 {{.GO_COMMAND}} tool github.com/vektra/mockery/v2 --config={{.TMP_DIR}}/.mockery.yaml
 
