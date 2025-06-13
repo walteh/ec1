@@ -20,7 +20,6 @@ package process
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -30,13 +29,12 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
-	runc "github.com/containerd/go-runc"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	// RuncRoot is the path to the root runc state directory
-	RuncRoot = "/run/containerd/runc"
+	// VMRoot is the path to the root VM state directory
+	VMRoot = "/run/containerd/runm"
 	// InitPidFile name of the file that contains the init pid
 	InitPidFile = "init.pid"
 )
@@ -51,47 +49,6 @@ func (s *safePid) get() int {
 	s.Lock()
 	defer s.Unlock()
 	return s.pid
-}
-
-// TODO(mlaventure): move to runc package?
-func getLastRuntimeError(r *runc.Runc) (string, error) {
-	if r.Log == "" {
-		return "", nil
-	}
-
-	f, err := os.OpenFile(r.Log, os.O_RDONLY, 0400)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	var (
-		errMsg string
-		log    struct {
-			Level string
-			Msg   string
-			Time  time.Time
-		}
-	)
-
-	dec := json.NewDecoder(f)
-	for err = nil; err == nil; {
-		if err = dec.Decode(&log); err != nil && err != io.EOF {
-			return "", err
-		}
-		if log.Level == "error" {
-			errMsg = strings.TrimSpace(log.Msg)
-		}
-	}
-
-	return errMsg, nil
-}
-
-// criuError returns only the first line of the error message from criu
-// it tries to add an invalid dump log location when returning the message
-func criuError(err error) string {
-	parts := strings.Split(err.Error(), "\n")
-	return parts[0]
 }
 
 func copyFile(to, from string) error {
@@ -117,12 +74,12 @@ func checkKillError(err error) error {
 		return nil
 	}
 	if strings.Contains(err.Error(), "os: process already finished") ||
-		strings.Contains(err.Error(), "container not running") ||
+		strings.Contains(err.Error(), "vm not running") ||
 		strings.Contains(strings.ToLower(err.Error()), "no such process") ||
 		err == unix.ESRCH {
 		return fmt.Errorf("process already finished: %w", errdefs.ErrNotFound)
 	} else if strings.Contains(err.Error(), "does not exist") {
-		return fmt.Errorf("no such container: %w", errdefs.ErrNotFound)
+		return fmt.Errorf("no such vm: %w", errdefs.ErrNotFound)
 	}
 	return fmt.Errorf("unknown error after kill: %w", err)
 }
@@ -148,7 +105,9 @@ func (p *pidFile) Path() string {
 }
 
 func (p *pidFile) Read() (int, error) {
-	return runc.ReadPidFile(p.path)
+	// For VMs, we don't use traditional PID files
+	// This would be adapted to read VM process information
+	return 0, fmt.Errorf("VM PID files not implemented")
 }
 
 // waitTimeout handles waiting on a waitgroup with a specified timeout.
@@ -173,7 +132,7 @@ func stateName(v interface{}) string {
 	switch v.(type) {
 	case *runningState, *execRunningState:
 		return "running"
-	case *createdState, *execCreatedState, *createdCheckpointState:
+	case *createdState, *execCreatedState:
 		return "created"
 	case *pausedState:
 		return "paused"

@@ -23,9 +23,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,13 +32,15 @@ import (
 	google_protobuf "github.com/containerd/containerd/v2/pkg/protobuf/types"
 	"github.com/containerd/containerd/v2/pkg/stdio"
 	"github.com/containerd/fifo"
-	runc "github.com/containerd/go-runc"
 	"github.com/containerd/log"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
+
+	"github.com/walteh/ec1/pkg/vmm"
+	"github.com/walteh/ec1/pkg/vmm/options"
 )
 
-// Init represents an initial process for a container
+// Init represents an initial process for a VM container
 type Init struct {
 	wg        sync.WaitGroup
 	initState initState
@@ -61,43 +60,33 @@ type Init struct {
 	console  console.Console
 	Platform stdio.Platform
 	io       *processIO
-	runtime  *runc.Runc
+	vm       vmm.VM
 	// pausing preserves the pausing state.
-	pausing      atomic.Bool
-	status       int
-	exited       time.Time
-	pid          int
-	closers      []io.Closer
-	stdin        io.Closer
-	stdio        stdio.Stdio
-	Rootfs       string
-	IoUID        int
-	IoGID        int
-	NoPivotRoot  bool
-	NoNewKeyring bool
-	CriuWorkPath string
+	pausing   atomic.Bool
+	status    int
+	exited    time.Time
+	pid       int
+	closers   []io.Closer
+	stdin     io.Closer
+	stdio     stdio.Stdio
+	Rootfs    string
+	IoUID     int
+	IoGID     int
+	VMOptions *options.Options
 }
 
-// NewRunc returns a new runc instance for a process
-func NewRunc(root, path, namespace, runtime string, systemd bool) *runc.Runc {
-	if root == "" {
-		root = RuncRoot
-	}
-	return &runc.Runc{
-		Command:       runtime,
-		Log:           filepath.Join(path, "log.json"),
-		LogFormat:     runc.JSON,
-		PdeathSignal:  unix.SIGKILL,
-		Root:          filepath.Join(root, namespace),
-		SystemdCgroup: systemd,
-	}
+// NewVM returns a new VM instance for a process
+func NewVM(root, path, namespace string, opts *options.Options) vmm.VM {
+	// This would integrate with our actual VM management
+	// For now, return a placeholder
+	return nil
 }
 
 // New returns a new process
-func New(id string, runtime *runc.Runc, stdio stdio.Stdio) *Init {
+func New(id string, vm vmm.VM, stdio stdio.Stdio) *Init {
 	p := &Init{
 		id:        id,
-		runtime:   runtime,
+		vm:        vm,
 		stdio:     stdio,
 		status:    0,
 		waitBlock: make(chan struct{}),
@@ -109,68 +98,51 @@ func New(id string, runtime *runc.Runc, stdio stdio.Stdio) *Init {
 // Create the process with the provided config
 func (p *Init) Create(ctx context.Context, r *CreateConfig) error {
 	var (
-		err     error
-		socket  *runc.Socket
-		pio     *processIO
-		pidFile = newPidFile(p.Bundle)
+		err error
+		pio *processIO
 	)
 
 	if r.Terminal {
-		if socket, err = runc.NewTempConsoleSocket(); err != nil {
-			return fmt.Errorf("failed to create OCI runtime console socket: %w", err)
-		}
-		defer socket.Close()
+		// For VM-based containers, we handle console differently
+		// This would integrate with our VM's console management
 	} else {
 		if pio, err = createIO(ctx, p.id, p.IoUID, p.IoGID, p.stdio); err != nil {
 			return fmt.Errorf("failed to create init process I/O: %w", err)
 		}
 		p.io = pio
 	}
+
+	// For VM containers, we don't use checkpoints in the same way
 	if r.Checkpoint != "" {
-		return p.createCheckpointedState(r, pidFile)
-	}
-	opts := &runc.CreateOpts{
-		PidFile:      pidFile.Path(),
-		NoPivot:      p.NoPivotRoot,
-		NoNewKeyring: p.NoNewKeyring,
-	}
-	if p.io != nil {
-		opts.IO = p.io.IO()
-	}
-	if socket != nil {
-		opts.ConsoleSocket = socket
+		return fmt.Errorf("VM checkpoints not yet implemented")
 	}
 
-	if err := p.runtime.Create(ctx, r.ID, r.Bundle, opts); err != nil {
-		return p.runtimeError(err, "OCI runtime create failed")
+	// Create VM instead of runc container
+	if p.vm != nil {
+		// This would call our VM creation logic
+		// For now, this is a placeholder
 	}
+
 	if r.Stdin != "" {
 		if err := p.openStdin(r.Stdin); err != nil {
 			return err
 		}
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if socket != nil {
-		console, err := socket.ReceiveMaster()
-		if err != nil {
-			return fmt.Errorf("failed to retrieve console master: %w", err)
-		}
-		console, err = p.Platform.CopyConsole(ctx, console, p.id, r.Stdin, r.Stdout, r.Stderr, &p.wg)
-		if err != nil {
-			return fmt.Errorf("failed to start console copy: %w", err)
-		}
-		p.console = console
-	} else {
+
+	if p.console != nil {
+		// Handle console for VM
+	} else if pio != nil {
 		if err := pio.Copy(ctx, &p.wg); err != nil {
 			return fmt.Errorf("failed to start io pipe copy: %w", err)
 		}
 	}
-	pid, err := pidFile.Read()
-	if err != nil {
-		return fmt.Errorf("failed to retrieve OCI runtime container pid: %w", err)
-	}
-	p.pid = pid
+
+	// For VMs, we don't have a traditional PID file
+	// The VM process is managed differently
+	p.pid = 1 // Placeholder - VMs have their own process management
 	return nil
 }
 
@@ -181,30 +153,6 @@ func (p *Init) openStdin(path string) error {
 	}
 	p.stdin = sc
 	p.closers = append(p.closers, sc)
-	return nil
-}
-
-func (p *Init) createCheckpointedState(r *CreateConfig, pidFile *pidFile) error {
-	opts := &runc.RestoreOpts{
-		CheckpointOpts: runc.CheckpointOpts{
-			ImagePath:  r.Checkpoint,
-			WorkDir:    p.CriuWorkPath,
-			ParentPath: r.ParentCheckpoint,
-		},
-		PidFile:     pidFile.Path(),
-		NoPivot:     p.NoPivotRoot,
-		Detach:      true,
-		NoSubreaper: true,
-	}
-
-	if p.io != nil {
-		opts.IO = p.io.IO()
-	}
-
-	p.initState = &createdCheckpointState{
-		p:    p,
-		opts: opts,
-	}
 	return nil
 }
 
@@ -260,8 +208,12 @@ func (p *Init) Start(ctx context.Context) error {
 }
 
 func (p *Init) start(ctx context.Context) error {
-	err := p.runtime.Start(ctx, p.id)
-	return p.runtimeError(err, "OCI runtime start failed")
+	// Start VM instead of runc process
+	if p.vm != nil {
+		// This would call our VM start logic
+		// For now, this is a placeholder
+	}
+	return nil
 }
 
 // SetExited of the init process with the next status
@@ -289,19 +241,13 @@ func (p *Init) Delete(ctx context.Context) error {
 
 func (p *Init) delete(ctx context.Context) error {
 	waitTimeout(ctx, &p.wg, 2*time.Second)
-	err := p.runtime.Delete(ctx, p.id, nil)
-	// ignore errors if a runtime has already deleted the process
-	// but we still hold metadata and pipes
-	//
-	// this is common during a checkpoint, runc will delete the container state
-	// after a checkpoint and the container will no longer exist within runc
-	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") {
-			err = nil
-		} else {
-			err = p.runtimeError(err, "failed to delete task")
-		}
+
+	// Stop VM instead of deleting runc container
+	if p.vm != nil {
+		// This would call our VM stop/delete logic
+		// For now, this is a placeholder
 	}
+
 	if p.io != nil {
 		for _, c := range p.closers {
 			c.Close()
@@ -310,11 +256,9 @@ func (p *Init) delete(ctx context.Context) error {
 	}
 	if err2 := mount.UnmountRecursive(p.Rootfs, 0); err2 != nil {
 		log.G(ctx).WithError(err2).Warn("failed to cleanup rootfs mount")
-		if err == nil {
-			err = fmt.Errorf("failed rootfs umount: %w", err2)
-		}
+		return fmt.Errorf("failed rootfs umount: %w", err2)
 	}
-	return err
+	return nil
 }
 
 // Resize the init processes console
@@ -328,7 +272,7 @@ func (p *Init) Resize(ws console.WinSize) error {
 	return p.console.Resize(ws)
 }
 
-// Pause the init process and all its child processes
+// Pause the VM container
 func (p *Init) Pause(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -336,7 +280,7 @@ func (p *Init) Pause(ctx context.Context) error {
 	return p.initState.Pause(ctx)
 }
 
-// Resume the init process and all its child processes
+// Resume the VM container
 func (p *Init) Resume(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -353,10 +297,12 @@ func (p *Init) Kill(ctx context.Context, signal uint32, all bool) error {
 }
 
 func (p *Init) kill(ctx context.Context, signal uint32, all bool) error {
-	err := p.runtime.Kill(ctx, p.id, int(signal), &runc.KillOpts{
-		All: all,
-	})
-	return checkKillError(err)
+	// Send signal to VM instead of runc process
+	if p.vm != nil {
+		// This would call our VM signal logic
+		// For now, this is a placeholder
+	}
+	return nil
 }
 
 // KillAll processes belonging to the init process
@@ -364,10 +310,12 @@ func (p *Init) KillAll(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	err := p.runtime.Kill(ctx, p.id, int(unix.SIGKILL), &runc.KillOpts{
-		All: true,
-	})
-	return p.runtimeError(err, "OCI runtime killall failed")
+	// For VMs, killing all processes means stopping the VM
+	if p.vm != nil {
+		// This would call our VM stop logic
+		// For now, this is a placeholder
+	}
+	return nil
 }
 
 // Stdin of the process
@@ -375,9 +323,9 @@ func (p *Init) Stdin() io.Closer {
 	return p.stdin
 }
 
-// Runtime returns the OCI runtime configured for the init process
-func (p *Init) Runtime() *runc.Runc {
-	return p.runtime
+// VM returns the VM instance configured for the init process
+func (p *Init) VM() vmm.VM {
+	return p.vm
 }
 
 // Exec returns a new child process
@@ -414,7 +362,7 @@ func (p *Init) exec(ctx context.Context, path string, r *ExecConfig) (Process, e
 	return e, nil
 }
 
-// Checkpoint the init process
+// Checkpoint the VM container
 func (p *Init) Checkpoint(ctx context.Context, r *CheckpointConfig) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -423,35 +371,12 @@ func (p *Init) Checkpoint(ctx context.Context, r *CheckpointConfig) error {
 }
 
 func (p *Init) checkpoint(ctx context.Context, r *CheckpointConfig) error {
-	var actions []runc.CheckpointAction
-	if !r.Exit {
-		actions = append(actions, runc.LeaveRunning)
-	}
-	// keep criu work directory if criu work dir is set
-	work := r.WorkDir
-	if work == "" {
-		work = filepath.Join(p.WorkDir, "criu-work")
-		defer os.RemoveAll(work)
-	}
-	if err := p.runtime.Checkpoint(ctx, p.id, &runc.CheckpointOpts{
-		WorkDir:                  work,
-		ImagePath:                r.Path,
-		AllowOpenTCP:             r.AllowOpenTCP,
-		AllowExternalUnixSockets: r.AllowExternalUnixSockets,
-		AllowTerminal:            r.AllowTerminal,
-		FileLocks:                r.FileLocks,
-		EmptyNamespaces:          r.EmptyNamespaces,
-	}, actions...); err != nil {
-		dumpLog := filepath.Join(p.Bundle, "criu-dump.log")
-		if cerr := copyFile(dumpLog, filepath.Join(work, "dump.log")); cerr != nil {
-			log.G(ctx).WithError(cerr).Error("failed to copy dump.log to criu-dump.log")
-		}
-		return fmt.Errorf("%s path= %s", criuError(err), dumpLog)
-	}
-	return nil
+	// VM checkpointing would be different from runc
+	// For now, return not implemented
+	return fmt.Errorf("VM checkpointing not yet implemented")
 }
 
-// Update the processes resource configuration
+// Update a running VM container
 func (p *Init) Update(ctx context.Context, r *google_protobuf.Any) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -464,7 +389,12 @@ func (p *Init) update(ctx context.Context, r *google_protobuf.Any) error {
 	if err := json.Unmarshal(r.Value, &resources); err != nil {
 		return err
 	}
-	return p.runtime.Update(ctx, p.id, &resources)
+	// Update VM resources instead of runc cgroup resources
+	if p.vm != nil {
+		// This would call our VM resource update logic
+		// For now, this is a placeholder
+	}
+	return nil
 }
 
 // Stdio of the process
@@ -476,22 +406,14 @@ func (p *Init) runtimeError(rErr error, msg string) error {
 	if rErr == nil {
 		return nil
 	}
-
-	rMsg, err := getLastRuntimeError(p.runtime)
-	switch {
-	case err != nil:
-		return fmt.Errorf("%s: %s (%s): %w", msg, "unable to retrieve OCI runtime error", err.Error(), rErr)
-	case rMsg == "":
-		return fmt.Errorf("%s: %w", msg, rErr)
-	default:
-		return fmt.Errorf("%s: %s", msg, rMsg)
-	}
+	// For VMs, we don't have runc-style error logs
+	// We would integrate with our VM error reporting
+	return fmt.Errorf("%s: %w", msg, rErr)
 }
 
-func withConditionalIO(c stdio.Stdio) runc.IOOpt {
-	return func(o *runc.IOOption) {
-		o.OpenStdin = c.Stdin != ""
-		o.OpenStdout = c.Stdout != ""
-		o.OpenStderr = c.Stderr != ""
+func withConditionalIO(c stdio.Stdio) func(interface{}) {
+	// This would be adapted for VM I/O configuration
+	return func(o interface{}) {
+		// Placeholder for VM I/O options
 	}
 }

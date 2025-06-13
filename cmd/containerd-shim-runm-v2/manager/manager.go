@@ -17,7 +17,6 @@
 package manager
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,28 +30,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/cgroups/v3"
-	"github.com/containerd/cgroups/v3/cgroup1"
-	cgroupsv2 "github.com/containerd/cgroups/v3/cgroup2"
 	"github.com/containerd/containerd/api/types"
-	"github.com/containerd/containerd/api/types/runc/options"
-	"github.com/containerd/containerd/v2/cmd/containerd-shim-runc-v2/process"
-	"github.com/containerd/containerd/v2/cmd/containerd-shim-runc-v2/runc"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/schedcore"
 	"github.com/containerd/containerd/v2/pkg/shim"
 	"github.com/containerd/containerd/v2/version"
 	"github.com/containerd/errdefs"
-	runcC "github.com/containerd/go-runc"
 	"github.com/containerd/log"
 	"github.com/containerd/typeurl/v2"
-	"github.com/opencontainers/runtime-spec/specs-go/features"
 	"golang.org/x/sys/unix"
+
+	"github.com/walteh/ec1/cmd/containerd-shim-runm-v2/runm"
+	"github.com/walteh/ec1/pkg/vmm/options"
 )
 
 // NewShimManager returns an implementation of the shim manager
-// using runc
+// using runm (our VM runtime)
 func NewShimManager(name string) shim.Manager {
 	return &manager{
 		name: name,
@@ -60,10 +54,10 @@ func NewShimManager(name string) shim.Manager {
 }
 
 // group labels specifies how the shim groups services.
-// currently supports a runc.v2 specific .group label and the
+// currently supports a runm.v2 specific .group label and the
 // standard k8s pod label.  Order matters in this list
 var groupLabels = []string{
-	"io.containerd.runc.v2.group",
+	"io.containerd.runm.v2.group",
 	"io.kubernetes.cri.sandbox-id",
 }
 
@@ -252,27 +246,8 @@ func (manager) Start(ctx context.Context, id string, opts shim.StartOpts) (_ shi
 	// make sure to wait after start
 	go cmd.Wait()
 
-	if opts, err := shim.ReadRuntimeOptions[*options.Options](os.Stdin); err == nil {
-		if opts.ShimCgroup != "" {
-			if cgroups.Mode() == cgroups.Unified {
-				cg, err := cgroupsv2.Load(opts.ShimCgroup)
-				if err != nil {
-					return params, fmt.Errorf("failed to load cgroup %s: %w", opts.ShimCgroup, err)
-				}
-				if err := cg.AddProc(uint64(cmd.Process.Pid)); err != nil {
-					return params, fmt.Errorf("failed to join cgroup %s: %w", opts.ShimCgroup, err)
-				}
-			} else {
-				cg, err := cgroup1.Load(cgroup1.StaticPath(opts.ShimCgroup))
-				if err != nil {
-					return params, fmt.Errorf("failed to load cgroup %s: %w", opts.ShimCgroup, err)
-				}
-				if err := cg.AddProc(uint64(cmd.Process.Pid)); err != nil {
-					return params, fmt.Errorf("failed to join cgroup %s: %w", opts.ShimCgroup, err)
-				}
-			}
-		}
-	}
+	// For runm, we don't need cgroup management like runc
+	// Our VM runtime handles resource management internally
 
 	if err := shim.AdjustOOMScore(cmd.Process.Pid); err != nil {
 		return params, fmt.Errorf("failed to adjust OOM score for shim: %w", err)
@@ -293,36 +268,30 @@ func (manager) Stop(ctx context.Context, id string) (shim.StopStatus, error) {
 	if err != nil {
 		return shim.StopStatus{}, err
 	}
-	runtime, err := runc.ReadRuntime(path)
-	if err != nil && !os.IsNotExist(err) {
-		return shim.StopStatus{}, err
-	}
-	opts, err := runc.ReadOptions(path)
+
+	// For runm, we need to clean up VM resources instead of runc containers
+	opts, err := runm.ReadOptions(path)
 	if err != nil {
 		return shim.StopStatus{}, err
 	}
-	root := process.RuncRoot
-	if opts != nil && opts.Root != "" {
-		root = opts.Root
+
+	// Clean up VM and associated resources
+	vm := runm.NewVM(path, ns, opts)
+	if err := vm.Delete(ctx, id); err != nil {
+		log.G(ctx).WithError(err).Warn("failed to remove runm VM")
 	}
 
-	r := process.NewRunc(root, path, ns, runtime, false)
-	if err := r.Delete(ctx, id, &runcC.DeleteOpts{
-		Force: true,
-	}); err != nil {
-		log.G(ctx).WithError(err).Warn("failed to remove runc container")
-	}
+	// Clean up rootfs mount
 	if err := mount.UnmountRecursive(filepath.Join(path, "rootfs"), 0); err != nil {
 		log.G(ctx).WithError(err).Warn("failed to cleanup rootfs mount")
 	}
-	pid, err := runcC.ReadPidFile(filepath.Join(path, process.InitPidFile))
-	if err != nil {
-		log.G(ctx).WithError(err).Warn("failed to read init pid file")
-	}
+
+	// For runm, we don't have a traditional PID file like runc
+	// The VM process is managed differently
 	return shim.StopStatus{
 		ExitedAt:   time.Now(),
 		ExitStatus: 128 + int(unix.SIGKILL),
-		Pid:        pid,
+		Pid:        0, // VM PID is managed internally
 	}, nil
 }
 
@@ -335,7 +304,7 @@ func (m manager) Info(ctx context.Context, optionsR io.Reader) (*types.RuntimeIn
 		},
 		Annotations: nil,
 	}
-	binaryName := runcC.DefaultCommand
+
 	opts, err := shim.ReadRuntimeOptions[*options.Options](optionsR)
 	if err != nil {
 		if !errors.Is(err, errdefs.ErrNotFound) {
@@ -347,41 +316,9 @@ func (m manager) Info(ctx context.Context, optionsR io.Reader) (*types.RuntimeIn
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal %T: %w", opts, err)
 		}
-		if opts.BinaryName != "" {
-			binaryName = opts.BinaryName
-		}
+	}
 
-	}
-	absBinary, err := exec.LookPath(binaryName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up the path of %q: %w", binaryName, err)
-	}
-	features, err := m.features(ctx, absBinary, opts)
-	if err != nil {
-		// youki does not implement `runc features` yet, at the time of writing this (Sep 2023)
-		// https://github.com/containers/youki/issues/815
-		log.G(ctx).WithError(err).Debug("Failed to get the runtime features. The runc binary does not implement `runc features` command?")
-	}
-	if features != nil {
-		info.Features, err = typeurl.MarshalAnyToProto(features)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal %T: %w", features, err)
-		}
-	}
+	// For runm, we don't need to check for a binary like runc
+	// Our VM runtime is built-in
 	return info, nil
-}
-
-func (m manager) features(ctx context.Context, absBinary string, opts *options.Options) (*features.Features, error) {
-	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, absBinary, "features")
-	cmd.Stderr = &stderr
-	stdout, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute %v: %w (stderr: %q)", cmd.Args, err, stderr.String())
-	}
-	var feat features.Features
-	if err := json.Unmarshal(stdout, &feat); err != nil {
-		return nil, err
-	}
-	return &feat, nil
 }

@@ -24,8 +24,6 @@ import (
 	"fmt"
 
 	google_protobuf "github.com/containerd/containerd/v2/pkg/protobuf/types"
-	runc "github.com/containerd/go-runc"
-	"github.com/containerd/log"
 )
 
 type initState interface {
@@ -109,115 +107,6 @@ func (s *createdState) Status(ctx context.Context) (string, error) {
 	return "created", nil
 }
 
-type createdCheckpointState struct {
-	p    *Init
-	opts *runc.RestoreOpts
-}
-
-func (s *createdCheckpointState) transition(name string) error {
-	switch name {
-	case "running":
-		s.p.initState = &runningState{p: s.p}
-	case "stopped":
-		s.p.initState = &stoppedState{p: s.p}
-	case "deleted":
-		s.p.initState = &deletedState{}
-	default:
-		return fmt.Errorf("invalid state transition %q to %q", stateName(s), name)
-	}
-	return nil
-}
-
-func (s *createdCheckpointState) Pause(ctx context.Context) error {
-	return errors.New("cannot pause task in created state")
-}
-
-func (s *createdCheckpointState) Resume(ctx context.Context) error {
-	return errors.New("cannot resume task in created state")
-}
-
-func (s *createdCheckpointState) Update(ctx context.Context, r *google_protobuf.Any) error {
-	return s.p.update(ctx, r)
-}
-
-func (s *createdCheckpointState) Checkpoint(ctx context.Context, r *CheckpointConfig) error {
-	return errors.New("cannot checkpoint a task in created state")
-}
-
-func (s *createdCheckpointState) Start(ctx context.Context) error {
-	p := s.p
-	sio := p.stdio
-
-	var (
-		err    error
-		socket *runc.Socket
-	)
-	if sio.Terminal {
-		if socket, err = runc.NewTempConsoleSocket(); err != nil {
-			return fmt.Errorf("failed to create OCI runtime console socket: %w", err)
-		}
-		defer socket.Close()
-		s.opts.ConsoleSocket = socket
-	}
-
-	if _, err := s.p.runtime.Restore(ctx, p.id, p.Bundle, s.opts); err != nil {
-		return p.runtimeError(err, "OCI runtime restore failed")
-	}
-	if sio.Stdin != "" {
-		if err := p.openStdin(sio.Stdin); err != nil {
-			return fmt.Errorf("failed to open stdin fifo %s: %w", sio.Stdin, err)
-		}
-	}
-	if socket != nil {
-		console, err := socket.ReceiveMaster()
-		if err != nil {
-			return fmt.Errorf("failed to retrieve console master: %w", err)
-		}
-		console, err = p.Platform.CopyConsole(ctx, console, p.id, sio.Stdin, sio.Stdout, sio.Stderr, &p.wg)
-		if err != nil {
-			return fmt.Errorf("failed to start console copy: %w", err)
-		}
-		p.console = console
-	} else {
-		if err := p.io.Copy(ctx, &p.wg); err != nil {
-			return fmt.Errorf("failed to start io pipe copy: %w", err)
-		}
-	}
-	pid, err := runc.ReadPidFile(s.opts.PidFile)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve OCI runtime container pid: %w", err)
-	}
-	p.pid = pid
-	return s.transition("running")
-}
-
-func (s *createdCheckpointState) Delete(ctx context.Context) error {
-	if err := s.p.delete(ctx); err != nil {
-		return err
-	}
-	return s.transition("deleted")
-}
-
-func (s *createdCheckpointState) Kill(ctx context.Context, sig uint32, all bool) error {
-	return s.p.kill(ctx, sig, all)
-}
-
-func (s *createdCheckpointState) SetExited(status int) {
-	s.p.setExited(status)
-
-	if err := s.transition("stopped"); err != nil {
-		panic(err)
-	}
-}
-
-func (s *createdCheckpointState) Exec(ctx context.Context, path string, r *ExecConfig) (Process, error) {
-	return nil, errors.New("cannot exec in a created state")
-}
-
-func (s *createdCheckpointState) Status(ctx context.Context) (string, error) {
-	return "created", nil
-}
-
 type runningState struct {
 	p *Init
 }
@@ -242,8 +131,10 @@ func (s *runningState) Pause(ctx context.Context) error {
 	// delays the "paused" state a little bit.
 	defer s.p.pausing.Store(false)
 
-	if err := s.p.runtime.Pause(ctx, s.p.id); err != nil {
-		return s.p.runtimeError(err, "OCI runtime pause failed")
+	// For VMs, pause would be handled differently
+	if s.p.vm != nil {
+		// This would call our VM pause logic
+		// For now, this is a placeholder
 	}
 
 	return s.transition("paused")
@@ -310,8 +201,10 @@ func (s *pausedState) Pause(ctx context.Context) error {
 }
 
 func (s *pausedState) Resume(ctx context.Context) error {
-	if err := s.p.runtime.Resume(ctx, s.p.id); err != nil {
-		return s.p.runtimeError(err, "OCI runtime resume failed")
+	// For VMs, resume would be handled differently
+	if s.p.vm != nil {
+		// This would call our VM resume logic
+		// For now, this is a placeholder
 	}
 
 	return s.transition("running")
@@ -340,8 +233,10 @@ func (s *pausedState) Kill(ctx context.Context, sig uint32, all bool) error {
 func (s *pausedState) SetExited(status int) {
 	s.p.setExited(status)
 
-	if err := s.p.runtime.Resume(context.Background(), s.p.id); err != nil {
-		log.L.WithError(err).Error("resuming exited container from paused state")
+	// For VMs, we might need to resume before transitioning to stopped
+	if s.p.vm != nil {
+		// This would call our VM resume logic if needed
+		// For now, this is a placeholder
 	}
 
 	if err := s.transition("stopped"); err != nil {

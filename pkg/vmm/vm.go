@@ -1,5 +1,3 @@
-//go:build linux
-
 /*
    Copyright The containerd Authors.
 
@@ -16,17 +14,32 @@
    limitations under the License.
 */
 
-package main
+package vmm
 
 import (
 	"context"
-
-	"github.com/containerd/containerd/v2/pkg/shim"
-
-	"github.com/walteh/ec1/cmd/containerd-shim-runm-v2/manager"
-	_ "github.com/walteh/ec1/cmd/containerd-shim-runm-v2/task/plugin"
 )
 
-func main() {
-	shim.Run(context.Background(), manager.NewShimManager("io.containerd.runm.v2"))
+// VM represents a virtual machine instance
+type VM interface {
+	// Start starts the VM
+	Start(ctx context.Context) error
+
+	// Stop stops the VM
+	Stop(ctx context.Context) error
+
+	// Delete removes the VM and cleans up resources
+	Delete(ctx context.Context) error
+
+	// Kill sends a signal to the VM
+	Kill(ctx context.Context, signal uint32) error
+
+	// Wait waits for the VM to exit
+	Wait(ctx context.Context) error
+
+	// Status returns the current status of the VM
+	Status(ctx context.Context) (string, error)
+
+	// Pid returns the process ID of the VM (if applicable)
+	Pid() int
 }
