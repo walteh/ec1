@@ -19,6 +19,7 @@
 package main
 
 import (
-	_ "github.com/containerd/containerd/v2/internal/pprof"
 	_ "github.com/containerd/containerd/v2/pkg/tracing/plugin"
+
+	_ "github.com/walteh/ec1/cmd/containerd-shim-runm-v2/task/plugin/pprof"
 )
