@@ -6,7 +6,7 @@ import "github.com/walteh/ec1/pkg/binembed"
 //go:embed initramfs.cpio.gz.xz
 var BinaryXZ []byte
 
-const BinaryXZChecksum = "52c11469322e6d45ab05700764c2bf38d6a91aee5335dddbeecf5907ef58f64a"
+const BinaryXZChecksum = "6f8069d1f922832a42268401b04d5c92c42b5b783baf218728108c3e1598ec34"
 
 func init() {
 	binembed.RegisterXZ(BinaryXZChecksum, BinaryXZ)

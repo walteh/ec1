@@ -339,37 +339,40 @@ func (s *service) Start(ctx context.Context, request *task.StartRequest) (*task.
 		Pid: uint32(p.pid),
 	}, nil
 }
-
-func (s *service) Delete(ctx context.Context, request *task.DeleteRequest) (*task.DeleteResponse, error) {
-
-	c, p, err := getContainerProcess(ctx, s, request)
+func (s *service) Delete(ctx context.Context, req *task.DeleteRequest) (*task.DeleteResponse, error) {
+	c, p, err := getContainerProcess(ctx, s, req)
 	if err != nil {
-		return nil, errors.Errorf("getting container process: %w", err)
+		return nil, err
 	}
 
-	if err := c.destroy(); err != nil {
-		log.G(ctx).WithError(err).Warn("failed to cleanup container")
-	}
-
-	s.deleteContainer(ctx, request.ID)
-
+	// Grab exit status *before* we start tearing things down.
 	state := p.getStatus()
+	pid := uint32(p.pid)
 
-	var pid uint32 = uint32(p.pid)
-
+	// Tell containerd everything's gone.
 	s.events <- &events.TaskDelete{
-		ContainerID: request.ID,
+		ContainerID: req.ID,
 		ExitedAt:    protobufTimestamp(state.ExitedAt),
 		ExitStatus:  uint32(state.ExitCode),
-		ID:          request.ID,
+		ID:          req.ID,
 		Pid:         pid,
 	}
 
-	return &task.DeleteResponse{
+	resp := &task.DeleteResponse{
 		ExitedAt:   protobufTimestamp(state.ExitedAt),
 		ExitStatus: uint32(state.ExitCode),
 		Pid:        pid,
-	}, nil
+	}
+
+	// Now, *asynchronously*, clean up the heavy bits.
+	go func() {
+		if err := c.destroy(); err != nil {
+			slog.WarnContext(ctx, "failed to cleanup container", "err", err)
+		}
+		s.deleteContainer(ctx, req.ID)
+	}()
+
+	return resp, nil
 }
 
 func (s *service) Pids(ctx context.Context, request *task.PidsRequest) (*task.PidsResponse, error) {
@@ -520,8 +523,19 @@ func (s *service) Wait(ctx context.Context, request *task.WaitRequest) (*task.Wa
 
 	slog.InfoContext(ctx, "wait has completed", "exitCode", exitCode)
 
+	// Emit TaskExit event so that containerd (and higher-level clients like nerdctl)
+	// know the task is finished before they attempt Delete/Kill. This mirrors what
+	// the runc shim does.
+	s.events <- &events.TaskExit{
+		ContainerID: request.ID,
+		ID:          request.ExecID,
+		Pid:         uint32(p.pid),
+		ExitStatus:  uint32(exitCode),
+		ExitedAt:    protobufTimestamp(p.runningCmd.exitedAt),
+	}
+
 	return &task.WaitResponse{
-		ExitedAt:   protobuf.ToTimestamp(p.runningCmd.exitedAt),
+		ExitedAt:   protobufTimestamp(p.runningCmd.exitedAt),
 		ExitStatus: uint32(exitCode),
 	}, nil
 }

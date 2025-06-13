@@ -9,6 +9,7 @@ import (
 	"github.com/walteh/ec1/pkg/virtio"
 )
 
+//go:mock
 type VirtualMachine interface {
 	ID() string
 	VSockConnect(ctx context.Context, port uint32) (net.Conn, error)

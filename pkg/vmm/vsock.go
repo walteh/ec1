@@ -26,52 +26,60 @@ func ForwardStdio(ctx context.Context, vm VirtualMachine, stdin io.Reader, stdou
 
 	errgroup := errgroup.Group{}
 
-	errgroup.Go(func() error {
-		ctx := slogctx.Append(ctx, slog.String("pipe", "stdin"))
-		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdinPort)
-		if err != nil {
-			return errors.Errorf("error connecting to vsock: %w", err)
-		}
-		defer conn.Close()
-		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdinPort)
-		_, err = io.Copy(conn, stdin)
-		if err != nil {
-			return errors.Errorf("error copying stdin to vsock: %w", err)
-		}
-		return nil
-	})
+	if stdin != nil {
 
-	errgroup.Go(func() error {
-		ctx := slogctx.Append(ctx, slog.String("pipe", "stdout"))
-		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdoutPort)
-		if err != nil {
-			slog.ErrorContext(ctx, "error connecting to vsock", "error", err)
-			return errors.Errorf("error connecting to vsock: %w", err)
-		}
-		defer conn.Close()
-		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdoutPort)
-		_, err = io.Copy(stdout, conn)
-		if err != nil {
-			slog.ErrorContext(ctx, "error copying stdin to vsock", "error", err)
-		}
-		return nil
-	})
+		errgroup.Go(func() error {
+			ctx := slogctx.Append(ctx, slog.String("pipe", "stdin"))
+			conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdinPort)
+			if err != nil {
+				return errors.Errorf("error connecting to vsock stdin: %w", err)
+			}
+			defer conn.Close()
+			slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdinPort)
+			_, err = io.Copy(conn, stdin)
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				return errors.Errorf("error copying stdin to vsock: %w", err)
+			}
+			return nil
+		})
 
-	errgroup.Go(func() error {
-		ctx := slogctx.Append(ctx, slog.String("pipe", "stderr"))
-		conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStderrPort)
-		if err != nil {
-			return errors.Errorf("error connecting to vsock: %w", err)
-		}
-		defer conn.Close()
-		slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStderrPort)
-		_, err = io.Copy(stderr, conn)
-		if err != nil {
-			slog.ErrorContext(ctx, "error copying stdin to vsock", "error", err)
-			return errors.Errorf("error copying stdin to vsock: %w", err)
-		}
-		return nil
-	})
+	}
+
+	if stdout != nil {
+
+		errgroup.Go(func() error {
+			ctx := slogctx.Append(ctx, slog.String("pipe", "stdout"))
+			conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStdoutPort)
+			if err != nil {
+				return errors.Errorf("error connecting to vsock stdout: %w", err)
+			}
+			defer conn.Close()
+			slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStdoutPort)
+			_, err = io.Copy(stdout, conn)
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				return errors.Errorf("error copying stdout to vsock: %w", err)
+			}
+			return nil
+		})
+	}
+
+	if stderr != nil {
+
+		errgroup.Go(func() error {
+			ctx := slogctx.Append(ctx, slog.String("pipe", "stderr"))
+			conn, err := connectToVsockWithRetry(ctx, vm, ec1init.VsockStderrPort)
+			if err != nil {
+				return errors.Errorf("error connecting to vsock stderr	: %w", err)
+			}
+			defer conn.Close()
+			slog.InfoContext(ctx, "connected to vsock", "port", ec1init.VsockStderrPort)
+			_, err = io.Copy(stderr, conn)
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				return errors.Errorf("error copying stderr to vsock: %w", err)
+			}
+			return nil
+		})
+	}
 
 	defer func() {
 		if r := recover(); r != nil {

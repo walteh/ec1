@@ -21,6 +21,7 @@ const (
 	ExecVSockPort = 2019
 )
 
+//go:mock
 type Hypervisor[VM VirtualMachine] interface {
 	NewVirtualMachine(ctx context.Context, id string, opts *NewVMOptions, bl Bootloader) (VM, error)
 	OnCreate() <-chan VM
@@ -112,7 +113,7 @@ func (r *RunningVM[VM]) GuestService(ctx context.Context) (harpoonv1.TTRPCGuestS
 				continue
 			}
 			r.guestServiceConnection = harpoonv1.NewTTRPCGuestServiceClient(ttrpc.NewClient(conn, ttrpc.WithClientDebugging(), ttrpc.WithOnCloseError(func(err error) {
-				slog.Error("guest service connection closed", "error", err)
+				slog.Debug("guest service connection closed", "error", err)
 			})))
 			return r.guestServiceConnection, nil
 		case <-timeout.C:

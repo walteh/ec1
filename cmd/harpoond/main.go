@@ -180,11 +180,10 @@ func logDirContents(ctx context.Context, path string) {
 }
 
 func runContainerd(ctx context.Context) error {
+
 	fmt.Println() // i think this might fix the color issue to reset the ansi colors
 	ctx = slogctx.Append(ctx, slog.String("mode", string(modeRootfs)))
 	slog.InfoContext(ctx, "running in rootfs, gonna just wait to be killed")
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
 
 	// go harpoon.DumpHeapProfileAfter(ctx, 60*time.Second)
 
@@ -230,12 +229,8 @@ func runContainerd(ctx context.Context) error {
 
 	// fmt.Println("--------------------------------")
 
-	go func() {
-		err := runTtrpc(ctx)
-		if err != nil {
-			slog.ErrorContext(ctx, "problem serving ttrpc", "error", err)
-		}
-	}()
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
 	go func() {
 		for tick := range ticker.C {
@@ -251,7 +246,13 @@ func runContainerd(ctx context.Context) error {
 		}
 	}()
 
-	select {}
+	err := runTtrpc(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "problem serving ttrpc", "error", err)
+		return errors.Errorf("problem serving ttrpc: %w", err)
+	}
+
+	return nil
 }
 
 func runTtrpc(ctx context.Context) error {
@@ -296,8 +297,8 @@ func runTtrpc(ctx context.Context) error {
 		group.Always(p)
 	}
 
-	return group.Run()
-
+	err = group.Run()
+	return err
 }
 
 // func getCopyMountCommands(ctx context.Context) ([][]string, error) {
